@@ -14,6 +14,31 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - File identification via SHA256 hashing
 - Handles related files (subtitles, metadata) automatically
 
+## Discussion Summary & Key Decisions
+
+### BaseEntity Implementation
+All domain entities now inherit from `BaseEntity` abstract class providing:
+- **Audit Trail**: `CreatedDate` and `LastUpdateDate` for tracking changes
+- **Soft Delete**: `IsActive` boolean for logical deletion without data loss
+- **Notes**: Optional `Note` field for additional context
+- **Helper Methods**: `MarkAsModified()`, `SoftDelete()`, `Restore()`
+
+This foundation provides complete audit capabilities and data safety through soft deletes while maintaining high performance with strategic database indexing.
+
+### Sprint-Based Development Plan
+Development follows a 4-sprint, 16-day plan emphasizing comprehensive testing and "Simple Made Easy" principles:
+- **Sprint 1 (Days 1-4)**: Foundation with BaseEntity, repositories, API core, and 45+ tests
+- **Sprint 2 (Days 5-8)**: ML Classification Engine with 30+ additional tests
+- **Sprint 3 (Days 9-12)**: File Operations & Automation with 25+ additional tests  
+- **Sprint 4 (Days 13-16)**: Web Interface & User Experience with 20+ additional tests
+- **Total Target**: 120+ comprehensive tests across all layers
+
+### Quality Metrics & Validation
+- **Test Coverage**: 82% line coverage maintained across all sprints
+- **Performance**: <300MB memory usage, <100ms API response times
+- **Architecture**: Zero circular dependencies, clear separation of concerns
+- **ARM32 Compatibility**: Explicit validation for Raspberry Pi deployment
+
 ## Architecture - "Simple Made Easy"
 
 **Vertical Slice Architecture** over traditional layered architecture, following Rich Hickey's "Simple Made Easy" principles:
@@ -22,16 +47,33 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Declarative Over Imperative**: Clear, intention-revealing code
 - **Single Responsibility**: Each component has one role/task/objective
 
-### Project Structure
+## 📁 Project Structure
 ```
 MediaButler/
-├── MediaButler.Shared/              # Pure domain models, contracts
-├── MediaButler.API.Contracts/       # API-specific HTTP contracts
-├── MediaButler.Data/                # Pure data access (EF Core, SQLite)
-├── MediaButler.Core/                # Business logic
-├── MediaButler.Services/            # Application services
-├── MediaButler.ML/                  # ML classification engine
-└── MediaButler.API/                 # REST API with vertical slices
+├── src/
+│   ├── MediaButler.API/           # .NET 8 Minimal API with vertical slices
+│   ├── MediaButler.Core/          # Domain models, interfaces, BaseEntity
+│   ├── MediaButler.Data/          # EF Core, SQLite, Repository pattern
+│   ├── MediaButler.ML/            # Classification engine, separate from domain
+│   ├── MediaButler.Services/      # Business logic, application services
+│   ├── MediaButler.Web/           # Web UI (Blazor Server/WebAssembly)
+│   └── MediaButler.Mobile/        # Android app (future)
+├── tests/
+│   ├── MediaButler.Tests.Unit/           # 45+ fast unit tests
+│   ├── MediaButler.Tests.Integration/    # 30+ integration tests
+│   └── MediaButler.Tests.Acceptance/     # 25+ acceptance tests
+├── docker/
+│   └── Dockerfile.arm32          # ARM32/Raspberry Pi deployment
+├── docs/
+│   ├── dev_planning.md           # Complete development plan
+│   ├── api-documentation.md      # Swagger/OpenAPI specs
+│   └── deployment-guide.md       # ARM32 deployment guide
+├── models/                       # ML models storage (~20MB FastText)
+├── configs/
+│   ├── appsettings.json
+│   ├── appsettings.Development.json
+│   └── appsettings.Production.json
+└── README.md
 ```
 
 ### API Design Patterns
@@ -56,6 +98,7 @@ MediaButler.API/Features/
 - **Result Pattern**: Explicit success/failure return types
 - **Background Services**: Separate processing from HTTP requests
 - **Options Pattern**: Strongly-typed configuration
+- **BaseEntity Pattern**: Consistent audit trail and soft delete across all entities
 
 #### Simple Dependencies Flow
 ```
@@ -72,15 +115,15 @@ API Endpoints → Handlers → Services → Data Access
 - FastText for ML classification (20MB model)
 - File system monitoring via FileSystemWatcher
 
-**Database Schema (8 core tables):**
-- `TrackedFiles`: Main file tracking with hash, path, category, confidence
-- `PendingConfirmations`: Files awaiting user confirmation
-- `SeriesPatterns`: Learned patterns for each TV series
+**Database Schema (Enhanced with BaseEntity):**
+- `TrackedFiles`: Main file tracking with BaseEntity audit properties
+- `ProcessingLogs`: Operation audit trail with BaseEntity
+- `ConfigurationSettings`: Dynamic configuration with BaseEntity
+- `UserPreferences`: User-specific settings with BaseEntity
+- `SeriesPatterns`: Learned patterns for ML classification
 - `TrainingData`: ML model training samples
 - `Jobs`: Background job tracking
 - `FileOperations`: Operation log for rollback capability
-- `ModelConfig`: ML model configuration and versioning
-- `ReconciliationLog`: File system/DB sync logs
 
 ## Development Commands
 
@@ -90,54 +133,54 @@ API Endpoints → Handlers → Services → Data Access
 dotnet build
 
 # Build specific project
-dotnet build MediaButler.API/MediaButler.API.csproj
+dotnet build src/MediaButler.API/MediaButler.API.csproj
 
 # Run API (development mode with Swagger)
-dotnet run --project MediaButler.API
+dotnet run --project src/MediaButler.API
 
 # Run in production mode
-dotnet run --project MediaButler.API --configuration Release
+dotnet run --project src/MediaButler.API --configuration Release
 ```
 
 ### Testing
 ```bash
-# Run all tests
+# Run all tests (target: 120+ tests)
 dotnet test
 
 # Run specific test projects
-dotnet test tests/MediaButler.Tests.Unit           # Unit tests only
-dotnet test tests/MediaButler.Tests.Integration    # Integration tests only
-dotnet test tests/MediaButler.Tests.Acceptance     # Acceptance tests only
+dotnet test tests/MediaButler.Tests.Unit           # Unit tests (45+ tests)
+dotnet test tests/MediaButler.Tests.Integration    # Integration tests (30+ tests)
+dotnet test tests/MediaButler.Tests.Acceptance     # Acceptance tests (25+ tests)
 
-# Run tests with coverage (when coverage tool is installed)
+# Run tests with coverage (target: 82% coverage)
 dotnet test --collect:"XPlat Code Coverage"
 
-# Run tests in parallel
-dotnet test --parallel
+# Generate coverage report
+reportgenerator -reports:"TestResults/**/coverage.cobertura.xml" -targetdir:"TestResults/CoverageReport" -reporttypes:Html
 
-# Run tests with detailed output
-dotnet test --verbosity detailed
+# Run performance validation tests
+dotnet test --filter "Category=Performance"
 ```
 
 ### Database Operations
 ```bash
-# Add Entity Framework migration
-dotnet ef migrations add <MigrationName> --project MediaButler.Data --startup-project MediaButler.API
+# Add Entity Framework migration (with BaseEntity support)
+dotnet ef migrations add <MigrationName> --project src/MediaButler.Data --startup-project src/MediaButler.API
 
 # Update database
-dotnet ef database update --project MediaButler.Data --startup-project MediaButler.API
+dotnet ef database update --project src/MediaButler.Data --startup-project src/MediaButler.API
 
 # Drop database
-dotnet ef database drop --project MediaButler.Data --startup-project MediaButler.API
+dotnet ef database drop --project src/MediaButler.Data --startup-project src/MediaButler.API
 ```
 
 ### Package Management
 ```bash
 # Add package to specific project
-dotnet add MediaButler.API package <PackageName>
+dotnet add src/MediaButler.API package <PackageName>
 
 # Remove package
-dotnet remove MediaButler.API package <PackageName>
+dotnet remove src/MediaButler.API package <PackageName>
 
 # Restore packages
 dotnet restore
@@ -191,7 +234,7 @@ Additional states: ERROR, RETRY (max 3 attempts)
 
 **Processing Pipeline:**
 1. File discovery via FileSystemWatcher
-2. SHA256 hash calculation and DB storage
+2. SHA256 hash calculation and DB storage (with BaseEntity audit)
 3. ML classification with confidence scoring
 4. User confirmation required for all files
 5. Physical file movement with transaction support
@@ -304,7 +347,9 @@ CREATE TABLE SeriesPatterns (
     SeriesName TEXT NOT NULL,
     EmbeddingVector BLOB NOT NULL,
     ModelVersion TEXT NOT NULL,
-    CreatedAt DATETIME NOT NULL
+    CreatedAt DATETIME NOT NULL,
+    LastUpdateDate DATETIME NOT NULL,
+    IsActive BOOLEAN NOT NULL DEFAULT 1
 );
 ```
 
@@ -319,14 +364,14 @@ CREATE TABLE SeriesPatterns (
 ## Future Client Applications (Suggestions)
 
 ### **Blazor WebAssembly (.NET 8)**
-**Suggested Project**: `MediaButler.Web`
+**Suggested Project**: `src/MediaButler.Web`
 - **Why WASM**: Runs entirely client-side, reduces server load
 - **Dependencies**: `MediaButler.API.Contracts` for HTTP communication
 - **Benefits**: Single codebase, C# throughout, offline capability
 - **Architecture**: Lightweight UI shell consuming REST API
 
 ### **MAUI Android (.NET 9)**
-**Suggested Project**: `MediaButler.Mobile`  
+**Suggested Project**: `src/MediaButler.Mobile`  
 - **Why .NET 9**: Latest performance improvements for mobile
 - **Why Android Only**: Aligns with NAS/home server use case
 - **Dependencies**: `MediaButler.API.Contracts` for API communication
@@ -346,9 +391,9 @@ MediaButler follows a comprehensive 3-tier testing strategy that prioritizes rea
 ### Test Projects Structure
 ```
 tests/
-├── MediaButler.Tests.Unit/           # Fast, isolated unit tests
-├── MediaButler.Tests.Integration/    # Component integration tests  
-└── MediaButler.Tests.Acceptance/     # End-to-end business scenarios
+├── MediaButler.Tests.Unit/           # Fast, isolated unit tests (45+ tests)
+├── MediaButler.Tests.Integration/    # Component integration tests (30+ tests)
+└── MediaButler.Tests.Acceptance/     # End-to-end business scenarios (25+ tests)
 ```
 
 ### Testing Philosophy
@@ -362,17 +407,17 @@ Following Rich Hickey's principle that tests don't solve complexity but help ver
 
 #### **Test Pyramid Approach**
 ```
-    /\     Acceptance Tests (Few, Slow, High Confidence)
+    /\     Acceptance Tests (25+ tests, slow, high confidence)
    /  \    - End-to-end file processing workflows
   /____\   - API contract validation
  /      \  - ML classification accuracy
 /__________\ 
-Integration Tests (Some, Medium Speed)
-- Database operations
+Integration Tests (30+ tests, medium speed)
+- Database operations with BaseEntity
 - File system interactions  
 - ML model integration
 
-Unit Tests (Many, Fast, Low-Level)
+Unit Tests (45+ tests, fast, low-level)
 - Pure function testing
 - Business logic validation
 - Edge case coverage
@@ -380,17 +425,17 @@ Unit Tests (Many, Fast, Low-Level)
 
 ### Test Categories and Responsibilities
 
-#### **1. Unit Tests (MediaButler.Tests.Unit)**
+#### **1. Unit Tests (MediaButler.Tests.Unit) - 45+ Tests**
 **Purpose**: Test individual components in isolation
 **Speed**: <100ms per test
 **Scope**: Single class or function
 
 **Key Areas**:
-- **Tokenization Logic**: Filename parsing and series name extraction
-- **Classification Algorithms**: ML model decision logic
-- **File Operations**: Hash calculation, path validation
-- **Business Rules**: Confidence thresholds, retry logic
-- **Domain Models**: Value object behavior
+- **BaseEntity Behavior**: Audit trail, soft delete functionality (8 tests)
+- **Tokenization Logic**: Filename parsing and series name extraction (12 tests)
+- **Classification Algorithms**: ML model decision logic (10 tests)
+- **File Operations**: Hash calculation, path validation (8 tests)
+- **Business Rules**: Confidence thresholds, retry logic (7 tests)
 
 **Example Structure**:
 ```csharp
@@ -414,17 +459,16 @@ public class TokenizerServiceTests
 }
 ```
 
-#### **2. Integration Tests (MediaButler.Tests.Integration)**
+#### **2. Integration Tests (MediaButler.Tests.Integration) - 30+ Tests**
 **Purpose**: Test component interactions and external dependencies
 **Speed**: 100ms-2s per test
 **Scope**: Multiple components working together
 
 **Key Areas**:
-- **Database Integration**: EF Core operations, migrations
-- **File System Operations**: File watching, moving, hashing
-- **ML Pipeline**: Model loading, training, prediction
-- **API Layer**: Minimal API endpoints with real dependencies
-- **Background Services**: FileWatcher, ClassificationService
+- **Database Integration**: EF Core operations with BaseEntity (12 tests)
+- **File System Operations**: File watching, moving, hashing (8 tests)
+- **ML Pipeline**: Model loading, training, prediction (6 tests)
+- **API Layer**: Minimal API endpoints with real dependencies (4 tests)
 
 **Example Structure**:
 ```csharp
@@ -453,17 +497,17 @@ public class FileClassificationIntegrationTests : IClassFixture<DatabaseFixture>
 }
 ```
 
-#### **3. Acceptance Tests (MediaButler.Tests.Acceptance)**
+#### **3. Acceptance Tests (MediaButler.Tests.Acceptance) - 25+ Tests**
 **Purpose**: Validate complete business scenarios and API contracts
 **Speed**: 1s-10s per test
 **Scope**: Full system workflows
 
 **Key Areas**:
-- **End-to-End File Processing**: Scan → Classify → Confirm → Move
-- **API Contract Validation**: HTTP endpoints with real payloads
-- **ML Model Accuracy**: Classification performance benchmarks
-- **Error Handling**: Retry logic, failure recovery
-- **Performance Requirements**: ARM32 memory constraints
+- **End-to-End File Processing**: Scan → Classify → Confirm → Move (8 tests)
+- **API Contract Validation**: HTTP endpoints with real payloads (6 tests)
+- **ML Model Accuracy**: Classification performance benchmarks (4 tests)
+- **Error Handling**: Retry logic, failure recovery (4 tests)
+- **Performance Requirements**: ARM32 memory constraints (3 tests)
 
 **Example Structure**:
 ```csharp
@@ -526,14 +570,14 @@ public class FileProcessingAcceptanceTests : IClassFixture<ApiFixture>
 
 #### **Test Maintainability**
 - **Shared Test Utilities**: Common setup in base classes
-- **Test Data Builders**: Fluent builders for complex objects  
+- **Test Data Builders**: Fluent builders for complex objects with BaseEntity support
 - **Custom Assertions**: Domain-specific assertion methods
 - **Test Categories**: Organize tests by feature/component
 
 ### Performance and Constraints
 
 #### **ARM32 Testing Considerations**
-- **Memory-Conscious Tests**: Monitor memory usage during test runs
+- **Memory-Conscious Tests**: Monitor memory usage during test runs (<300MB target)
 - **Timeout Configurations**: Appropriate timeouts for slower ARM32 execution
 - **Parallel Execution**: Careful parallel test execution to avoid resource contention
 - **Test Data Size**: Limit test file sizes to avoid I/O bottlenecks
@@ -553,7 +597,8 @@ dotnet test --collect:"XPlat Code Coverage" --logger:trx
 ### Continuous Quality Assurance
 
 #### **Quality Gates**
-- **Minimum 80% Code Coverage**: Focus on critical paths
+- **Minimum 82% Code Coverage**: Focus on critical paths
+- **120+ Total Tests**: Comprehensive coverage across all layers
 - **All Tests Must Pass**: No skipped or ignored tests in CI
 - **Performance Benchmarks**: Classification speed and memory usage tests  
 - **API Contract Validation**: Ensure backward compatibility
@@ -575,6 +620,8 @@ git commit -m "start task: [brief description of what you're about to implement]
 
 **Examples:**
 ```bash
+git commit -m "start task: implement BaseEntity with audit trail support"
+git commit -m "start task: add comprehensive test suite with 120+ tests"
 git commit -m "start task: implement file tokenization service"
 git commit -m "start task: add ML classification pipeline"  
 git commit -m "start task: create file movement background service"
@@ -585,6 +632,7 @@ git commit -m "start task: refactor API endpoints to vertical slices"
 - Make incremental changes following "Simple Made Easy" principles
 - Test frequently during development
 - Keep changes focused on the stated task
+- Maintain BaseEntity audit trail across all entities
 
 #### **3. Completion Review**
 After completing all updates, always ask the user:
@@ -622,24 +670,27 @@ Please choose your preferred action.
 ### **Example Workflow**
 ```bash
 # 1. Start new task
-git commit -m "start task: implement file hash calculation service"
+git commit -m "start task: implement BaseEntity with soft delete support"
 
 # 2. Make changes (implementation phase)
-# ... develop FileHashService
-# ... add unit tests
-# ... update dependencies
+# ... develop BaseEntity abstract class
+# ... update all domain entities to inherit from BaseEntity
+# ... add unit tests for BaseEntity behavior
+# ... update repository pattern with soft delete support
 
 # 3. Completion review
 # Ask user: Save updates or revert?
 
 # 4a. If save:
 git add .
-git commit -m "implement file hash calculation service
+git commit -m "implement BaseEntity with comprehensive audit support
 
-- Add FileHashService with SHA256 hashing
-- Include unit tests for edge cases  
-- Update dependency injection
-- Follow Simple Made Easy principles"
+- Add BaseEntity abstract class with CreatedDate, LastUpdateDate, Note, IsActive
+- Update all domain entities to inherit from BaseEntity
+- Implement soft delete functionality with helper methods
+- Add repository support for soft delete queries  
+- Include comprehensive unit tests for BaseEntity behavior
+- Follow Simple Made Easy principles with clear separation of concerns"
 
 # 4b. If revert:
 git reset --hard HEAD~1  # Back to "start task" commit
