@@ -121,7 +121,7 @@ cd ..
 ```
 Step 4: Setup NuGet Packages Per Project (10 minutes)
 ```
-bashcd src
+cd src
 ```
 
 # MediaButler.Core - Pure domain, minimal dependencies
@@ -164,7 +164,7 @@ cd ../..
 ```
 Step 5: Setup Test Project Dependencies (5 minutes)
 ```
-bashcd tests
+cd tests
 ```
 
 # Unit tests - testing Core and Services
@@ -245,8 +245,10 @@ dotnet build --verbosity normal
 ```
 
 # Check dependency tree (requires dotnet-depends tool)
-# dotnet tool install --global dotnet-depends
-# dotnet depends
+```
+dotnet tool install --global dotnet-depends
+dotnet depends
+```
 
 # Verify test projects can discover tests
 ```
