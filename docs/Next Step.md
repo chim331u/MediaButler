@@ -1,7 +1,7 @@
 # 🎩 MediaButler - NEXT STEP list -
 
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-1.0.1-blue.svg)]()
 [![Platform](https://img.shields.io/badge/platform-ARM32%20|%20x64-green.svg)]()
 [![.NET](https://img.shields.io/badge/.NET-8.0-purple.svg)]()
 
@@ -282,3 +282,237 @@ Composable Architecture: Components can be used independently
 Explicit Boundaries: Clear interfaces between layers
 
 The total time allocation of 1 hour allows for any troubleshooting of dependency issues or package version conflicts that may arise during setup.
+
+
+# Sprint 1 - Tasks 1.1.2 & 1.1.3 Implementation Guide
+
+## Task 1.1.2: BaseEntity Implementation (1 hour)
+
+### Step 1: Create BaseEntity Abstract Class (25 minutes)
+
+```bash
+# Navigate to Core project
+cd src/MediaButler.Core
+
+# Create Common directory for shared domain concepts
+mkdir Common
+cd Common
+touch BaseEntity.cs
+```
+
+**File Location**: `src/MediaButler.Core/Common/BaseEntity.cs`
+
+### Step 2: Implement Audit Properties and Methods (20 minutes)
+
+The BaseEntity should include:
+- `DateTime CreatedDate` (set on creation)
+- `DateTime LastUpdateDate` (updated on modifications)
+- `string? Note` (optional context)
+- `bool IsActive` (soft delete flag)
+- `MarkAsModified()` method
+- `SoftDelete()` method
+- `Restore()` method
+
+### Step 3: Add XML Documentation (10 minutes)
+
+Ensure comprehensive XML documentation for:
+- Class purpose and usage
+- Each property with clear descriptions
+- Each method with parameters and behavior
+- Usage examples where helpful
+
+### Step 4: Validation - No Infrastructure Dependencies (5 minutes)
+
+```bash
+# Verify no infrastructure references
+cd src/MediaButler.Core
+dotnet list reference
+# Should show NO references - Core must remain pure domain
+```
+
+## Task 1.1.3: Core Domain Entities (1.5 hours)
+
+### Step 1: Create Enums Directory and FileStatus (15 minutes)
+
+```bash
+# From MediaButler.Core root
+mkdir Enums
+cd Enums
+touch FileStatus.cs
+```
+
+**FileStatus enum** should include:
+- `New` - Just discovered
+- `Processing` - Being analyzed
+- `Classified` - ML classification complete
+- `ReadyToMove` - User confirmed, ready for file operation
+- `Moving` - Currently being moved
+- `Moved` - Successfully organized
+- `Error` - Failed processing
+- `Retry` - Queued for retry
+- `Ignored` - User chose to skip
+
+### Step 2: Create Entities Directory Structure (10 minutes)
+
+```bash
+# From MediaButler.Core root
+mkdir Entities
+cd Entities
+```
+
+### Step 3: Implement TrackedFile Entity (35 minutes)
+
+```bash
+touch TrackedFile.cs
+```
+
+**TrackedFile** requirements:
+- Inherit from BaseEntity
+- Primary key: `Hash` (string) - SHA256 of file content
+- File information: `FileName`, `OriginalPath`, `FileSize`
+- Processing state: `Status` (FileStatus enum)
+- ML results: `SuggestedCategory`, `Confidence`
+- User decisions: `Category`, `TargetPath`
+- Timestamps: `ClassifiedAt`, `MovedAt`
+- Error tracking: `LastError`, `LastErrorAt`, `RetryCount`
+- Business methods: `MarkAsClassified()`, `ConfirmCategory()`, `MarkAsMoved()`, `RecordError()`
+
+### Step 4: Implement ProcessingLog Entity (20 minutes)
+
+```bash
+touch ProcessingLog.cs
+```
+
+**ProcessingLog** requirements:
+- Inherit from BaseEntity
+- Primary key: `Id` (Guid)
+- Relationships: `FileHash` (foreign key to TrackedFile)
+- Log data: `Level`, `Category`, `Message`, `Details`, `Exception`
+- Performance: `DurationMs`
+- Factory methods: `Info()`, `Warning()`, `Error()`
+
+### Step 5: Implement ConfigurationSetting Entity (15 minutes)
+
+```bash
+touch ConfigurationSetting.cs
+```
+
+**ConfigurationSetting** requirements:
+- Inherit from BaseEntity
+- Primary key: `Key` (string)
+- Data: `Value` (JSON string), `Section`, `Description`
+- Metadata: `DataType`, `RequiresRestart`
+- Business method: `UpdateValue()`
+
+### Step 6: Implement UserPreference Entity (10 minutes)
+
+```bash
+touch UserPreference.cs
+```
+
+**UserPreference** requirements:
+- Inherit from BaseEntity
+- Primary key: `Id` (Guid)
+- User context: `UserId` (string, default "default")
+- Data: `Key`, `Value` (JSON), `Category`
+- Business method: `UpdateValue()`
+
+### Step 7: Create Supporting Enums (5 minutes)
+
+```bash
+cd ../Enums
+touch ConfigurationDataType.cs
+touch LogLevel.cs
+```
+
+**ConfigurationDataType**: String, Integer, Boolean, Path, Json  
+**LogLevel**: Trace, Debug, Information, Warning, Error, Critical
+
+### Step 8: Verification and Build Test (10 minutes)
+
+```bash
+# From solution root
+cd ../../..
+dotnet build src/MediaButler.Core
+
+# Should build successfully with no warnings
+# Verify file structure:
+find src/MediaButler.Core -name "*.cs" -type f
+```
+
+## Complete Command Sequence
+
+```bash
+# Navigate to Core project
+cd src/MediaButler.Core
+
+# Create directory structure
+mkdir Common Entities Enums
+
+# BaseEntity implementation
+cd Common
+touch BaseEntity.cs
+
+# Enums
+cd ../Enums  
+touch FileStatus.cs
+touch ConfigurationDataType.cs
+touch LogLevel.cs
+
+# Entities
+cd ../Entities
+touch TrackedFile.cs
+touch ProcessingLog.cs
+touch ConfigurationSetting.cs
+touch UserPreference.cs
+
+# Verify structure and build
+cd ../../..
+tree src/MediaButler.Core
+dotnet build src/MediaButler.Core
+```
+
+## Expected File Structure
+
+```
+src/MediaButler.Core/
+├── Common/
+│   └── BaseEntity.cs
+├── Entities/
+│   ├── TrackedFile.cs
+│   ├── ProcessingLog.cs
+│   ├── ConfigurationSetting.cs
+│   └── UserPreference.cs
+├── Enums/
+│   ├── FileStatus.cs
+│   ├── ConfigurationDataType.cs
+│   └── LogLevel.cs
+└── MediaButler.Core.csproj
+```
+
+## Quality Validation Checklist
+
+After implementation, verify:
+
+1. **No Infrastructure Dependencies**: `dotnet list reference` returns empty
+2. **Compilation Success**: `dotnet build` completes without errors
+3. **XML Documentation**: All public members documented
+4. **Simple Made Easy Compliance**:
+    - Each entity has single responsibility
+    - No complecting of concerns
+    - Clear state transitions in TrackedFile
+    - Separate audit trail in ProcessingLog
+5. **BaseEntity Usage**: All entities inherit from BaseEntity correctly
+
+## Potential Issues and Solutions
+
+**Issue**: Circular dependencies between entities  
+**Solution**: Keep entities as pure data structures with minimal cross-references
+
+**Issue**: Complex business logic in entities  
+**Solution**: Keep entities focused on state management, move complex logic to services layer
+
+**Issue**: Infrastructure concerns creeping in  
+**Solution**: Regularly verify no external dependencies with `dotnet list reference`
+
+This implementation ensures the domain layer remains pure and follows "Simple Made Easy" principles while providing a solid foundation for the rest of the application architecture.
