@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\MediaButler.Services\MediaButler.Services.csproj" />
     <ProjectReference Include="..\MediaButler.ML\MediaButler.ML.csproj" />
+    <ProjectReference Include="..\MediaButler.Data\MediaButler.Data.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -11,6 +12,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.0" />
     <PackageReference Include="Serilog.AspNetCore" Version="8.0.0" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
   </ItemGroup>
