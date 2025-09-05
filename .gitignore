@@ -419,3 +419,4 @@ FodyWeavers.xsd
 *.msp
 /.idea/
 /temp/
+/src/MediaButler.API/.idea/
