@@ -4,8 +4,16 @@ using MediaButler.Data.Repositories;
 using MediaButler.Data.UnitOfWork;
 using MediaButler.Services;
 using MediaButler.Services.Interfaces;
+using MediaButler.API.Middleware;
+using MediaButler.API.Filters;
+using Serilog;
+using Serilog.Events;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Configure Serilog from appsettings.json following "Simple Made Easy" principles
+builder.Host.UseSerilog((context, configuration) => 
+    configuration.ReadFrom.Configuration(context.Configuration));
 
 // Add services to the container
 builder.Services.AddDbContext<MediaButlerDbContext>(options =>
@@ -22,8 +30,23 @@ builder.Services.AddScoped<IFileService, FileService>();
 builder.Services.AddScoped<IConfigurationService, ConfigurationService>();
 builder.Services.AddScoped<IStatsService, StatsService>();
 
-// Add API services
-builder.Services.AddControllers();
+// Add API services with validation
+builder.Services.AddControllers(options =>
+{
+    // Add global model validation filter
+    options.Filters.Add<ModelValidationFilter>();
+    
+    // Configure JSON options for consistent formatting
+    options.RespectBrowserAcceptHeader = true;
+    options.ReturnHttpNotAcceptable = true;
+});
+
+builder.Services.Configure<RouteOptions>(options =>
+{
+    options.LowercaseUrls = true;
+    options.LowercaseQueryStrings = false;
+});
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -42,22 +65,60 @@ builder.Services.AddSwaggerGen(c =>
     }
 });
 
+// Add JSON serialization configuration
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+    options.SerializerOptions.WriteIndented = false;
+});
+
 var app = builder.Build();
 
-// Configure the HTTP request pipeline
+// Configure the HTTP request pipeline with middleware order
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "MediaButler API v1");
+        c.RoutePrefix = "swagger";
+        c.DisplayRequestDuration();
+        c.EnableValidator();
+    });
 }
+
+// Add request/response logging first for complete request tracking
+app.UseRequestResponseLogging();
+
+// Add performance monitoring with ARM32 optimization
+app.UsePerformanceMonitoring();
+
+// Add global exception handling with structured logging
+app.UseGlobalExceptionHandler();
 
 app.UseHttpsRedirection();
 app.UseRouting();
 
+// Add CORS configuration for future UI
+app.UseCors(policy =>
+{
+    policy.AllowAnyOrigin()
+          .AllowAnyMethod()
+          .AllowAnyHeader();
+});
+
 // Map controllers
 app.MapControllers();
 
-// Simple root endpoint
-app.MapGet("/", () => "MediaButler API - Ready! Visit /swagger for API documentation.");
+// Enhanced root endpoint with API information
+app.MapGet("/", () => new
+{
+    Service = "MediaButler API",
+    Version = "1.0.0",
+    Status = "Ready",
+    Documentation = "/swagger",
+    HealthCheck = "/api/health",
+    Timestamp = DateTime.UtcNow
+});
 
 app.Run();

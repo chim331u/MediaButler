@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using MediaButler.Services.Interfaces;
 using MediaButler.API.Models.Response;
 using MediaButler.Core.Enums;
+using System.ComponentModel.DataAnnotations;
 
 namespace MediaButler.API.Controllers;
 
@@ -316,11 +317,13 @@ public class UpdateConfigurationRequest
     /// <summary>
     /// New configuration value.
     /// </summary>
+    [Required(ErrorMessage = "Configuration value is required")]
     public required object Value { get; set; }
 
     /// <summary>
     /// Optional description of the setting.
     /// </summary>
+    [StringLength(500, ErrorMessage = "Description must not exceed 500 characters")]
     public string? Description { get; set; }
 
     /// <summary>
@@ -337,16 +340,21 @@ public class CreateConfigurationRequest
     /// <summary>
     /// Configuration key (e.g., "Paths.WatchFolder").
     /// </summary>
+    [Required(ErrorMessage = "Configuration key is required")]
+    [StringLength(100, MinimumLength = 3, ErrorMessage = "Configuration key must be between 3 and 100 characters")]
+    [RegularExpression(@"^[A-Za-z][A-Za-z0-9]*(\.[A-Za-z][A-Za-z0-9]*)*$", ErrorMessage = "Configuration key must be in format 'Section.Key' with alphanumeric characters")]
     public required string Key { get; set; }
 
     /// <summary>
     /// Configuration value.
     /// </summary>
+    [Required(ErrorMessage = "Configuration value is required")]
     public required object Value { get; set; }
 
     /// <summary>
     /// Optional description of the setting.
     /// </summary>
+    [StringLength(500, ErrorMessage = "Description must not exceed 500 characters")]
     public string? Description { get; set; }
 
     /// <summary>

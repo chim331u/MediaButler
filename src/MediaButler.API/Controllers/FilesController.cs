@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using MediaButler.Services.Interfaces;
 using MediaButler.API.Models.Response;
 using MediaButler.Core.Enums;
+using System.ComponentModel.DataAnnotations;
 
 namespace MediaButler.API.Controllers;
 
@@ -292,6 +293,8 @@ public class AddFileRequest
     /// <summary>
     /// Full path to the file to track.
     /// </summary>
+    [Required(ErrorMessage = "File path is required")]
+    [StringLength(500, ErrorMessage = "File path must not exceed 500 characters")]
     public required string FilePath { get; set; }
 }
 
@@ -303,6 +306,9 @@ public class ConfirmCategoryRequest
     /// <summary>
     /// Confirmed category for the file.
     /// </summary>
+    [Required(ErrorMessage = "Category is required")]
+    [StringLength(100, MinimumLength = 1, ErrorMessage = "Category must be between 1 and 100 characters")]
+    [RegularExpression(@"^[A-Z0-9\s\-_\.]+$", ErrorMessage = "Category can only contain uppercase letters, numbers, spaces, hyphens, underscores, and dots")]
     public required string Category { get; set; }
 }
 
@@ -314,6 +320,8 @@ public class MarkMovedRequest
     /// <summary>
     /// Target path where the file was moved.
     /// </summary>
+    [Required(ErrorMessage = "Target path is required")]
+    [StringLength(500, ErrorMessage = "Target path must not exceed 500 characters")]
     public required string TargetPath { get; set; }
 }
 
@@ -325,5 +333,6 @@ public class DeleteFileRequest
     /// <summary>
     /// Optional reason for deleting the file.
     /// </summary>
+    [StringLength(200, ErrorMessage = "Reason must not exceed 200 characters")]
     public string? Reason { get; set; }
 }

@@ -26,7 +26,7 @@ public class TrackedFileRepository : Repository<TrackedFile>, ITrackedFileReposi
     /// Initializes a new instance of the TrackedFileRepository.
     /// </summary>
     /// <param name="context">The database context.</param>
-    public TrackedFileRepository(DbContext context) : base(context)
+    public TrackedFileRepository(MediaButlerDbContext context) : base(context)
     {
     }
 
