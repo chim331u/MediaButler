@@ -23,8 +23,24 @@ builder.Services.AddScoped<IConfigurationService, ConfigurationService>();
 builder.Services.AddScoped<IStatsService, StatsService>();
 
 // Add API services
+builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new() { 
+        Title = "MediaButler API", 
+        Version = "v1",
+        Description = "Intelligent media file organization system with ML-powered classification"
+    });
+    
+    // Include XML comments for API documentation
+    var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+    if (File.Exists(xmlPath))
+    {
+        c.IncludeXmlComments(xmlPath);
+    }
+});
 
 var app = builder.Build();
 
@@ -36,19 +52,12 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseRouting();
 
-app.MapGet("/", () => "MediaButler API - Ready!");
+// Map controllers
+app.MapControllers();
 
-// Test endpoints for service validation
-app.MapGet("/api/health", (IStatsService statsService) => 
-{
-    return Results.Ok(new { Status = "Healthy", Timestamp = DateTime.UtcNow });
-});
-
-app.MapGet("/api/stats", async (IStatsService statsService) => 
-{
-    var result = await statsService.GetProcessingStatsAsync();
-    return result.IsSuccess ? Results.Ok(result.Value) : Results.Problem(result.Error);
-});
+// Simple root endpoint
+app.MapGet("/", () => "MediaButler API - Ready! Visit /swagger for API documentation.");
 
 app.Run();
