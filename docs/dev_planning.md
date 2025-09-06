@@ -373,17 +373,22 @@ dotnet test  # All projects must show "Passed: X, Failed: 0"
 **Focus**: End-to-end API testing and validation
 **Prerequisite**: ✅ ALL Sprint 1.5 tests passing (verified above)
 
-**Task 1.6.1: API Test Infrastructure (1 hour)**
-- WebApplicationFactory configuration
-- In-memory database for testing
-- HTTP client setup and authentication
-- Test environment configuration
+**Task 1.6.1: API Test Infrastructure (1 hour)** ✅ COMPLETED
+- ✅ Enhanced WebApplicationFactory with in-memory SQLite database
+- ✅ Comprehensive ApiTestBase with HTTP client utilities and JSON handling
+- ✅ Test data seeding and cleanup infrastructure for isolation
+- ✅ Health endpoint tests (5 tests) validating API availability and metrics
+- ✅ ARM32 performance considerations and environment configuration
 
-**Task 1.6.2: Endpoint Testing (2 hours)**
-- Health endpoint tests (3 tests)
-- Files CRUD endpoint tests (8 tests)
-- Configuration endpoint tests (4 tests)
-- Stats and monitoring tests (3 tests)
+**Task 1.6.2: Endpoint Testing (2 hours)** ✅ **COMPLETED**
+- ✅ Health endpoint tests (5 tests) - API availability, detailed metrics, readiness/liveness
+- ✅ Files CRUD endpoint tests (15 tests) - Complete workflow, pagination, FileStatus enum handling
+- ✅ Configuration endpoint tests (7 tests) - Settings CRUD, validation, JSON camelCase responses
+- ✅ Stats monitoring tests (13 tests) - Performance metrics, ARM32 constraints, parameter validation
+- **Total: 40 passing acceptance tests with 100% success rate**
+- **Comprehensive API validation**: All major controller endpoints tested
+- **Real integration testing**: In-memory database with proper test isolation
+- **Error handling validation**: Bad request scenarios and response format consistency
 
 **Task 1.6.3: Workflow Testing (30 minutes)**
 - End-to-end file processing workflow
