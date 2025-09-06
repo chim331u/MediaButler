@@ -21,20 +21,16 @@ namespace MediaButler.Tests.Integration.Services;
 /// Tests the complete data flow from service layer through repositories to database.
 /// Follows "Simple Made Easy" principles - testing actual end-to-end behavior.
 /// </summary>
-public class FileServiceIntegrationTests : IClassFixture<DatabaseFixture>
+public class FileServiceIntegrationTests : IntegrationTestBase
 {
-    private readonly DatabaseFixture _fixture;
-
-    public FileServiceIntegrationTests(DatabaseFixture fixture)
+    public FileServiceIntegrationTests(DatabaseFixture fixture) : base(fixture)
     {
-        _fixture = fixture;
     }
 
     [Fact]
     public async Task GetFileByHashAsync_WithRealDatabase_ShouldReturnPersistedFile()
     {
         // Arrange
-        await _fixture.CleanupAsync();
         
         var testFile = new TrackedFile
         {
@@ -46,12 +42,12 @@ public class FileServiceIntegrationTests : IClassFixture<DatabaseFixture>
         };
 
         // Persist file directly to database
-        _fixture.Context.TrackedFiles.Add(testFile);
-        await _fixture.Context.SaveChangesAsync();
+        Context.TrackedFiles.Add(testFile);
+        await Context.SaveChangesAsync();
 
         // Create service with real dependencies
-        var repository = new TrackedFileRepository(_fixture.Context);
-        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(_fixture.Context);
+        var repository = new TrackedFileRepository(Context);
+        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
         var logger = new Mock<ILogger<FileService>>().Object;
         var fileService = new FileService(repository, unitOfWork, logger);
 
@@ -71,7 +67,6 @@ public class FileServiceIntegrationTests : IClassFixture<DatabaseFixture>
     public async Task UpdateClassificationAsync_WithRealDatabase_ShouldPersistChanges()
     {
         // Arrange
-        await _fixture.CleanupAsync();
         
         var testFile = new TrackedFile
         {
@@ -82,11 +77,11 @@ public class FileServiceIntegrationTests : IClassFixture<DatabaseFixture>
             Status = FileStatus.New
         };
 
-        _fixture.Context.TrackedFiles.Add(testFile);
-        await _fixture.Context.SaveChangesAsync();
+        Context.TrackedFiles.Add(testFile);
+        await Context.SaveChangesAsync();
 
-        var repository = new TrackedFileRepository(_fixture.Context);
-        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(_fixture.Context);
+        var repository = new TrackedFileRepository(Context);
+        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
         var logger = new Mock<ILogger<FileService>>().Object;
         var fileService = new FileService(repository, unitOfWork, logger);
 
@@ -105,7 +100,7 @@ public class FileServiceIntegrationTests : IClassFixture<DatabaseFixture>
         result.Value.ClassifiedAt.Should().NotBeNull();
 
         // Verify persistence by querying database directly
-        var persistedFile = await _fixture.Context.TrackedFiles.FindAsync(testFile.Hash);
+        var persistedFile = await Context.TrackedFiles.FindAsync(testFile.Hash);
         persistedFile.Should().NotBeNull();
         persistedFile!.SuggestedCategory.Should().Be(suggestedCategory);
         persistedFile.Confidence.Should().Be(confidence);
@@ -116,7 +111,6 @@ public class FileServiceIntegrationTests : IClassFixture<DatabaseFixture>
     public async Task CompleteFileWorkflow_WithRealDatabase_ShouldTransitionCorrectly()
     {
         // Arrange
-        await _fixture.CleanupAsync();
         
         var testFile = new TrackedFile
         {
@@ -127,11 +121,11 @@ public class FileServiceIntegrationTests : IClassFixture<DatabaseFixture>
             Status = FileStatus.New
         };
 
-        _fixture.Context.TrackedFiles.Add(testFile);
-        await _fixture.Context.SaveChangesAsync();
+        Context.TrackedFiles.Add(testFile);
+        await Context.SaveChangesAsync();
 
-        var repository = new TrackedFileRepository(_fixture.Context);
-        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(_fixture.Context);
+        var repository = new TrackedFileRepository(Context);
+        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
         var logger = new Mock<ILogger<FileService>>().Object;
         var fileService = new FileService(repository, unitOfWork, logger);
 
@@ -168,7 +162,7 @@ public class FileServiceIntegrationTests : IClassFixture<DatabaseFixture>
         moveResult.Value.MovedAt.Should().NotBeNull();
 
         // Verify final state in database
-        var finalFile = await _fixture.Context.TrackedFiles.FindAsync(testFile.Hash);
+        var finalFile = await Context.TrackedFiles.FindAsync(testFile.Hash);
         finalFile.Should().NotBeNull();
         finalFile!.Status.Should().Be(FileStatus.Moved);
         finalFile.SuggestedCategory.Should().Be("WORKFLOW SERIES");
@@ -182,7 +176,6 @@ public class FileServiceIntegrationTests : IClassFixture<DatabaseFixture>
     public async Task GetFilesByStatusAsync_WithRealDatabase_ShouldReturnCorrectFiles()
     {
         // Arrange
-        await _fixture.CleanupAsync();
         
         // Create files in different states
         var newFiles = Enumerable.Range(1, 3)
@@ -208,12 +201,12 @@ public class FileServiceIntegrationTests : IClassFixture<DatabaseFixture>
                 ClassifiedAt = DateTime.UtcNow
             }).ToList();
 
-        _fixture.Context.TrackedFiles.AddRange(newFiles);
-        _fixture.Context.TrackedFiles.AddRange(classifiedFiles);
-        await _fixture.Context.SaveChangesAsync();
+        Context.TrackedFiles.AddRange(newFiles);
+        Context.TrackedFiles.AddRange(classifiedFiles);
+        await Context.SaveChangesAsync();
 
-        var repository = new TrackedFileRepository(_fixture.Context);
-        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(_fixture.Context);
+        var repository = new TrackedFileRepository(Context);
+        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
         var logger = new Mock<ILogger<FileService>>().Object;
         var fileService = new FileService(repository, unitOfWork, logger);
 
@@ -240,7 +233,6 @@ public class FileServiceIntegrationTests : IClassFixture<DatabaseFixture>
     public async Task RecordErrorAsync_WithRealDatabase_ShouldPersistErrorInformation()
     {
         // Arrange
-        await _fixture.CleanupAsync();
         
         var testFile = new TrackedFile
         {
@@ -251,11 +243,11 @@ public class FileServiceIntegrationTests : IClassFixture<DatabaseFixture>
             Status = FileStatus.ReadyToMove
         };
 
-        _fixture.Context.TrackedFiles.Add(testFile);
-        await _fixture.Context.SaveChangesAsync();
+        Context.TrackedFiles.Add(testFile);
+        await Context.SaveChangesAsync();
 
-        var repository = new TrackedFileRepository(_fixture.Context);
-        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(_fixture.Context);
+        var repository = new TrackedFileRepository(Context);
+        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
         var logger = new Mock<ILogger<FileService>>().Object;
         var fileService = new FileService(repository, unitOfWork, logger);
 
@@ -274,7 +266,7 @@ public class FileServiceIntegrationTests : IClassFixture<DatabaseFixture>
         result.Value.Status.Should().Be(FileStatus.Retry);
 
         // Verify persistence in database
-        var persistedFile = await _fixture.Context.TrackedFiles.FindAsync(testFile.Hash);
+        var persistedFile = await Context.TrackedFiles.FindAsync(testFile.Hash);
         persistedFile.Should().NotBeNull();
         persistedFile!.LastError.Should().Be(errorMessage);
         persistedFile.LastErrorAt.Should().NotBeNull();
@@ -286,7 +278,6 @@ public class FileServiceIntegrationTests : IClassFixture<DatabaseFixture>
     public async Task DeleteFileAsync_WithRealDatabase_ShouldSoftDelete()
     {
         // Arrange
-        await _fixture.CleanupAsync();
         
         var testFile = new TrackedFile
         {
@@ -297,11 +288,11 @@ public class FileServiceIntegrationTests : IClassFixture<DatabaseFixture>
             Status = FileStatus.New
         };
 
-        _fixture.Context.TrackedFiles.Add(testFile);
-        await _fixture.Context.SaveChangesAsync();
+        Context.TrackedFiles.Add(testFile);
+        await Context.SaveChangesAsync();
 
-        var repository = new TrackedFileRepository(_fixture.Context);
-        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(_fixture.Context);
+        var repository = new TrackedFileRepository(Context);
+        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
         var logger = new Mock<ILogger<FileService>>().Object;
         var fileService = new FileService(repository, unitOfWork, logger);
 
@@ -319,7 +310,7 @@ public class FileServiceIntegrationTests : IClassFixture<DatabaseFixture>
         getFileResult.Error.Should().Contain("not found");
 
         // Verify file still exists in database but is inactive
-        var persistedFile = await _fixture.Context.TrackedFiles
+        var persistedFile = await Context.TrackedFiles
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(f => f.Hash == testFile.Hash);
 
@@ -332,7 +323,6 @@ public class FileServiceIntegrationTests : IClassFixture<DatabaseFixture>
     public async Task ConcurrentOperations_WithRealDatabase_ShouldMaintainDataIntegrity()
     {
         // Arrange
-        await _fixture.CleanupAsync();
         
         var baseHash = "concurrent12345678901234567890123456789012345678901234567";
         var files = Enumerable.Range(1, 5)
@@ -345,11 +335,11 @@ public class FileServiceIntegrationTests : IClassFixture<DatabaseFixture>
                 Status = FileStatus.New
             }).ToList();
 
-        _fixture.Context.TrackedFiles.AddRange(files);
-        await _fixture.Context.SaveChangesAsync();
+        Context.TrackedFiles.AddRange(files);
+        await Context.SaveChangesAsync();
 
-        var repository = new TrackedFileRepository(_fixture.Context);
-        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(_fixture.Context);
+        var repository = new TrackedFileRepository(Context);
+        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
         var logger = new Mock<ILogger<FileService>>().Object;
         var fileService = new FileService(repository, unitOfWork, logger);
 
@@ -367,7 +357,7 @@ public class FileServiceIntegrationTests : IClassFixture<DatabaseFixture>
         results.Should().AllSatisfy(result => result.IsSuccess.Should().BeTrue());
 
         // Verify all files were updated correctly in database
-        var updatedFiles = await _fixture.Context.TrackedFiles
+        var updatedFiles = await Context.TrackedFiles
             .Where(f => f.Hash.StartsWith(baseHash))
             .OrderBy(f => f.Hash)
             .ToListAsync();
@@ -386,7 +376,6 @@ public class FileServiceIntegrationTests : IClassFixture<DatabaseFixture>
     public async Task TransactionRollback_OnServiceError_ShouldNotPersistPartialChanges()
     {
         // Arrange
-        await _fixture.CleanupAsync();
         
         var validFile = new TrackedFile
         {
@@ -397,11 +386,11 @@ public class FileServiceIntegrationTests : IClassFixture<DatabaseFixture>
             Status = FileStatus.New
         };
 
-        _fixture.Context.TrackedFiles.Add(validFile);
-        await _fixture.Context.SaveChangesAsync();
+        Context.TrackedFiles.Add(validFile);
+        await Context.SaveChangesAsync();
 
-        var repository = new TrackedFileRepository(_fixture.Context);
-        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(_fixture.Context);
+        var repository = new TrackedFileRepository(Context);
+        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
         var logger = new Mock<ILogger<FileService>>().Object;
         var fileService = new FileService(repository, unitOfWork, logger);
 
@@ -416,7 +405,7 @@ public class FileServiceIntegrationTests : IClassFixture<DatabaseFixture>
         invalidResult.Error.Should().Contain("Confidence must be between 0.0 and 1.0");
 
         // Verify no changes were persisted to database
-        var unchangedFile = await _fixture.Context.TrackedFiles.FindAsync(validFile.Hash);
+        var unchangedFile = await Context.TrackedFiles.FindAsync(validFile.Hash);
         unchangedFile.Should().NotBeNull();
         unchangedFile!.Status.Should().Be(FileStatus.New); // Should remain unchanged
         unchangedFile.SuggestedCategory.Should().BeNull();

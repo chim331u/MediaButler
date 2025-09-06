@@ -16,20 +16,16 @@ namespace MediaButler.Tests.Integration.Data;
 /// Tests database operations with real database instance.
 /// Follows "Simple Made Easy" principles - testing actual database behavior.
 /// </summary>
-public class MediaButlerDbContextTests : IClassFixture<DatabaseFixture>
+public class MediaButlerDbContextTests : IntegrationTestBase
 {
-    private readonly DatabaseFixture _fixture;
-
-    public MediaButlerDbContextTests(DatabaseFixture fixture)
+    public MediaButlerDbContextTests(DatabaseFixture fixture) : base(fixture)
     {
-        _fixture = fixture;
     }
 
     [Fact]
     public async Task SaveChangesAsync_WithNewTrackedFile_ShouldPersistWithBaseEntityProperties()
     {
         // Arrange
-        await _fixture.CleanupAsync();
         
         var trackedFile = new TrackedFile
         {
@@ -43,8 +39,8 @@ public class MediaButlerDbContextTests : IClassFixture<DatabaseFixture>
         var beforeSave = DateTime.UtcNow.AddSeconds(-1);
 
         // Act
-        _fixture.Context.TrackedFiles.Add(trackedFile);
-        var result = await _fixture.Context.SaveChangesAsync();
+        Context.TrackedFiles.Add(trackedFile);
+        var result = await Context.SaveChangesAsync();
 
         // Assert
         result.Should().Be(1); // One entity affected
@@ -55,7 +51,7 @@ public class MediaButlerDbContextTests : IClassFixture<DatabaseFixture>
         trackedFile.IsActive.Should().BeTrue();
         
         // Verify entity was persisted
-        var persistedFile = await _fixture.Context.TrackedFiles
+        var persistedFile = await Context.TrackedFiles
             .FirstOrDefaultAsync(f => f.Hash == trackedFile.Hash);
         
         persistedFile.Should().NotBeNull();
@@ -67,7 +63,6 @@ public class MediaButlerDbContextTests : IClassFixture<DatabaseFixture>
     public async Task SaveChangesAsync_WithConfigurationSetting_ShouldPersistCorrectly()
     {
         // Arrange
-        await _fixture.CleanupAsync();
         
         var configSetting = new ConfigurationSetting
         {
@@ -80,11 +75,11 @@ public class MediaButlerDbContextTests : IClassFixture<DatabaseFixture>
         };
 
         // Act
-        _fixture.Context.ConfigurationSettings.Add(configSetting);
-        await _fixture.Context.SaveChangesAsync();
+        Context.ConfigurationSettings.Add(configSetting);
+        await Context.SaveChangesAsync();
 
         // Assert - Verify persistence
-        var persistedSetting = await _fixture.Context.ConfigurationSettings
+        var persistedSetting = await Context.ConfigurationSettings
             .FirstOrDefaultAsync(s => s.Key == configSetting.Key);
         
         persistedSetting.Should().NotBeNull();
@@ -98,7 +93,6 @@ public class MediaButlerDbContextTests : IClassFixture<DatabaseFixture>
     public async Task SoftDeleteFilter_ShouldExcludeInactiveEntities()
     {
         // Arrange
-        await _fixture.CleanupAsync();
         
         var activeFile = new TrackedFile
         {
@@ -116,23 +110,23 @@ public class MediaButlerDbContextTests : IClassFixture<DatabaseFixture>
             FileSize = 1000000
         };
 
-        _fixture.Context.TrackedFiles.AddRange(activeFile, inactiveFile);
-        await _fixture.Context.SaveChangesAsync();
+        Context.TrackedFiles.AddRange(activeFile, inactiveFile);
+        await Context.SaveChangesAsync();
 
         // Soft delete one file
         inactiveFile.SoftDelete();
-        _fixture.Context.TrackedFiles.Update(inactiveFile);
-        await _fixture.Context.SaveChangesAsync();
+        Context.TrackedFiles.Update(inactiveFile);
+        await Context.SaveChangesAsync();
 
         // Act - Query with global filters
-        var activeFiles = await _fixture.Context.TrackedFiles.ToListAsync();
+        var activeFiles = await Context.TrackedFiles.ToListAsync();
 
         // Assert - Only active files should be returned
         activeFiles.Should().HaveCount(1);
         activeFiles[0].Hash.Should().Be(activeFile.Hash);
         
         // Verify soft deleted file still exists in database but is excluded
-        var allFiles = await _fixture.Context.TrackedFiles
+        var allFiles = await Context.TrackedFiles
             .IgnoreQueryFilters() // Bypass soft delete filter
             .ToListAsync();
         
@@ -144,7 +138,6 @@ public class MediaButlerDbContextTests : IClassFixture<DatabaseFixture>
     public async Task EntityConfiguration_TrackedFile_ShouldEnforceConstraints()
     {
         // Arrange
-        await _fixture.CleanupAsync();
         
         var trackedFile = new TrackedFile
         {
@@ -155,11 +148,11 @@ public class MediaButlerDbContextTests : IClassFixture<DatabaseFixture>
         };
 
         // Act & Assert - Should save successfully with valid data
-        _fixture.Context.TrackedFiles.Add(trackedFile);
-        await _fixture.Context.SaveChangesAsync();
+        Context.TrackedFiles.Add(trackedFile);
+        await Context.SaveChangesAsync();
 
         // Verify hash is used as primary key
-        var retrievedFile = await _fixture.Context.TrackedFiles.FindAsync(trackedFile.Hash);
+        var retrievedFile = await Context.TrackedFiles.FindAsync(trackedFile.Hash);
         retrievedFile.Should().NotBeNull();
         retrievedFile!.Hash.Should().Be(trackedFile.Hash);
     }
@@ -168,7 +161,6 @@ public class MediaButlerDbContextTests : IClassFixture<DatabaseFixture>
     public async Task Update_WithModifiedEntity_ShouldUpdateLastUpdateDate()
     {
         // Arrange
-        await _fixture.CleanupAsync();
         
         var trackedFile = new TrackedFile
         {
@@ -178,8 +170,8 @@ public class MediaButlerDbContextTests : IClassFixture<DatabaseFixture>
             FileSize = 2000000
         };
 
-        _fixture.Context.TrackedFiles.Add(trackedFile);
-        await _fixture.Context.SaveChangesAsync();
+        Context.TrackedFiles.Add(trackedFile);
+        await Context.SaveChangesAsync();
 
         var originalUpdateDate = trackedFile.LastUpdateDate;
         
@@ -188,8 +180,8 @@ public class MediaButlerDbContextTests : IClassFixture<DatabaseFixture>
 
         // Act - Modify entity
         trackedFile.MarkAsClassified("TEST SERIES", 0.85m);
-        _fixture.Context.TrackedFiles.Update(trackedFile);
-        await _fixture.Context.SaveChangesAsync();
+        Context.TrackedFiles.Update(trackedFile);
+        await Context.SaveChangesAsync();
 
         // Assert
         trackedFile.LastUpdateDate.Should().BeAfter(originalUpdateDate);
@@ -203,7 +195,6 @@ public class MediaButlerDbContextTests : IClassFixture<DatabaseFixture>
     public async Task ConcurrentAccess_ShouldHandleMultipleOperations()
     {
         // Arrange
-        await _fixture.CleanupAsync();
         
         var baseHash = "concurrent123456789012345678901234567890123456789012345678";
         var files = Enumerable.Range(1, 5)
@@ -217,13 +208,13 @@ public class MediaButlerDbContextTests : IClassFixture<DatabaseFixture>
             .ToList();
 
         // Act - Add multiple files concurrently
-        _fixture.Context.TrackedFiles.AddRange(files);
-        var result = await _fixture.Context.SaveChangesAsync();
+        Context.TrackedFiles.AddRange(files);
+        var result = await Context.SaveChangesAsync();
 
         // Assert
         result.Should().Be(5); // All files should be saved
         
-        var savedFiles = await _fixture.Context.TrackedFiles
+        var savedFiles = await Context.TrackedFiles
             .Where(f => f.Hash.StartsWith(baseHash))
             .OrderBy(f => f.Hash)
             .ToListAsync();
@@ -243,7 +234,6 @@ public class MediaButlerDbContextTests : IClassFixture<DatabaseFixture>
     public async Task Transaction_RollbackOnError_ShouldNotPersistAnyChanges()
     {
         // Arrange
-        await _fixture.CleanupAsync();
         
         var validFile = new TrackedFile
         {
@@ -253,13 +243,13 @@ public class MediaButlerDbContextTests : IClassFixture<DatabaseFixture>
             FileSize = 1000000
         };
 
-        using var transaction = await _fixture.Context.Database.BeginTransactionAsync();
+        using var transaction = await Context.Database.BeginTransactionAsync();
 
         try
         {
             // Act - Add valid file
-            _fixture.Context.TrackedFiles.Add(validFile);
-            await _fixture.Context.SaveChangesAsync();
+            Context.TrackedFiles.Add(validFile);
+            await Context.SaveChangesAsync();
 
             // Simulate error by trying to add duplicate hash
             var duplicateFile = new TrackedFile
@@ -270,10 +260,10 @@ public class MediaButlerDbContextTests : IClassFixture<DatabaseFixture>
                 FileSize = 2000000
             };
 
-            _fixture.Context.TrackedFiles.Add(duplicateFile);
+            Context.TrackedFiles.Add(duplicateFile);
             
             // This should throw due to primary key constraint
-            await _fixture.Context.SaveChangesAsync();
+            await Context.SaveChangesAsync();
             
             await transaction.CommitAsync();
             
@@ -287,7 +277,7 @@ public class MediaButlerDbContextTests : IClassFixture<DatabaseFixture>
         }
 
         // Assert - No files should be persisted after rollback
-        var filesAfterRollback = await _fixture.Context.TrackedFiles.CountAsync();
+        var filesAfterRollback = await Context.TrackedFiles.CountAsync();
         filesAfterRollback.Should().Be(0);
     }
 
@@ -295,7 +285,6 @@ public class MediaButlerDbContextTests : IClassFixture<DatabaseFixture>
     public async Task QueryFilters_WithComplexQueries_ShouldApplyCorrectly()
     {
         // Arrange
-        await _fixture.CleanupAsync();
         
         var testFiles = TrackedFileObjectMother.MixedStateFiles().ToList();
         
@@ -305,17 +294,17 @@ public class MediaButlerDbContextTests : IClassFixture<DatabaseFixture>
             testFiles[i].Hash = $"query{i:D2}3456789012345678901234567890123456789012345678901234{i:D3}";
         }
 
-        _fixture.Context.TrackedFiles.AddRange(testFiles);
-        await _fixture.Context.SaveChangesAsync();
+        Context.TrackedFiles.AddRange(testFiles);
+        await Context.SaveChangesAsync();
 
         // Soft delete one file
         var fileToDelete = testFiles.First();
         fileToDelete.SoftDelete("Test deletion");
-        _fixture.Context.TrackedFiles.Update(fileToDelete);
-        await _fixture.Context.SaveChangesAsync();
+        Context.TrackedFiles.Update(fileToDelete);
+        await Context.SaveChangesAsync();
 
         // Act - Complex query with filters
-        var activeClassifiedFiles = await _fixture.Context.TrackedFiles
+        var activeClassifiedFiles = await Context.TrackedFiles
             .Where(f => f.Status == FileStatus.Classified)
             .OrderBy(f => f.CreatedDate)
             .ToListAsync();
@@ -330,7 +319,7 @@ public class MediaButlerDbContextTests : IClassFixture<DatabaseFixture>
         });
 
         // Verify we can still access soft-deleted files when needed
-        var deletedFile = await _fixture.Context.TrackedFiles
+        var deletedFile = await Context.TrackedFiles
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(f => f.Hash == fileToDelete.Hash);
 
@@ -343,7 +332,6 @@ public class MediaButlerDbContextTests : IClassFixture<DatabaseFixture>
     public async Task DatabaseSchema_ShouldSupportAllRequiredOperations()
     {
         // Arrange
-        await _fixture.CleanupAsync();
 
         // Act & Assert - Test that all entity types can be created
         var trackedFile = new TrackedFile
@@ -369,17 +357,17 @@ public class MediaButlerDbContextTests : IClassFixture<DatabaseFixture>
             "Schema validation test");
 
         // Add all entities
-        _fixture.Context.TrackedFiles.Add(trackedFile);
-        _fixture.Context.ConfigurationSettings.Add(configSetting);
-        _fixture.Context.ProcessingLogs.Add(processingLog);
+        Context.TrackedFiles.Add(trackedFile);
+        Context.ConfigurationSettings.Add(configSetting);
+        Context.ProcessingLogs.Add(processingLog);
 
-        var result = await _fixture.Context.SaveChangesAsync();
+        var result = await Context.SaveChangesAsync();
 
         // Assert - All entities should be persisted
         result.Should().Be(3);
 
         // Verify relationships and constraints work
-        var savedLog = await _fixture.Context.ProcessingLogs
+        var savedLog = await Context.ProcessingLogs
             .FirstOrDefaultAsync(pl => pl.FileHash == trackedFile.Hash);
 
         savedLog.Should().NotBeNull();

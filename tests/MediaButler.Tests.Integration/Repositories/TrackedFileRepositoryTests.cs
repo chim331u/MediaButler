@@ -17,20 +17,16 @@ namespace MediaButler.Tests.Integration.Repositories;
 /// Tests repository operations with real database interactions.
 /// Follows "Simple Made Easy" principles - testing actual data access behavior.
 /// </summary>
-public class TrackedFileRepositoryTests : IClassFixture<DatabaseFixture>
+public class TrackedFileRepositoryTests : IntegrationTestBase
 {
-    private readonly DatabaseFixture _fixture;
-
-    public TrackedFileRepositoryTests(DatabaseFixture fixture)
+    public TrackedFileRepositoryTests(DatabaseFixture fixture) : base(fixture)
     {
-        _fixture = fixture;
     }
 
     [Fact]
     public async Task GetByHashAsync_WithExistingFile_ShouldReturnFile()
     {
         // Arrange
-        await _fixture.CleanupAsync();
         
         var testFile = new TrackedFile
         {
@@ -41,10 +37,10 @@ public class TrackedFileRepositoryTests : IClassFixture<DatabaseFixture>
             Status = FileStatus.New
         };
 
-        _fixture.Context.TrackedFiles.Add(testFile);
-        await _fixture.Context.SaveChangesAsync();
+        Context.TrackedFiles.Add(testFile);
+        await Context.SaveChangesAsync();
 
-        var repository = new TrackedFileRepository(_fixture.Context);
+        var repository = new TrackedFileRepository(Context);
 
         // Act
         var result = await repository.GetByHashAsync(testFile.Hash);
@@ -60,8 +56,7 @@ public class TrackedFileRepositoryTests : IClassFixture<DatabaseFixture>
     public async Task GetByHashAsync_WithNonExistentHash_ShouldReturnNull()
     {
         // Arrange
-        await _fixture.CleanupAsync();
-        var repository = new TrackedFileRepository(_fixture.Context);
+        var repository = new TrackedFileRepository(Context);
         var nonExistentHash = "nonexistent1234567890123456789012345678901234567890123456789";
 
         // Act
@@ -75,7 +70,6 @@ public class TrackedFileRepositoryTests : IClassFixture<DatabaseFixture>
     public async Task GetByHashAsync_WithSoftDeletedFile_ShouldReturnNull()
     {
         // Arrange
-        await _fixture.CleanupAsync();
         
         var testFile = new TrackedFile
         {
@@ -85,15 +79,15 @@ public class TrackedFileRepositoryTests : IClassFixture<DatabaseFixture>
             FileSize = 1000000
         };
 
-        _fixture.Context.TrackedFiles.Add(testFile);
-        await _fixture.Context.SaveChangesAsync();
+        Context.TrackedFiles.Add(testFile);
+        await Context.SaveChangesAsync();
 
         // Soft delete the file
         testFile.SoftDelete("Test deletion");
-        _fixture.Context.TrackedFiles.Update(testFile);
-        await _fixture.Context.SaveChangesAsync();
+        Context.TrackedFiles.Update(testFile);
+        await Context.SaveChangesAsync();
 
-        var repository = new TrackedFileRepository(_fixture.Context);
+        var repository = new TrackedFileRepository(Context);
 
         // Act
         var result = await repository.GetByHashAsync(testFile.Hash);
@@ -106,7 +100,6 @@ public class TrackedFileRepositoryTests : IClassFixture<DatabaseFixture>
     public async Task GetByStatusAsync_ShouldReturnFilesWithSpecificStatus()
     {
         // Arrange
-        await _fixture.CleanupAsync();
         
         var newFiles = Enumerable.Range(1, 3)
             .Select(i => new TrackedFile
@@ -130,11 +123,11 @@ public class TrackedFileRepositoryTests : IClassFixture<DatabaseFixture>
                 Confidence = 0.8m
             }).ToList();
 
-        _fixture.Context.TrackedFiles.AddRange(newFiles);
-        _fixture.Context.TrackedFiles.AddRange(classifiedFiles);
-        await _fixture.Context.SaveChangesAsync();
+        Context.TrackedFiles.AddRange(newFiles);
+        Context.TrackedFiles.AddRange(classifiedFiles);
+        await Context.SaveChangesAsync();
 
-        var repository = new TrackedFileRepository(_fixture.Context);
+        var repository = new TrackedFileRepository(Context);
 
         // Act
         var newFilesResult = await repository.GetByStatusAsync(FileStatus.New);
@@ -157,7 +150,6 @@ public class TrackedFileRepositoryTests : IClassFixture<DatabaseFixture>
     public async Task GetFilesReadyForClassificationAsync_ShouldReturnNewFilesInOrder()
     {
         // Arrange
-        await _fixture.CleanupAsync();
         
         var baseTime = DateTime.UtcNow.AddHours(-1);
         var testFiles = Enumerable.Range(1, 5)
@@ -176,10 +168,10 @@ public class TrackedFileRepositoryTests : IClassFixture<DatabaseFixture>
             testFiles[i].CreatedDate = baseTime.AddMinutes(i * 10);
         }
 
-        _fixture.Context.TrackedFiles.AddRange(testFiles);
-        await _fixture.Context.SaveChangesAsync();
+        Context.TrackedFiles.AddRange(testFiles);
+        await Context.SaveChangesAsync();
 
-        var repository = new TrackedFileRepository(_fixture.Context);
+        var repository = new TrackedFileRepository(Context);
 
         // Act
         var result = await repository.GetFilesReadyForClassificationAsync(3);
@@ -200,7 +192,6 @@ public class TrackedFileRepositoryTests : IClassFixture<DatabaseFixture>
     public async Task GetFilesAwaitingConfirmationAsync_ShouldReturnClassifiedFiles()
     {
         // Arrange
-        await _fixture.CleanupAsync();
         
         var classifiedFiles = TrackedFileObjectMother.SeriesFiles("AWAITING CONFIRMATION", 3)
             .ToList();
@@ -222,11 +213,11 @@ public class TrackedFileRepositoryTests : IClassFixture<DatabaseFixture>
             Status = FileStatus.New
         };
 
-        _fixture.Context.TrackedFiles.AddRange(classifiedFiles);
-        _fixture.Context.TrackedFiles.Add(newFile);
-        await _fixture.Context.SaveChangesAsync();
+        Context.TrackedFiles.AddRange(classifiedFiles);
+        Context.TrackedFiles.Add(newFile);
+        await Context.SaveChangesAsync();
 
-        var repository = new TrackedFileRepository(_fixture.Context);
+        var repository = new TrackedFileRepository(Context);
 
         // Act
         var result = await repository.GetFilesAwaitingConfirmationAsync();
@@ -245,7 +236,6 @@ public class TrackedFileRepositoryTests : IClassFixture<DatabaseFixture>
     public async Task ExistsByOriginalPathAsync_ShouldDetectDuplicates()
     {
         // Arrange
-        await _fixture.CleanupAsync();
         
         var existingFile = new TrackedFile
         {
@@ -255,10 +245,10 @@ public class TrackedFileRepositoryTests : IClassFixture<DatabaseFixture>
             FileSize = 1000000
         };
 
-        _fixture.Context.TrackedFiles.Add(existingFile);
-        await _fixture.Context.SaveChangesAsync();
+        Context.TrackedFiles.Add(existingFile);
+        await Context.SaveChangesAsync();
 
-        var repository = new TrackedFileRepository(_fixture.Context);
+        var repository = new TrackedFileRepository(Context);
 
         // Act
         var existsResult = await repository.ExistsByOriginalPathAsync("/test/path/Duplicate.Test.mkv");
@@ -273,7 +263,6 @@ public class TrackedFileRepositoryTests : IClassFixture<DatabaseFixture>
     public async Task GetProcessingStatsAsync_ShouldReturnCorrectCounts()
     {
         // Arrange
-        await _fixture.CleanupAsync();
         
         // Create files in different states
         var mixedFiles = TrackedFileObjectMother.MixedStateFiles().ToList();
@@ -284,10 +273,10 @@ public class TrackedFileRepositoryTests : IClassFixture<DatabaseFixture>
             mixedFiles[i].Hash = $"stats{i:D2}567890123456789012345678901234567890123456789012345{i:D3}";
         }
 
-        _fixture.Context.TrackedFiles.AddRange(mixedFiles);
-        await _fixture.Context.SaveChangesAsync();
+        Context.TrackedFiles.AddRange(mixedFiles);
+        await Context.SaveChangesAsync();
 
-        var repository = new TrackedFileRepository(_fixture.Context);
+        var repository = new TrackedFileRepository(Context);
 
         // Act
         var stats = await repository.GetProcessingStatsAsync();
@@ -316,7 +305,6 @@ public class TrackedFileRepositoryTests : IClassFixture<DatabaseFixture>
     public async Task SearchByFilenameAsync_ShouldSupportWildcards()
     {
         // Arrange
-        await _fixture.CleanupAsync();
         
         var testFiles = new[]
         {
@@ -343,10 +331,10 @@ public class TrackedFileRepositoryTests : IClassFixture<DatabaseFixture>
             }
         };
 
-        _fixture.Context.TrackedFiles.AddRange(testFiles);
-        await _fixture.Context.SaveChangesAsync();
+        Context.TrackedFiles.AddRange(testFiles);
+        await Context.SaveChangesAsync();
 
-        var repository = new TrackedFileRepository(_fixture.Context);
+        var repository = new TrackedFileRepository(Context);
 
         // Act
         var breakingBadFiles = await repository.SearchByFilenameAsync("Breaking.Bad%");
@@ -368,8 +356,7 @@ public class TrackedFileRepositoryTests : IClassFixture<DatabaseFixture>
     public async Task Add_Update_SoftDelete_Restore_ShouldWorkCorrectly()
     {
         // Arrange
-        await _fixture.CleanupAsync();
-        var repository = new TrackedFileRepository(_fixture.Context);
+        var repository = new TrackedFileRepository(Context);
 
         var testFile = new TrackedFile
         {
@@ -424,7 +411,6 @@ public class TrackedFileRepositoryTests : IClassFixture<DatabaseFixture>
     public async Task GetFilesExceedingRetryLimitAsync_ShouldReturnHighRetryCountFiles()
     {
         // Arrange
-        await _fixture.CleanupAsync();
         
         var lowRetryFile = new TrackedFile
         {
@@ -444,10 +430,10 @@ public class TrackedFileRepositoryTests : IClassFixture<DatabaseFixture>
             RetryCount = 5
         };
 
-        _fixture.Context.TrackedFiles.AddRange(lowRetryFile, highRetryFile);
-        await _fixture.Context.SaveChangesAsync();
+        Context.TrackedFiles.AddRange(lowRetryFile, highRetryFile);
+        await Context.SaveChangesAsync();
 
-        var repository = new TrackedFileRepository(_fixture.Context);
+        var repository = new TrackedFileRepository(Context);
 
         // Act
         var result = await repository.GetFilesExceedingRetryLimitAsync(3);

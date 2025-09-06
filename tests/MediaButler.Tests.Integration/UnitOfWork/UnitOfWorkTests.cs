@@ -16,23 +16,19 @@ namespace MediaButler.Tests.Integration.UnitOfWork;
 /// Tests transaction behavior and repository coordination.
 /// Follows "Simple Made Easy" principles - testing actual transaction behavior.
 /// </summary>
-public class UnitOfWorkTests : IClassFixture<DatabaseFixture>
+public class UnitOfWorkTests : IntegrationTestBase
 {
-    private readonly DatabaseFixture _fixture;
-
-    public UnitOfWorkTests(DatabaseFixture fixture)
+    public UnitOfWorkTests(DatabaseFixture fixture) : base(fixture)
     {
-        _fixture = fixture;
     }
 
     [Fact]
     public async Task SaveChangesAsync_WithMultipleEntities_ShouldCommitAllChanges()
     {
         // Arrange
-        await _fixture.CleanupAsync();
         
-        using var scope = _fixture.CreateScope();
-        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(_fixture.Context);
+        using var scope = CreateScope();
+        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
 
         var trackedFile = new TrackedFile
         {
@@ -81,10 +77,9 @@ public class UnitOfWorkTests : IClassFixture<DatabaseFixture>
     public async Task Transaction_RollbackOnFailure_ShouldNotPersistAnyChanges()
     {
         // Arrange
-        await _fixture.CleanupAsync();
         
-        using var scope = _fixture.CreateScope();
-        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(_fixture.Context);
+        using var scope = CreateScope();
+        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
 
         var validFile = new TrackedFile
         {
@@ -131,8 +126,8 @@ public class UnitOfWorkTests : IClassFixture<DatabaseFixture>
 
         // Assert - Verify rollback occurred
         // Create new unit of work to avoid cached entities
-        using var newScope = _fixture.CreateScope();
-        var newUnitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(_fixture.Context);
+        using var newScope = CreateScope();
+        var newUnitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
 
         var fileAfterRollback = await newUnitOfWork.TrackedFiles.GetByHashAsync(validFile.Hash);
         var configAfterRollback = await newUnitOfWork.ConfigurationSettings.FirstOrDefaultAsync(c => c.Key == validConfig.Key);
@@ -150,10 +145,9 @@ public class UnitOfWorkTests : IClassFixture<DatabaseFixture>
     public async Task RepositoryAccess_ThroughUnitOfWork_ShouldProvideCorrectInstances()
     {
         // Arrange
-        await _fixture.CleanupAsync();
         
-        using var scope = _fixture.CreateScope();
-        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(_fixture.Context);
+        using var scope = CreateScope();
+        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
 
         // Act & Assert - Verify repository properties return correct types
         unitOfWork.TrackedFiles.Should().NotBeNull();
@@ -185,10 +179,9 @@ public class UnitOfWorkTests : IClassFixture<DatabaseFixture>
     public async Task ConcurrentOperations_WithUnitOfWork_ShouldMaintainConsistency()
     {
         // Arrange
-        await _fixture.CleanupAsync();
         
-        using var scope = _fixture.CreateScope();
-        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(_fixture.Context);
+        using var scope = CreateScope();
+        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
 
         var baseHash = "concurrent12345678901234567890123456789012345678901234567";
         var files = Enumerable.Range(1, 10)
@@ -234,7 +227,7 @@ public class UnitOfWorkTests : IClassFixture<DatabaseFixture>
     public async Task Dispose_ShouldCleanupResourcesProperly()
     {
         // Arrange
-        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(_fixture.Context);
+        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
 
         var testFile = new TrackedFile
         {
@@ -260,10 +253,9 @@ public class UnitOfWorkTests : IClassFixture<DatabaseFixture>
     public async Task ComplexWorkflow_WithMultipleRepositories_ShouldMaintainDataIntegrity()
     {
         // Arrange
-        await _fixture.CleanupAsync();
         
-        using var scope = _fixture.CreateScope();
-        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(_fixture.Context);
+        using var scope = CreateScope();
+        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
 
         // Create a complex workflow scenario
         var trackedFile = new TrackedFile
@@ -344,10 +336,9 @@ public class UnitOfWorkTests : IClassFixture<DatabaseFixture>
     public async Task SaveChangesAsync_WithNoChanges_ShouldReturnZero()
     {
         // Arrange
-        await _fixture.CleanupAsync();
         
-        using var scope = _fixture.CreateScope();
-        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(_fixture.Context);
+        using var scope = CreateScope();
+        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
 
         // Act - Save without making any changes
         var result = await unitOfWork.SaveChangesAsync();
@@ -360,10 +351,9 @@ public class UnitOfWorkTests : IClassFixture<DatabaseFixture>
     public async Task MultipleSaveChanges_ShouldTrackChangesCorrectly()
     {
         // Arrange
-        await _fixture.CleanupAsync();
         
-        using var scope = _fixture.CreateScope();
-        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(_fixture.Context);
+        using var scope = CreateScope();
+        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
 
         var file1 = new TrackedFile
         {
