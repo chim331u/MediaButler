@@ -5,10 +5,13 @@
 [![Platform](https://img.shields.io/badge/platform-ARM32%20|%20x64-green.svg)]()
 [![.NET](https://img.shields.io/badge/.NET-8.0-purple.svg)]()
 
+Increase test coverage task 1.7.1
+
 
 ```
 sample
 ```
+-AGENTS TO CREATE
 
-Documentation agent
-c# agent specialist
+[] Documentation agent
+[] c# agent specialist
