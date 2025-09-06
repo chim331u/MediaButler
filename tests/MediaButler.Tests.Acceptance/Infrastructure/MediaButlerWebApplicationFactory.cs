@@ -52,7 +52,6 @@ public class MediaButlerWebApplicationFactory : WebApplicationFactory<Program>
             services.AddLogging(builder =>
             {
                 builder.ClearProviders();
-                builder.AddConsole();
                 builder.SetMinimumLevel(LogLevel.Warning); // Reduce noise in tests
             });
         });

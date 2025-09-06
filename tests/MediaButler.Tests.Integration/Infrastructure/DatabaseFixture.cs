@@ -1,7 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using MediaButler.Data;
 
@@ -37,10 +36,9 @@ public class DatabaseFixture : IDisposable
             options.EnableDetailedErrors();
         });
         
-        // Add logging for debugging
+        // Add logging for debugging  
         services.AddLogging(builder =>
         {
-            builder.AddConsole();
             builder.SetMinimumLevel(LogLevel.Information);
         });
         
