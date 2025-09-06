@@ -18,34 +18,36 @@ public static class TestDataSeeder
     /// </summary>
     public static async Task SeedWorkflowScenarioAsync(MediaButlerDbContext context)
     {
-        // Create files representing a complete processing pipeline
+        // Create files representing a complete processing pipeline with unique hashes
+        var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        
         var newFiles = new[]
         {
-            new TrackedFileBuilder().AsTVEpisode("Breaking Bad", 1, 1).WithHash("workflownew01".PadRight(64, '0')).Build(),
-            new TrackedFileBuilder().AsTVEpisode("Breaking Bad", 1, 2).WithHash("workflownew02".PadRight(64, '0')).Build(),
-            new TrackedFileBuilder().AsTVEpisode("Breaking Bad", 1, 3).WithHash("workflownew03".PadRight(64, '0')).Build()
+            new TrackedFileBuilder().AsTVEpisode("Breaking Bad", 1, 1).WithHash($"workflownew01{timestamp:X}".PadRight(64, '0').Substring(0, 64)).Build(),
+            new TrackedFileBuilder().AsTVEpisode("Breaking Bad", 1, 2).WithHash($"workflownew02{timestamp:X}".PadRight(64, '0').Substring(0, 64)).Build(),
+            new TrackedFileBuilder().AsTVEpisode("Breaking Bad", 1, 3).WithHash($"workflownew03{timestamp:X}".PadRight(64, '0').Substring(0, 64)).Build()
         };
 
         var classifiedFiles = new[]
         {
-            new TrackedFileBuilder().AsTVEpisode("The Office", 1, 1).AsClassified("THE OFFICE", 0.9m).WithHash("workflowcla01".PadRight(64, '0')).Build(),
-            new TrackedFileBuilder().AsTVEpisode("The Office", 1, 2).AsClassified("THE OFFICE", 0.9m).WithHash("workflowcla02".PadRight(64, '0')).Build()
+            new TrackedFileBuilder().AsTVEpisode("The Office", 1, 1).AsClassified("THE OFFICE", 0.9m).WithHash($"workflowcla01{timestamp:X}".PadRight(64, '0').Substring(0, 64)).Build(),
+            new TrackedFileBuilder().AsTVEpisode("The Office", 1, 2).AsClassified("THE OFFICE", 0.9m).WithHash($"workflowcla02{timestamp:X}".PadRight(64, '0').Substring(0, 64)).Build()
         };
 
         var confirmedFiles = new[]
         {
-            new TrackedFileBuilder().AsTVEpisode("Game of Thrones", 1, 1).AsConfirmed("GAME OF THRONES").WithHash("workflowcon01".PadRight(64, '0')).Build(),
-            new TrackedFileBuilder().AsTVEpisode("Game of Thrones", 1, 2).AsConfirmed("GAME OF THRONES").WithHash("workflowcon02".PadRight(64, '0')).Build()
+            new TrackedFileBuilder().AsTVEpisode("Game of Thrones", 1, 1).AsConfirmed("GAME OF THRONES").WithHash($"workflowcon01{timestamp:X}".PadRight(64, '0').Substring(0, 64)).Build(),
+            new TrackedFileBuilder().AsTVEpisode("Game of Thrones", 1, 2).AsConfirmed("GAME OF THRONES").WithHash($"workflowcon02{timestamp:X}".PadRight(64, '0').Substring(0, 64)).Build()
         };
 
         var movedFiles = new[]
         {
-            new TrackedFileBuilder().AsTVEpisode("Friends", 1, 1).AsMoved("FRIENDS", "/library/FRIENDS/Friends.S01E01.1080p.mkv").WithHash("workflowmov01".PadRight(64, '0')).Build()
+            new TrackedFileBuilder().AsTVEpisode("Friends", 1, 1).AsMoved("FRIENDS", "/library/FRIENDS/Friends.S01E01.1080p.mkv").WithHash($"workflowmov01{timestamp:X}".PadRight(64, '0').Substring(0, 64)).Build()
         };
 
         var errorFiles = new[]
         {
-            new TrackedFileBuilder().AsTVEpisode("Lost", 1, 1).AsError("Classification timeout", 2).WithHash("workflowerr01".PadRight(64, '0')).Build()
+            new TrackedFileBuilder().AsTVEpisode("Lost", 1, 1).AsError("Classification timeout", 2).WithHash($"workflowerr01{timestamp:X}".PadRight(64, '0').Substring(0, 64)).Build()
         };
 
         // Add configuration settings
@@ -138,17 +140,25 @@ public static class TestDataSeeder
     /// </summary>
     public static async Task SeedSoftDeleteScenarioAsync(MediaButlerDbContext context)
     {
-        // Create active files
-        var activeFiles = new TrackedFileBuilder()
-            .AsTVEpisode("Active Series", 1, 1)
-            .BuildMany(5)
-            .ToArray();
+        var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        
+        // Create active files with unique hashes
+        var activeFiles = new[]
+        {
+            new TrackedFileBuilder().AsTVEpisode("Active Series", 1, 1).WithHash($"active01{timestamp:X}".PadRight(64, '0').Substring(0, 64)).Build(),
+            new TrackedFileBuilder().AsTVEpisode("Active Series", 1, 2).WithHash($"active02{timestamp:X}".PadRight(64, '0').Substring(0, 64)).Build(),
+            new TrackedFileBuilder().AsTVEpisode("Active Series", 1, 3).WithHash($"active03{timestamp:X}".PadRight(64, '0').Substring(0, 64)).Build(),
+            new TrackedFileBuilder().AsTVEpisode("Active Series", 1, 4).WithHash($"active04{timestamp:X}".PadRight(64, '0').Substring(0, 64)).Build(),
+            new TrackedFileBuilder().AsTVEpisode("Active Series", 1, 5).WithHash($"active05{timestamp:X}".PadRight(64, '0').Substring(0, 64)).Build()
+        };
 
         // Create files to soft delete
-        var filesToDelete = new TrackedFileBuilder()
-            .AsTVEpisode("Deleted Series", 1, 1) 
-            .BuildMany(3)
-            .ToArray();
+        var filesToDelete = new[]
+        {
+            new TrackedFileBuilder().AsTVEpisode("Deleted Series", 1, 1).WithHash($"delete01{timestamp:X}".PadRight(64, '0').Substring(0, 64)).Build(),
+            new TrackedFileBuilder().AsTVEpisode("Deleted Series", 1, 2).WithHash($"delete02{timestamp:X}".PadRight(64, '0').Substring(0, 64)).Build(),
+            new TrackedFileBuilder().AsTVEpisode("Deleted Series", 1, 3).WithHash($"delete03{timestamp:X}".PadRight(64, '0').Substring(0, 64)).Build()
+        };
 
         await context.TrackedFiles.AddRangeAsync(activeFiles);
         await context.TrackedFiles.AddRangeAsync(filesToDelete);

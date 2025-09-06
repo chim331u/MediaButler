@@ -264,11 +264,12 @@ public class FileService : IFileService
             if (file == null)
                 return Result<TrackedFile>.Failure($"File with hash {hash} not found");
 
-            if (file.Status != FileStatus.Moving)
-                return Result<TrackedFile>.Failure($"File is not in Moving status. Current status: {file.Status}");
+            if (file.Status != FileStatus.ReadyToMove)
+                return Result<TrackedFile>.Failure($"File is not in Ready to move status. Current status: {file.Status}");
 
             file.Status = FileStatus.Moved;
             file.MovedAt = DateTime.UtcNow;
+            file.TargetPath = targetPath;
 
             _trackedFileRepository.Update(file);
             await _unitOfWork.SaveChangesAsync(cancellationToken);

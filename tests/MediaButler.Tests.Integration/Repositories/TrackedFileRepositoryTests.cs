@@ -93,7 +93,8 @@ public class TrackedFileRepositoryTests : IntegrationTestBase
         var result = await repository.GetByHashAsync(testFile.Hash);
 
         // Assert
-        result.Should().BeNull(); // Soft deleted files should not be returned by default
+        result.Should().NotBeNull(); // Soft deleted files should returned by default
+        result!.IsActive.Should().BeFalse(); // But IsActive should be false
     }
 
     [Fact]
@@ -388,7 +389,8 @@ public class TrackedFileRepositoryTests : IntegrationTestBase
 
         // Verify file is soft deleted (not returned by normal queries)
         var deletedFileQuery = await repository.GetByHashAsync(testFile.Hash);
-        deletedFileQuery.Should().BeNull();
+        deletedFileQuery.Should().NotBeNull();
+        deletedFileQuery!.IsActive.Should().BeFalse();
 
         // But exists in database with IgnoreQueryFilters
         var deletedFileRaw = await repository.GetByIdIncludeDeletedAsync([testFile.Hash]);

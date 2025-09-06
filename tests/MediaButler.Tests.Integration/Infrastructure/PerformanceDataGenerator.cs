@@ -130,13 +130,27 @@ public static class PerformanceDataGenerator
             for (int file = 0; file < filesPerDay; file++)
             {
                 var fileIndex = day * filesPerDay + file;
-                var trackedFile = GenerateRealisticFile(fileIndex, random);
+                var series = TVSeries[fileIndex % TVSeries.Length];
+                var season = (fileIndex % 10) + 1;
+                var episode = (fileIndex % 24) + 1;
+                var quality = Qualities[random.Next(Qualities.Length)];
+                
+                var fileName = $"{series}.S{season:D2}E{episode:D2}.{quality}.mkv";
+                var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                var hash = $"time{timestamp:X}{fileIndex:D8}{day:D3}{file:D3}".PadRight(64, '0').Substring(0, 64);
                 
                 // Set realistic timestamps for the day
                 var createdTime = currentDate.AddHours(random.NextDouble() * 24);
                 var updatedTime = createdTime.AddMinutes(random.Next(1, 1440)); // 1 minute to 24 hours later
 
-                SetTimestamps(trackedFile, createdTime, updatedTime);
+                var trackedFile = new TrackedFileBuilder()
+                    .WithFileName(fileName)
+                    .WithHash(hash)
+                    .WithOriginalPath($"/downloads/{fileName}")
+                    .WithFileSize(random.NextInt64(300_000_000, 3_000_000_000))
+                    .WithTimestamps(createdTime, updatedTime)
+                    .Build();
+                    
                 dayFiles.Add(trackedFile);
             }
 
@@ -205,7 +219,10 @@ public static class PerformanceDataGenerator
         var releaseGroup = ReleaseGroups[random.Next(ReleaseGroups.Length)];
 
         var fileName = $"{series}.S{season:D2}E{episode:D2}.{source}.{quality}.{releaseGroup}.mkv";
-        var hash = $"perf{index:D10}".PadRight(64, '0').Substring(0, 64);
+        
+        // Generate truly unique hash with timestamp and index
+        var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var hash = $"perf{timestamp:X}{index:D6}".PadRight(64, '0').Substring(0, 64);
 
         return new TrackedFileBuilder()
             .WithFileName(fileName)

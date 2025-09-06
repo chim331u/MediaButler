@@ -1,5 +1,5 @@
 
-# MediaButler Development Planning Document
+1.5 requirements# MediaButler Development Planning Document
 
 ## Project Overview
 
@@ -344,8 +344,33 @@ logs/ (auto-created)
 - ✅ Memory-conscious data generation for large performance datasets
 - ✅ Following "Simple Made Easy" principles with clear scenario separation
 
+## 🚨 Sprint 1.5 Completion Gate
+
+**CRITICAL REQUIREMENT**: Before proceeding to Sprint 1.6, ALL tests must pass successfully.
+
+**Current Status**: 
+- ✅ Unit Tests: 129 tests implemented and passing
+- ⚠️  Integration Tests: 45 tests implemented, requires verification all pass
+- 🎯 **Target**: 100% test pass rate across all test suites
+
+**Validation Command**: 
+```bash
+dotnet test  # All projects must show "Passed: X, Failed: 0"
+```
+
+**Quality Gate**: Only proceed to Sprint 1.6 when the following conditions are met:
+1. **Zero failing tests** across Unit, Integration, and existing test suites
+2. **Clean build status** for all projects (MediaButler.Core, .Data, .Services, .API)
+3. **Test isolation verified** - tests pass consistently when run individually and in suite
+4. **Memory constraints met** - test execution stays within ARM32 300MB target
+
+This gate ensures a solid foundation before adding API acceptance testing layers and maintains the "Simple Made Easy" principle of building on reliable, well-tested components.
+
+---
+
 #### Sprint 1.6: Acceptance Testing (Day 3 Afternoon, 4 hours)
 **Focus**: End-to-end API testing and validation
+**Prerequisite**: ✅ ALL Sprint 1.5 tests passing (verified above)
 
 **Task 1.6.1: API Test Infrastructure (1 hour)**
 - WebApplicationFactory configuration

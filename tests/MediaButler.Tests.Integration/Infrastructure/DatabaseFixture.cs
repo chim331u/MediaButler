@@ -65,37 +65,35 @@ public class DatabaseFixture : IDisposable
     /// </summary>
     public async Task CleanupAsync()
     {
-        // Remove all data in reverse dependency order to avoid foreign key conflicts
-        if (Context.ProcessingLogs.Any())
-        {
-            Context.ProcessingLogs.RemoveRange(Context.ProcessingLogs);
-        }
-        
-        if (Context.TrackedFiles.Any())
-        {
-            Context.TrackedFiles.RemoveRange(Context.TrackedFiles);
-        }
-        
-        if (Context.ConfigurationSettings.Any())
-        {
-            Context.ConfigurationSettings.RemoveRange(Context.ConfigurationSettings);
-        }
-        
-        if (Context.UserPreferences.Any())
-        {
-            Context.UserPreferences.RemoveRange(Context.UserPreferences);
-        }
-        
-        await Context.SaveChangesAsync();
-        
-        // Reset auto-increment counters for consistent test behavior
         try
         {
-            await Context.Database.ExecuteSqlRawAsync("DELETE FROM sqlite_sequence WHERE name IN ('TrackedFiles', 'ProcessingLogs', 'ConfigurationSettings', 'UserPreferences')");
+            // Clear change tracker to avoid conflicts
+            Context.ChangeTracker.Clear();
+            
+            // Remove all data using raw SQL to avoid tracking issues
+            await Context.Database.ExecuteSqlRawAsync("DELETE FROM ProcessingLogs");
+            await Context.Database.ExecuteSqlRawAsync("DELETE FROM TrackedFiles");
+            await Context.Database.ExecuteSqlRawAsync("DELETE FROM ConfigurationSettings");
+            await Context.Database.ExecuteSqlRawAsync("DELETE FROM UserPreferences");
+            
+            // Reset auto-increment counters for consistent test behavior
+            try
+            {
+                await Context.Database.ExecuteSqlRawAsync("DELETE FROM sqlite_sequence WHERE name IN ('TrackedFiles', 'ProcessingLogs', 'ConfigurationSettings', 'UserPreferences')");
+            }
+            catch (Microsoft.Data.Sqlite.SqliteException)
+            {
+                // sqlite_sequence table doesn't exist yet - ignore error
+            }
+            
+            // Clear change tracker again after cleanup
+            Context.ChangeTracker.Clear();
         }
-        catch (Microsoft.Data.Sqlite.SqliteException)
+        catch (Exception)
         {
-            // sqlite_sequence table doesn't exist yet - ignore error
+            // If cleanup fails, clear the change tracker at minimum
+            Context.ChangeTracker.Clear();
+            throw;
         }
     }
 

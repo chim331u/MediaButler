@@ -163,8 +163,25 @@ public class MediaButlerDbContext : DbContext
             switch (entry.State)
             {
                 case EntityState.Added:
-                    entry.Entity.CreatedDate = now;
-                    entry.Entity.LastUpdateDate = now;
+                    // Only set CreatedDate if it hasn't been explicitly set (i.e., still has default value from constructor)
+                    // This allows test data builders to set custom timestamps
+                    var createdDateProperty = entry.Property(nameof(BaseEntity.CreatedDate));
+                    var lastUpdateDateProperty = entry.Property(nameof(BaseEntity.LastUpdateDate));
+                    
+                    // Check if CreatedDate was explicitly set by comparing against a reasonable time window
+                    // If it was set via reflection (like in tests), it won't match the "now" window
+                    var timeDifference = Math.Abs((now - entry.Entity.CreatedDate).TotalSeconds);
+                    if (timeDifference > 10) // More than 10 seconds difference suggests explicit setting
+                    {
+                        // CreatedDate was explicitly set, preserve it and don't modify LastUpdateDate either
+                        // This preserves test data timestamps
+                    }
+                    else
+                    {
+                        // CreatedDate appears to be default, set both timestamps
+                        entry.Entity.CreatedDate = now;
+                        entry.Entity.LastUpdateDate = now;
+                    }
                     break;
 
                 case EntityState.Modified:

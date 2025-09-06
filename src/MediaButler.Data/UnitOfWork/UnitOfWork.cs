@@ -48,6 +48,7 @@ public class UnitOfWork : IUnitOfWork
     {
         get
         {
+            ThrowIfDisposed();
             return _trackedFiles ??= new TrackedFileRepository(_context);
         }
     }
@@ -57,6 +58,7 @@ public class UnitOfWork : IUnitOfWork
     {
         get
         {
+            ThrowIfDisposed();
             return _processingLogs ??= new Repository<ProcessingLog>(_context);
         }
     }
@@ -66,6 +68,7 @@ public class UnitOfWork : IUnitOfWork
     {
         get
         {
+            ThrowIfDisposed();
             return _configurationSettings ??= new Repository<ConfigurationSetting>(_context);
         }
     }
@@ -75,6 +78,7 @@ public class UnitOfWork : IUnitOfWork
     {
         get
         {
+            ThrowIfDisposed();
             return _userPreferences ??= new Repository<UserPreference>(_context);
         }
     }
