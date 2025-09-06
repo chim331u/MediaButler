@@ -130,24 +130,28 @@ public class UserPreferenceConfiguration : BaseEntityConfiguration<UserPreferenc
     /// </remarks>
     private static void ConfigureUserPreferenceConstraints(EntityTypeBuilder<UserPreference> builder)
     {
-        // Key format constraint - should not be empty and follow naming convention
-        builder.HasCheckConstraint(
-            "CK_UserPreferences_Key_Format",
-            "[Key] NOT LIKE '' AND [Key] NOT LIKE '% %'");
+        // Use modern ToTable API for check constraints
+        builder.ToTable("UserPreferences", t => 
+        {
+            // Key format constraint - should not be empty and follow naming convention
+            t.HasCheckConstraint(
+                "CK_UserPreferences_Key_Format",
+                "[Key] NOT LIKE '' AND [Key] NOT LIKE '% %'");
 
-        // Value length constraint - prevent extremely large preference values
-        builder.HasCheckConstraint(
-            "CK_UserPreferences_Value_Length",
-            "LENGTH([Value]) <= 10000");
+            // Value length constraint - prevent extremely large preference values
+            t.HasCheckConstraint(
+                "CK_UserPreferences_Value_Length",
+                "LENGTH([Value]) <= 10000");
 
-        // Category naming constraint - alphanumeric with underscores
-        builder.HasCheckConstraint(
-            "CK_UserPreferences_Category_Format",
-            "[Category] NOT LIKE '%[^A-Za-z0-9_]%'");
+            // Category naming constraint - alphanumeric with underscores
+            t.HasCheckConstraint(
+                "CK_UserPreferences_Category_Format",
+                "[Category] NOT LIKE '%[^A-Za-z0-9_]%'");
 
-        // UserId format constraint - alphanumeric with underscores and hyphens
-        builder.HasCheckConstraint(
-            "CK_UserPreferences_UserId_Format",
-            "[UserId] NOT LIKE '%[^A-Za-z0-9_-]%'");
+            // UserId format constraint - alphanumeric with underscores and hyphens
+            t.HasCheckConstraint(
+                "CK_UserPreferences_UserId_Format",
+                "[UserId] NOT LIKE '%[^A-Za-z0-9_-]%'");
+        });
     }
 }

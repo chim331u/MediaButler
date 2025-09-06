@@ -133,24 +133,28 @@ public class ConfigurationSettingConfiguration : BaseEntityConfiguration<Configu
     /// </remarks>
     private static void ConfigureConfigurationSettingConstraints(EntityTypeBuilder<ConfigurationSetting> builder)
     {
-        // Key format constraint - should contain at least one dot for section.key format
-        builder.HasCheckConstraint(
-            "CK_ConfigurationSettings_Key_Format",
-            "[Key] LIKE '%.%'");
+        // Use modern ToTable API for check constraints
+        builder.ToTable("ConfigurationSettings", t => 
+        {
+            // Key format constraint - should contain at least one dot for section.key format
+            t.HasCheckConstraint(
+                "CK_ConfigurationSettings_Key_Format",
+                "[Key] LIKE '%.%'");
 
-        // Value length constraint - prevent extremely large configuration values
-        builder.HasCheckConstraint(
-            "CK_ConfigurationSettings_Value_Length",
-            "LENGTH([Value]) <= 10000");
+            // Value length constraint - prevent extremely large configuration values
+            t.HasCheckConstraint(
+                "CK_ConfigurationSettings_Value_Length",
+                "LENGTH([Value]) <= 10000");
 
-        // Section naming constraint - alphanumeric with underscores/hyphens
-        builder.HasCheckConstraint(
-            "CK_ConfigurationSettings_Section_Format",
-            "[Section] NOT LIKE '%[^A-Za-z0-9_-]%'");
+            // Section naming constraint - alphanumeric with underscores/hyphens
+            t.HasCheckConstraint(
+                "CK_ConfigurationSettings_Section_Format",
+                "[Section] NOT LIKE '%[^A-Za-z0-9_-]%'");
 
-        // Data type validation - ensure valid enum values
-        builder.HasCheckConstraint(
-            "CK_ConfigurationSettings_DataType_Valid",
-            "[DataType] BETWEEN 0 AND 4");
+            // Data type validation - ensure valid enum values
+            t.HasCheckConstraint(
+                "CK_ConfigurationSettings_DataType_Valid",
+                "[DataType] BETWEEN 0 AND 4");
+        });
     }
 }

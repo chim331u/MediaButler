@@ -469,7 +469,7 @@ public class StorageStats
     /// Gets or sets file size distribution across different ranges.
     /// </summary>
     /// <value>A dictionary mapping size ranges to file counts.</value>
-    /// <example>{"< 1GB": 450, "1-5GB": 320, "> 5GB": 45}</example>
+    /// <example>{"&lt; 1GB": 450, "1-5GB": 320, "&gt; 5GB": 45}</example>
     public Dictionary<string, int> FileSizeDistribution { get; set; } = new();
 
     /// <summary>

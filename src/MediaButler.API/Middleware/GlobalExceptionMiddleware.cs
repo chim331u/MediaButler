@@ -52,7 +52,7 @@ public class GlobalExceptionMiddleware
                 ["UserAgent"] = context.Request.Headers.UserAgent.ToString(),
                 ["RemoteIP"] = context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
                 ["ExceptionType"] = ex.GetType().Name,
-                ["StackTrace"] = _environment.IsDevelopment() ? ex.StackTrace : null
+                ["StackTrace"] = _environment.IsDevelopment() ? (ex.StackTrace ?? "No stack trace available") : (object?)null
             });
 
             _logger.LogError(ex, 
