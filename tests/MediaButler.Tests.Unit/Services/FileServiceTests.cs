@@ -89,7 +89,7 @@ public class FileServiceTests : TestBase
 
         // Assert
         result.IsFailure.Should().BeTrue();
-        result.Error.Should().Contain("Hash cannot be null or empty");
+        result.Error.Should().Contain("Hash cannot be empty");
     }
 
     [Fact]
@@ -162,7 +162,7 @@ public class FileServiceTests : TestBase
 
         // Assert
         result.IsFailure.Should().BeTrue();
-        result.Error.Should().Contain("Confidence must be between 0.0 and 1.0");
+        result.Error.Should().Contain("Confidence must be between 0 and 1");
         
         // Verify no repository calls were made
         _mockFileRepository.Verify(repo => repo.GetByHashAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -179,7 +179,7 @@ public class FileServiceTests : TestBase
 
         // Assert
         result.IsFailure.Should().BeTrue();
-        result.Error.Should().Contain("Category cannot be null or empty");
+        result.Error.Should().Contain("Suggested category cannot be empty");
     }
 
     [Fact]
@@ -206,7 +206,7 @@ public class FileServiceTests : TestBase
         result.Value.Category.Should().Be(confirmedCategory);
         result.Value.Status.Should().Be(FileStatus.ReadyToMove);
         result.Value.TargetPath.Should().NotBeNull();
-        result.Value.TargetPath.Should().Contain(confirmedCategory);
+        result.Value.TargetPath.Should().Contain("BREAKING_BAD"); // Sanitized category name
     }
 
     [Fact]

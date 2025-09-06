@@ -124,6 +124,9 @@ public class FileService : IFileService
     /// </summary>
     public async Task<Result<IEnumerable<TrackedFile>>> GetFilesReadyForClassificationAsync(int limit = 100, CancellationToken cancellationToken = default)
     {
+        if (limit <= 0)
+            return Result<IEnumerable<TrackedFile>>.Failure("Limit must be greater than 0");
+
         try
         {
             var files = await _trackedFileRepository.GetFilesReadyForClassificationAsync(limit, cancellationToken);
@@ -233,6 +236,10 @@ public class FileService : IFileService
 
             file.Category = confirmedCategory;
             file.Status = FileStatus.ReadyToMove;
+            
+            // Set the target path based on the category and filename
+            var sanitizedCategory = SanitizeCategoryForPath(confirmedCategory);
+            file.TargetPath = Path.Combine("/library", sanitizedCategory, file.FileName);
 
             _trackedFileRepository.Update(file);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
@@ -516,6 +523,24 @@ public class FileService : IFileService
         
         var hashBytes = await Task.Run(() => sha256.ComputeHash(stream), cancellationToken);
         return Convert.ToHexString(hashBytes).ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// Sanitizes a category name to be safe for use as a directory path.
+    /// </summary>
+    private static string SanitizeCategoryForPath(string category)
+    {
+        if (string.IsNullOrWhiteSpace(category))
+            return "UNKNOWN";
+
+        // Remove invalid path characters
+        var invalidChars = Path.GetInvalidPathChars().Concat(Path.GetInvalidFileNameChars()).ToArray();
+        var sanitized = new string(category.Where(c => !invalidChars.Contains(c)).ToArray());
+        
+        // Replace spaces and ensure it's not empty
+        sanitized = sanitized.Replace(' ', '_').Trim('_');
+        
+        return string.IsNullOrEmpty(sanitized) ? "UNKNOWN" : sanitized.ToUpperInvariant();
     }
 
     #endregion

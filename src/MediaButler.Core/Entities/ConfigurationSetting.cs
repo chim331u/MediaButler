@@ -112,9 +112,9 @@ public class ConfigurationSetting : BaseEntity
                     break;
 
                 case ConfigurationDataType.Path:
-                    // Basic path validation - check for invalid characters
-                    var invalidChars = System.IO.Path.GetInvalidPathChars();
-                    if (value.IndexOfAny(invalidChars) >= 0)
+                    // Comprehensive path validation - check for characters that could cause issues
+                    var invalidPathChars = new char[] { '<', '>', '|', '"', '\0' };
+                    if (value.IndexOfAny(invalidPathChars) >= 0)
                         throw new ArgumentException($"Value '{value}' contains invalid path characters.");
                     break;
 
