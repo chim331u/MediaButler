@@ -160,6 +160,40 @@ public class TrackedFileBuilder
     }
 
     /// <summary>
+    /// Creates multiple files with unique hashes for batch testing.
+    /// Useful for performance testing and bulk operation validation.
+    /// </summary>
+    public TrackedFileBuilder WithUniqueHash(int sequence)
+    {
+        _hash = $"batch{sequence:D10}".PadRight(64, '0').Substring(0, 64);
+        _fileName = $"{Path.GetFileNameWithoutExtension(_fileName)}.{sequence:D3}{Path.GetExtension(_fileName)}";
+        _originalPath = Path.Combine(Path.GetDirectoryName(_originalPath) ?? "/test", _fileName);
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the file as soft deleted for testing deletion scenarios.
+    /// </summary>
+    public TrackedFileBuilder AsSoftDeleted(string deleteReason = "Test deletion")
+    {
+        return WithError(deleteReason, 0);
+    }
+
+    /// <summary>
+    /// Creates a realistic TV series file with episode information.
+    /// </summary>
+    public TrackedFileBuilder AsTVEpisode(string series, int season, int episode, string quality = "1080p")
+    {
+        var fileName = $"{series}.S{season:D2}E{episode:D2}.{quality}.mkv";
+        var hash = $"tv{series.Replace(" ", "").ToLower()}{season:D2}{episode:D2}".PadRight(64, '0').Substring(0, 64);
+        
+        return WithFileName(fileName)
+               .WithOriginalPath($"/downloads/{fileName}")
+               .WithHash(hash)
+               .WithFileSize(Random.Shared.NextInt64(500_000_000, 2_000_000_000)); // 500MB - 2GB
+    }
+
+    /// <summary>
     /// Builds the TrackedFile instance with configured values.
     /// </summary>
     public TrackedFile Build()
@@ -186,5 +220,31 @@ public class TrackedFileBuilder
         baseEntityType?.GetProperty("IsActive")?.SetValue(file, true);
         
         return file;
+    }
+
+    /// <summary>
+    /// Builds multiple TrackedFile instances with incremental variations.
+    /// Useful for bulk testing scenarios and performance validation.
+    /// </summary>
+    public IEnumerable<TrackedFile> BuildMany(int count)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            // Create a new builder instance for each file to avoid state sharing
+            var builder = new TrackedFileBuilder()
+                .WithHash(_hash)
+                .WithFileName(_fileName)
+                .WithOriginalPath(_originalPath)
+                .WithFileSize(_fileSize)
+                .WithStatus(_status)
+                .WithTimestamps(_createdAt, _updatedAt);
+                
+            if (_category != null) builder.WithCategory(_category);
+            if (_suggestedCategory != null) builder.WithSuggestion(_suggestedCategory, _confidence);
+            if (_targetPath != null) builder.WithTargetPath(_targetPath);
+            if (_lastError != null) builder.WithError(_lastError, _retryCount);
+                
+            yield return builder.WithUniqueHash(i + 1).Build();
+        }
     }
 }

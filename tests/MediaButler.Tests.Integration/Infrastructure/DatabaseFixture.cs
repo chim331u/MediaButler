@@ -65,13 +65,81 @@ public class DatabaseFixture : IDisposable
     /// </summary>
     public async Task CleanupAsync()
     {
-        // Remove all data in reverse dependency order
-        Context.ProcessingLogs.RemoveRange(Context.ProcessingLogs);
-        Context.TrackedFiles.RemoveRange(Context.TrackedFiles);
-        Context.ConfigurationSettings.RemoveRange(Context.ConfigurationSettings);
-        Context.UserPreferences.RemoveRange(Context.UserPreferences);
+        // Remove all data in reverse dependency order to avoid foreign key conflicts
+        if (Context.ProcessingLogs.Any())
+        {
+            Context.ProcessingLogs.RemoveRange(Context.ProcessingLogs);
+        }
+        
+        if (Context.TrackedFiles.Any())
+        {
+            Context.TrackedFiles.RemoveRange(Context.TrackedFiles);
+        }
+        
+        if (Context.ConfigurationSettings.Any())
+        {
+            Context.ConfigurationSettings.RemoveRange(Context.ConfigurationSettings);
+        }
+        
+        if (Context.UserPreferences.Any())
+        {
+            Context.UserPreferences.RemoveRange(Context.UserPreferences);
+        }
         
         await Context.SaveChangesAsync();
+        
+        // Reset auto-increment counters for consistent test behavior
+        try
+        {
+            await Context.Database.ExecuteSqlRawAsync("DELETE FROM sqlite_sequence WHERE name IN ('TrackedFiles', 'ProcessingLogs', 'ConfigurationSettings', 'UserPreferences')");
+        }
+        catch (Microsoft.Data.Sqlite.SqliteException)
+        {
+            // sqlite_sequence table doesn't exist yet - ignore error
+        }
+    }
+
+    /// <summary>
+    /// Seeds the database with test data for a specific scenario.
+    /// Provides consistent test data setup for integration tests.
+    /// </summary>
+    public async Task SeedAsync(TestDataScenario scenario)
+    {
+        await CleanupAsync();
+        
+        switch (scenario)
+        {
+            case TestDataScenario.Workflow:
+                await TestDataSeeder.SeedWorkflowScenarioAsync(Context);
+                break;
+            case TestDataScenario.Performance:
+                await TestDataSeeder.SeedPerformanceTestDataAsync(Context, 100); // Smaller count for testing
+                break;
+            case TestDataScenario.SoftDelete:
+                await TestDataSeeder.SeedSoftDeleteScenarioAsync(Context);
+                break;
+            case TestDataScenario.Classification:
+                await TestDataSeeder.SeedClassificationTestDataAsync(Context);
+                break;
+            case TestDataScenario.Error:
+                await TestDataSeeder.SeedErrorScenarioAsync(Context);
+                break;
+            case TestDataScenario.Minimal:
+                await TestDataSeeder.SeedMinimalScenarioAsync(Context);
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(scenario), scenario, null);
+        }
+    }
+
+    /// <summary>
+    /// Creates a clean database state for each test method.
+    /// Use this for tests that need guaranteed isolation.
+    /// </summary>
+    public async Task<DatabaseFixture> GetFreshInstanceAsync()
+    {
+        await CleanupAsync();
+        return this;
     }
 
     public void Dispose()
