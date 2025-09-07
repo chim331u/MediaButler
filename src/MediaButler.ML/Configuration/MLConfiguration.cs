@@ -113,6 +113,11 @@ public class MLConfiguration
     /// Gets or sets additional ML features to enable/disable.
     /// </summary>
     public MLFeatureFlags Features { get; set; } = new();
+
+    /// <summary>
+    /// Gets or sets the CSV import configuration for training data.
+    /// </summary>
+    public CsvImportSettings CsvImport { get; set; } = new();
 }
 
 /// <summary>
@@ -260,4 +265,58 @@ public class MLFeatureFlags
     /// Caching improves performance for repeated predictions.
     /// </remarks>
     public bool EnablePredictionCaching { get; set; } = true;
+}
+
+/// <summary>
+/// Configuration for CSV training data import.
+/// </summary>
+public class CsvImportSettings
+{
+    /// <summary>
+    /// Gets or sets the default path for training data CSV files.
+    /// </summary>
+    /// <example>"data/training_data.csv"</example>
+    public string DefaultCsvPath { get; set; } = "data/training_data.csv";
+
+    /// <summary>
+    /// Gets or sets the CSV separator character.
+    /// </summary>
+    /// <remarks>Default: ';' (semicolon) as per specification</remarks>
+    public char Separator { get; set; } = ';';
+
+    /// <summary>
+    /// Gets or sets whether to normalize category names to uppercase.
+    /// </summary>
+    /// <remarks>Default: true (consistent with MediaButler conventions)</remarks>
+    public bool NormalizeCategoryNames { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets whether to skip duplicate filenames during import.
+    /// </summary>
+    /// <remarks>Default: true (avoid duplicate training samples)</remarks>
+    public bool SkipDuplicates { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets whether to validate file extensions during import.
+    /// </summary>
+    /// <remarks>Default: true (only import video files)</remarks>
+    public bool ValidateFileExtensions { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the maximum number of training samples to import (0 = no limit).
+    /// </summary>
+    /// <remarks>Default: 0 (import all samples)</remarks>
+    public int MaxSamples { get; set; } = 0;
+
+    /// <summary>
+    /// Gets or sets whether to automatically import CSV data on startup.
+    /// </summary>
+    /// <remarks>Default: false (manual import required)</remarks>
+    public bool AutoImportOnStartup { get; set; } = false;
+
+    /// <summary>
+    /// Gets or sets the backup path for imported training data.
+    /// </summary>
+    /// <example>"data/backups/training_data_backup.csv"</example>
+    public string BackupPath { get; set; } = "data/backups/training_data_backup.csv";
 }
