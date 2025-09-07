@@ -25,6 +25,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\MediaButler.Core\MediaButler.Core.csproj" />
     <ProjectReference Include="..\..\src\MediaButler.Services\MediaButler.Services.csproj" />
+    <ProjectReference Include="..\..\src\MediaButler.ML\MediaButler.ML.csproj" />
   </ItemGroup>
 
 </Project>

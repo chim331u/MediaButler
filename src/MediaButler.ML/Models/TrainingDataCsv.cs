@@ -46,13 +46,12 @@ public record TrainingDataCsvRow
         return new TrainingSample
         {
             Filename = FileName,
-            ExpectedCategory = Category,
-            AddedAt = DateTime.UtcNow,
-            Metadata = new Dictionary<string, object>
-            {
-                ["ImportId"] = Id,
-                ["Source"] = "CSV Import"
-            }
+            Category = Category,
+            Confidence = 0.9, // High confidence for imported data
+            Source = TrainingSampleSource.ImportedData,
+            CreatedAt = DateTime.UtcNow,
+            IsManuallyVerified = false,
+            Notes = $"Imported from CSV with ID: {Id}"
         };
     }
 }

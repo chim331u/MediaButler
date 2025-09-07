@@ -40,10 +40,12 @@ public static class ServiceCollectionExtensions
         services.Configure<MLConfiguration>(
             configuration.GetSection("MediaButler:ML"));
 
-        // TODO: Register ML service implementations when created
-        // services.AddScoped<ITokenizerService, TokenizerService>();
+        // Register ML service implementations
+        services.AddScoped<ITokenizerService, ML.Services.TokenizerService>();
+        services.AddScoped<IFeatureEngineeringService, ML.Services.FeatureEngineeringService>();
+        services.AddScoped<ITrainingDataService, ML.Services.TrainingDataService>();
+        // TODO: Register remaining services when implemented
         // services.AddScoped<IClassificationService, ClassificationService>();
-        // services.AddScoped<ITrainingDataService, TrainingDataService>();
 
         // TODO: Register background services when created
         // services.AddHostedService<MLProcessingBackgroundService>();
@@ -68,10 +70,12 @@ public static class ServiceCollectionExtensions
         // Register ML configuration with custom options
         services.Configure(configureOptions);
 
-        // TODO: Register ML service implementations when created
-        // services.AddScoped<ITokenizerService, TokenizerService>();
+        // Register ML service implementations  
+        services.AddScoped<ITokenizerService, ML.Services.TokenizerService>();
+        services.AddScoped<IFeatureEngineeringService, ML.Services.FeatureEngineeringService>();
+        services.AddScoped<ITrainingDataService, ML.Services.TrainingDataService>();
+        // TODO: Register remaining services when implemented
         // services.AddScoped<IClassificationService, ClassificationService>();
-        // services.AddScoped<ITrainingDataService, TrainingDataService>();
 
         return services;
     }

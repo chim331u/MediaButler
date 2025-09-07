@@ -36,28 +36,93 @@ public record TrainingDataSplit
 /// Represents a single training sample with filename and expected category.
 /// This is a value object for ML training data.
 /// </summary>
-public record TrainingSample
+/// <remarks>
+/// Following "Simple Made Easy" principles:
+/// - Values over state: Immutable training sample data
+/// - Single responsibility: Only holds one training example
+/// - Declarative: Clear training data without processing logic
+/// </remarks>
+public sealed record TrainingSample
 {
     /// <summary>
     /// Gets the filename for training.
     /// </summary>
-    public string Filename { get; init; } = string.Empty;
+    public required string Filename { get; init; }
 
     /// <summary>
     /// Gets the expected/correct category for this filename.
     /// </summary>
-    public string ExpectedCategory { get; init; } = string.Empty;
+    public required string Category { get; init; }
+
+    /// <summary>
+    /// Gets the confidence in this category assignment (0-1).
+    /// </summary>
+    public required double Confidence { get; init; }
+
+    /// <summary>
+    /// Gets the source of this training sample.
+    /// </summary>
+    public required TrainingSampleSource Source { get; init; }
 
     /// <summary>
     /// Gets when this sample was added to the training set.
     /// </summary>
-    public DateTime AddedAt { get; init; } = DateTime.UtcNow;
+    public required DateTime CreatedAt { get; init; }
 
     /// <summary>
-    /// Gets additional metadata for this sample.
+    /// Gets whether this sample was manually verified.
     /// </summary>
-    public IReadOnlyDictionary<string, object> Metadata { get; init; } = 
-        new Dictionary<string, object>();
+    public bool IsManuallyVerified { get; init; }
+
+    /// <summary>
+    /// Gets optional extracted features for this sample.
+    /// </summary>
+    public FeatureVector? ExtractedFeatures { get; init; }
+
+    /// <summary>
+    /// Gets optional notes about this training sample.
+    /// </summary>
+    public string? Notes { get; init; }
+
+    /// <summary>
+    /// Creates a training sample from user feedback.
+    /// </summary>
+    /// <param name="filename">Filename from user interaction</param>
+    /// <param name="category">User-confirmed category</param>
+    /// <param name="confidence">Confidence in assignment (default: 1.0)</param>
+    /// <returns>Training sample for dataset</returns>
+    public static TrainingSample FromUserFeedback(string filename, string category, double confidence = 1.0)
+    {
+        return new TrainingSample
+        {
+            Filename = filename,
+            Category = category,
+            Confidence = confidence,
+            Source = TrainingSampleSource.UserFeedback,
+            CreatedAt = DateTime.UtcNow,
+            IsManuallyVerified = true
+        };
+    }
+
+    /// <summary>
+    /// Creates a training sample from automated analysis.
+    /// </summary>
+    /// <param name="filename">Analyzed filename</param>
+    /// <param name="category">Predicted category</param>
+    /// <param name="confidence">Analysis confidence</param>
+    /// <returns>Training sample for dataset</returns>
+    public static TrainingSample FromAutomatedAnalysis(string filename, string category, double confidence)
+    {
+        return new TrainingSample
+        {
+            Filename = filename,
+            Category = category,
+            Confidence = confidence,
+            Source = TrainingSampleSource.AutomatedAnalysis,
+            CreatedAt = DateTime.UtcNow,
+            IsManuallyVerified = false
+        };
+    }
 }
 
 /// <summary>
@@ -209,4 +274,35 @@ public record ImportResult
     /// Gets the total processing time for the import.
     /// </summary>
     public TimeSpan ProcessingTime { get; init; }
+}
+
+/// <summary>
+/// Source of a training sample for tracking data quality.
+/// </summary>
+public enum TrainingSampleSource
+{
+    /// <summary>
+    /// Sample from user feedback/confirmation.
+    /// </summary>
+    UserFeedback = 0,
+    
+    /// <summary>
+    /// Sample from automated analysis.
+    /// </summary>
+    AutomatedAnalysis = 1,
+    
+    /// <summary>
+    /// Sample from imported data.
+    /// </summary>
+    ImportedData = 2,
+    
+    /// <summary>
+    /// Sample from manual curation.
+    /// </summary>
+    ManualCuration = 3,
+    
+    /// <summary>
+    /// Sample from synthetic generation.
+    /// </summary>
+    SyntheticGeneration = 4
 }

@@ -483,11 +483,12 @@ dotnet test  # All projects must show "Passed: X, Failed: 0"
 - File size correlation features
 - Regex pattern matching features
 
-**Task 2.1.4: Training Data Collection (2 hours)**
-- Sample filename dataset creation
-- Manual categorization for supervised learning
-- Data validation and cleaning
-- Train/validation/test split strategy
+**Task 2.1.4: Training Data Collection (2 hours)** ✅ **COMPLETED**
+- ✅ Sample filename dataset creation - Comprehensive Italian content with 43+ series patterns
+- ✅ Manual categorization for supervised learning - Advanced categorization system with confidence scoring
+- ✅ Data validation and cleaning - Complete validation pipeline with quality metrics
+- ✅ Train/validation/test split strategy - Stratified sampling with category balance preservation
+- **Result**: Complete TrainingDataService with Italian optimization, 15 unit tests, service registration updated
 
 **Task 2.1.5: ML Model Architecture (1 hour)**
 - Multi-class classification model design
