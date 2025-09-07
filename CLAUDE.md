@@ -31,7 +31,7 @@ Development follows a 4-sprint, 16-day plan emphasizing comprehensive testing an
 - **Sprint 2 (Days 5-8)**: ML Classification Engine with 30+ additional tests
 - **Sprint 3 (Days 9-12)**: File Operations & Automation with 25+ additional tests  
 - **Sprint 4 (Days 13-16)**: Web Interface & User Experience with 20+ additional tests
-- **Total Target**: 120+ comprehensive tests across all layers
+- **Total Target**: 250+ comprehensive tests across all layers
 
 ### Quality Metrics & Validation
 - **Test Coverage**: 82% line coverage maintained across all sprints
@@ -78,38 +78,34 @@ MediaButler/
 
 ### API Design Patterns
 
-#### Feature-Based Organization
+#### Controller-Based Organization
 ```
-MediaButler.API/Features/
-├── FileManagement/
-│   ├── ScanFiles/
-│   │   ├── ScanFilesEndpoint.cs     # Minimal API endpoint
-│   │   ├── ScanFilesCommand.cs      # Request model
-│   │   ├── ScanFilesHandler.cs      # Business logic
-│   │   └── ScanFilesValidator.cs    # Validation
-│   └── TrackFile/
-├── Classification/
-└── Monitoring/
+MediaButler.API/Controllers/
+├── FilesController.cs        # File operations and management
+├── ConfigController.cs       # Configuration management
+├── StatsController.cs        # Statistics and monitoring
+└── HealthController.cs       # Health checks and diagnostics
 ```
 
 #### Key Patterns Used
-- **Minimal APIs**: .NET 8 native approach, no controller overhead
-- **Command-Handler Pattern**: Direct handlers without MediatR complexity
-- **Result Pattern**: Explicit success/failure return types
-- **Background Services**: Separate processing from HTTP requests
+- **ASP.NET Core Controllers**: Traditional controller-based API with clear separation
+- **Repository Pattern**: Data access abstraction with UnitOfWork
+- **Dependency Injection**: Service layer composition via built-in DI
+- **Global Filters**: Model validation and exception handling
+- **Background Services**: Separate processing from HTTP requests  
 - **Options Pattern**: Strongly-typed configuration
 - **BaseEntity Pattern**: Consistent audit trail and soft delete across all entities
 
 #### Simple Dependencies Flow
 ```
-API Endpoints → Handlers → Services → Data Access
-             ↘ Shared Models ↙
+Controllers → Services → Repositories → Data Access
+           ↘ Shared Models ↙
 ```
 
 **Technology Stack:**
 - .NET 8 with C# 12
-- SQLite with Entity Framework Core
-- ASP.NET Core Minimal API
+- SQLite with Entity Framework Core  
+- ASP.NET Core Web API with Controllers
 - Serilog for logging
 - Swagger for API documentation
 - FastText for ML classification (20MB model)
@@ -144,13 +140,13 @@ dotnet run --project src/MediaButler.API --configuration Release
 
 ### Testing
 ```bash
-# Run all tests (target: 120+ tests)
+# Run all tests (target: 250+ tests)
 dotnet test
 
 # Run specific test projects
-dotnet test tests/MediaButler.Tests.Unit           # Unit tests (45+ tests)
-dotnet test tests/MediaButler.Tests.Integration    # Integration tests (30+ tests)
-dotnet test tests/MediaButler.Tests.Acceptance     # Acceptance tests (25+ tests)
+dotnet test tests/MediaButler.Tests.Unit           # Unit tests (100+ tests)
+dotnet test tests/MediaButler.Tests.Integration    # Integration tests (80+ tests)
+dotnet test tests/MediaButler.Tests.Acceptance     # Acceptance tests (70+ tests)
 
 # Run tests with coverage (target: 82% coverage)
 dotnet test --collect:"XPlat Code Coverage"
@@ -253,10 +249,15 @@ Key endpoint categories:
 
 ## Configuration
 
-The system uses `appsettings.json` for configuration with the following key sections:
+The system uses `appsettings.json` for configuration located in `src/MediaButler.API/` with the following key sections:
 - `MediaButler.Paths`: Watch folder, media library, pending review paths
-- `MediaButler.ML`: Model configuration, thresholds, training intervals
+- `MediaButler.ML`: Model configuration, thresholds, training intervals  
 - `MediaButler.Butler`: Scan intervals, retry logic, auto-organize settings
+
+**Configuration Files:**
+- `src/MediaButler.API/appsettings.json` - Base configuration
+- `src/MediaButler.API/appsettings.Development.json` - Development overrides
+- `src/MediaButler.API/appsettings.Production.json` - Production overrides
 
 ## Development Philosophy - "Simple Made Easy"
 
@@ -391,9 +392,9 @@ MediaButler follows a comprehensive 3-tier testing strategy that prioritizes rea
 ### Test Projects Structure
 ```
 tests/
-├── MediaButler.Tests.Unit/           # Fast, isolated unit tests (45+ tests)
-├── MediaButler.Tests.Integration/    # Component integration tests (30+ tests)
-└── MediaButler.Tests.Acceptance/     # End-to-end business scenarios (25+ tests)
+├── MediaButler.Tests.Unit/           # Fast, isolated unit tests (100+ tests)
+├── MediaButler.Tests.Integration/    # Component integration tests (80+ tests)
+└── MediaButler.Tests.Acceptance/     # End-to-end business scenarios (70+ tests)
 ```
 
 ### Testing Philosophy
@@ -407,17 +408,17 @@ Following Rich Hickey's principle that tests don't solve complexity but help ver
 
 #### **Test Pyramid Approach**
 ```
-    /\     Acceptance Tests (25+ tests, slow, high confidence)
+    /\     Acceptance Tests (70+ tests, slow, high confidence)
    /  \    - End-to-end file processing workflows
   /____\   - API contract validation
  /      \  - ML classification accuracy
 /__________\ 
-Integration Tests (30+ tests, medium speed)
+Integration Tests (80+ tests, medium speed)
 - Database operations with BaseEntity
 - File system interactions  
 - ML model integration
 
-Unit Tests (45+ tests, fast, low-level)
+Unit Tests (100+ tests, fast, low-level)
 - Pure function testing
 - Business logic validation
 - Edge case coverage
@@ -425,7 +426,7 @@ Unit Tests (45+ tests, fast, low-level)
 
 ### Test Categories and Responsibilities
 
-#### **1. Unit Tests (MediaButler.Tests.Unit) - 45+ Tests**
+#### **1. Unit Tests (MediaButler.Tests.Unit) - 100+ Tests**
 **Purpose**: Test individual components in isolation
 **Speed**: <100ms per test
 **Scope**: Single class or function
@@ -459,7 +460,7 @@ public class TokenizerServiceTests
 }
 ```
 
-#### **2. Integration Tests (MediaButler.Tests.Integration) - 30+ Tests**
+#### **2. Integration Tests (MediaButler.Tests.Integration) - 80+ Tests**
 **Purpose**: Test component interactions and external dependencies
 **Speed**: 100ms-2s per test
 **Scope**: Multiple components working together
@@ -497,7 +498,7 @@ public class FileClassificationIntegrationTests : IClassFixture<DatabaseFixture>
 }
 ```
 
-#### **3. Acceptance Tests (MediaButler.Tests.Acceptance) - 25+ Tests**
+#### **3. Acceptance Tests (MediaButler.Tests.Acceptance) - 70+ Tests**
 **Purpose**: Validate complete business scenarios and API contracts
 **Speed**: 1s-10s per test
 **Scope**: Full system workflows
@@ -598,7 +599,7 @@ dotnet test --collect:"XPlat Code Coverage" --logger:trx
 
 #### **Quality Gates**
 - **Minimum 82% Code Coverage**: Focus on critical paths
-- **120+ Total Tests**: Comprehensive coverage across all layers
+- **250+ Total Tests**: Comprehensive coverage across all layers
 - **All Tests Must Pass**: No skipped or ignored tests in CI
 - **Performance Benchmarks**: Classification speed and memory usage tests  
 - **API Contract Validation**: Ensure backward compatibility
