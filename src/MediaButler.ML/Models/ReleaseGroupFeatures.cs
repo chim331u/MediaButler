@@ -194,7 +194,7 @@ public sealed record ReleaseGroupFeatures
 
     private static ReleaseGroupRegion DetermineRegion(string name)
     {
-        var italianIndicators = new[] { "ITA", "NovaRip", "DarkSideMux", "Pir8" };
+        var italianIndicators = new[] { "ITA", "NOVARIP", "DARKSIDEMUX", "PIR8" };
         var englishIndicators = new[] { "ENG", "PROPER", "REPACK" };
 
         var upperName = name.ToUpperInvariant();

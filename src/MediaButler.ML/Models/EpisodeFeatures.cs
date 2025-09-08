@@ -176,7 +176,7 @@ public sealed record EpisodeFeatures
         var specialKeywords = new[] 
         { 
             "pilot", "finale", "special", "ova", "movie", "film", 
-            "recap", "summary", "extra", "bonus", "director" 
+            "recap", "summary", "extra", "bonus", "director" , "final"
         };
         
         return specialKeywords.Any(keyword => 
