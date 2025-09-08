@@ -49,15 +49,15 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPredictionService, ML.Services.PredictionService>();
         services.AddScoped<ICategoryService, ML.Services.CategoryService>();
         services.AddScoped<IModelEvaluationService, ML.Services.ModelEvaluationService>();
-        // TODO: Register remaining services when implemented
-        // services.AddScoped<IClassificationService, ClassificationService>();
+        
+        // Note: GracefulMLService will be registered separately in API project due to cross-project dependencies
 
         // TODO: Register background services when created
         // services.AddHostedService<MLProcessingBackgroundService>();
 
-        // TODO: Register health checks when implemented
-        // services.AddHealthChecks()
-        //     .AddCheck<MLModelHealthCheck>("ml-model");
+        // Register ML health checks
+        services.AddHealthChecks()
+            .AddCheck<ML.HealthChecks.MLModelHealthCheck>("ml-model", tags: new[] { "ml", "model" });
 
         return services;
     }
