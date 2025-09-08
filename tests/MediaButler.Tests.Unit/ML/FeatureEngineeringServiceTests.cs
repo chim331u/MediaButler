@@ -24,8 +24,8 @@ public class FeatureEngineeringServiceTests
         _config = Options.Create(new MLConfiguration
         {
             ModelPath = "/tmp/test.bin",
-            ConfidenceThreshold = 0.7,
-            MaxTrainingIterations = 100
+            AutoClassifyThreshold = 0.7f,
+            SuggestionThreshold = 0.5f
         });
         _service = new FeatureEngineeringService(_mockLogger.Object, _config);
     }

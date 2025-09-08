@@ -44,6 +44,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITokenizerService, ML.Services.TokenizerService>();
         services.AddScoped<IFeatureEngineeringService, ML.Services.FeatureEngineeringService>();
         services.AddScoped<ITrainingDataService, ML.Services.TrainingDataService>();
+        services.AddScoped<IMLModelService, ML.Services.MLModelService>();
+        services.AddScoped<IModelTrainingService, ML.Services.ModelTrainingService>();
         // TODO: Register remaining services when implemented
         // services.AddScoped<IClassificationService, ClassificationService>();
 
@@ -74,6 +76,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITokenizerService, ML.Services.TokenizerService>();
         services.AddScoped<IFeatureEngineeringService, ML.Services.FeatureEngineeringService>();
         services.AddScoped<ITrainingDataService, ML.Services.TrainingDataService>();
+        services.AddScoped<IMLModelService, ML.Services.MLModelService>();
+        services.AddScoped<IModelTrainingService, ML.Services.ModelTrainingService>();
         // TODO: Register remaining services when implemented
         // services.AddScoped<IClassificationService, ClassificationService>();
 
