@@ -46,6 +46,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITrainingDataService, ML.Services.TrainingDataService>();
         services.AddScoped<IMLModelService, ML.Services.MLModelService>();
         services.AddScoped<IModelTrainingService, ML.Services.ModelTrainingService>();
+        services.AddScoped<IPredictionService, ML.Services.PredictionService>();
         // TODO: Register remaining services when implemented
         // services.AddScoped<IClassificationService, ClassificationService>();
 
@@ -78,6 +79,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITrainingDataService, ML.Services.TrainingDataService>();
         services.AddScoped<IMLModelService, ML.Services.MLModelService>();
         services.AddScoped<IModelTrainingService, ML.Services.ModelTrainingService>();
+        services.AddScoped<IPredictionService, ML.Services.PredictionService>();
         // TODO: Register remaining services when implemented
         // services.AddScoped<IClassificationService, ClassificationService>();
 
