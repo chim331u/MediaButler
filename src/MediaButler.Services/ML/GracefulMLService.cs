@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging;
 using MediaButler.Core.Common;
-using MediaButler.Core.Models;
 using MediaButler.ML.Interfaces;
 using MediaButler.ML.Models;
 
@@ -104,7 +103,7 @@ public class GracefulMLService
                     }).ToList() ?? new List<CategorySuggestion>(),
                 RequiresManualReview = predictionResult.Value.Confidence < 0.85f,
                 FallbackReason = null,
-                ProcessingTimeMs = predictionResult.Value.ProcessingTimeMs
+                ProcessingTimeMs = (int)predictionResult.Value.ProcessingTimeMs
             };
 
             _logger.LogDebug("ML classification completed for {Filename} with confidence {Confidence:P2}", 
@@ -169,7 +168,7 @@ public class GracefulMLService
                 return await GetAvailableCategoriesAsync(cancellationToken); // Fallback to default
             }
 
-            var categories = registryResult.Value.RegisteredCategories.Keys.ToList();
+            var categories = registryResult.Value.Categories.Keys.ToList();
             return Result<IReadOnlyList<string>>.Success(categories.AsReadOnly());
         }
         catch (Exception ex)
@@ -187,7 +186,7 @@ public class GracefulMLService
     /// <param name="originalPrediction">Original ML prediction</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Success result or graceful failure</returns>
-    public async Task<Result<Unit>> RecordFeedbackAsync(
+    public async Task<Result> RecordFeedbackAsync(
         string filename,
         string actualCategory,
         string? originalPrediction,
@@ -196,7 +195,7 @@ public class GracefulMLService
         if (!IsMLAvailable)
         {
             _logger.LogInformation("ML services unavailable, feedback for {Filename} will not be recorded for model training", filename);
-            return Result<Unit>.Success(Unit.Value); // Gracefully ignore
+            return Result.Success(); // Gracefully ignore
         }
 
         try
@@ -205,21 +204,20 @@ public class GracefulMLService
             {
                 Filename = filename,
                 ActualCategory = actualCategory,
-                PredictedCategory = originalPrediction,
-                FeedbackType = originalPrediction == actualCategory ? FeedbackType.Correct : FeedbackType.Incorrect,
-                Confidence = 1.0f, // User confirmation is 100% confident
-                Timestamp = DateTime.UtcNow
+                PredictedCategory = originalPrediction ?? "UNKNOWN",
+                PredictionConfidence = 0.0, // No original prediction confidence available
+                Source = FeedbackSource.UserCorrection
             };
 
             await _categoryService!.RecordUserFeedbackAsync(feedback);
             
             _logger.LogDebug("User feedback recorded for {Filename}: {ActualCategory}", filename, actualCategory);
-            return Result<Unit>.Success(Unit.Value);
+            return Result.Success();
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to record user feedback for {Filename}, continuing without ML training update", filename);
-            return Result<Unit>.Success(Unit.Value); // Gracefully ignore feedback failures
+            return Result.Success(); // Gracefully ignore feedback failures
         }
     }
 }

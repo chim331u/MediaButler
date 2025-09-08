@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\MediaButler.Core\MediaButler.Core.csproj" />
     <ProjectReference Include="..\MediaButler.Data\MediaButler.Data.csproj" />
+    <ProjectReference Include="..\MediaButler.ML\MediaButler.ML.csproj" />
   </ItemGroup>
 
   <ItemGroup>
