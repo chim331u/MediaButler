@@ -162,9 +162,9 @@ public class FeatureEngineeringServiceTests
         var qualityInfo = new QualityInfo
         {
             Resolution = "1080p",
-            Source = "BluRay",
-            Codec = "x265",
-            Tier = QualityTier.UltraHigh
+            Source = "BluRay", 
+            VideoCodec = "x265",
+            QualityTier = QualityTier.UltraHigh
         };
 
         // Act
@@ -185,8 +185,8 @@ public class FeatureEngineeringServiceTests
         {
             Resolution = "480p",
             Source = "DVDRip", 
-            Codec = null,
-            Tier = QualityTier.Low
+            VideoCodec = null,
+            QualityTier = QualityTier.Low
         };
 
         // Act
@@ -244,7 +244,7 @@ public class FeatureEngineeringServiceTests
             {
                 Season = 5,
                 Episode = 16,
-                PatternType = EpisodePatternType.SeasonEpisode,
+                PatternType = EpisodePatternType.Standard,
                 RawPattern = "S05E16",
                 AdditionalInfo = "Final"
             }
@@ -307,7 +307,7 @@ public class FeatureEngineeringServiceTests
 
         // Assert
         featureNames.Should().HaveCount(result.Value.FeatureCount);
-        featureNames.Should().AllSatisfy(name => !string.IsNullOrEmpty(name));
+        featureNames.Should().OnlyContain(name => !string.IsNullOrEmpty(name));
     }
 
     // Helper methods for creating test data
@@ -325,12 +325,12 @@ public class FeatureEngineeringServiceTests
             {
                 Resolution = "1080p",
                 Source = "WEB-DLMux",
-                Codec = "x264",
-                Tier = QualityTier.High
+                VideoCodec = "x264",
+                QualityTier = QualityTier.High
             },
             EpisodeInfo = null,
             ReleaseGroup = "NovaRip",
-            Metadata = new Dictionary<string, object>().AsReadOnly()
+            Metadata = new Dictionary<string, string>().AsReadOnly()
         };
     }
 
@@ -343,7 +343,7 @@ public class FeatureEngineeringServiceTests
             {
                 Season = 8,
                 Episode = 4,
-                PatternType = EpisodePatternType.SeasonEpisodeExtended,
+                PatternType = EpisodePatternType.Alternative,
                 RawPattern = "8x04",
                 AdditionalInfo = "L Ultimo Degli Stark"
             }
@@ -369,12 +369,12 @@ public class FeatureEngineeringServiceTests
             {
                 Resolution = tokens.FirstOrDefault(t => t.Contains("1080") || t.Contains("720")),
                 Source = tokens.FirstOrDefault(t => t.Contains("web") || t.Contains("hdtv")),
-                Codec = tokens.FirstOrDefault(t => t.Contains("x264") || t.Contains("x265")),
-                Tier = tokens.Any(t => t.Contains("1080")) ? QualityTier.High : QualityTier.Standard
+                VideoCodec = tokens.FirstOrDefault(t => t.Contains("x264") || t.Contains("x265")),
+                QualityTier = tokens.Any(t => t.Contains("1080")) ? QualityTier.High : QualityTier.Standard
             },
             EpisodeInfo = null,
             ReleaseGroup = tokens.LastOrDefault(),
-            Metadata = new Dictionary<string, object>().AsReadOnly()
+            Metadata = new Dictionary<string, string>().AsReadOnly()
         };
     }
 }

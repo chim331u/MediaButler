@@ -205,7 +205,8 @@ public class ModelTrainingServiceTests
         
         // Estimates should be reasonable for ARM32 deployment
         estimate.EstimatedPeakMemoryMB.Should().BeInRange(50, 300);
-        estimate.EstimatedTrainingTime.Should().BeInRange(TimeSpan.FromMinutes(1), TimeSpan.FromHours(2));
+        estimate.EstimatedTrainingTime.Should().BeGreaterThan(TimeSpan.FromMinutes(1));
+        estimate.EstimatedTrainingTime.Should().BeLessThan(TimeSpan.FromHours(2));
         estimate.EstimatedCpuUtilization.Should().BeInRange(50, 100);
         estimate.EstimatedTempDiskSpaceMB.Should().BeGreaterThan(0);
         estimate.EstimateConfidence.Should().BeInRange(0.0, 1.0);
@@ -298,7 +299,7 @@ public class ModelTrainingServiceTests
                 Filename = "short", // Too short
                 Category = "TEST",
                 Confidence = 0.3, // Low confidence
-                Source = TrainingSampleSource.Manual,
+                Source = TrainingSampleSource.ManualCuration,
                 CreatedAt = DateTime.UtcNow
             },
             new TrainingSample
@@ -306,7 +307,7 @@ public class ModelTrainingServiceTests
                 Filename = "sample-fake-virus.avi", // Forbidden pattern
                 Category = "TEST",
                 Confidence = 0.9,
-                Source = TrainingSampleSource.Manual,
+                Source = TrainingSampleSource.ManualCuration,
                 CreatedAt = DateTime.UtcNow
             }
         };
@@ -346,7 +347,7 @@ public class ModelTrainingServiceTests
                 Filename = $"Breaking.Bad.S01E{i:D2}.1080p.BluRay.x264-NovaRip.mkv",
                 Category = "BREAKING BAD",
                 Confidence = 0.95,
-                Source = TrainingSampleSource.Manual,
+                Source = TrainingSampleSource.ManualCuration,
                 CreatedAt = DateTime.UtcNow
             });
         }
@@ -359,7 +360,7 @@ public class ModelTrainingServiceTests
                 Filename = $"Gomorra.S01E{i:D2}.ITA.720p.HDTV.x264-DarkSideMux.avi",
                 Category = "GOMORRA",
                 Confidence = 0.9,
-                Source = TrainingSampleSource.Manual,
+                Source = TrainingSampleSource.ManualCuration,
                 CreatedAt = DateTime.UtcNow
             });
         }
@@ -469,7 +470,7 @@ public class ModelTrainingServiceTests
         
         // Should create optimized architecture
         optimizationResult.OptimizedArchitecture.Should().NotBeNull();
-        optimizationResult.OptimizedArchitecture.Algorithm.Hyperparameters.Should().Be(optimizationResult.BestHyperparameters);
+        optimizationResult.OptimizedArchitecture.Algorithm.Hyperparameters.Should().BeEquivalentTo(optimizationResult.BestHyperparameters);
     }
 
     [Fact]
@@ -608,7 +609,7 @@ public class ModelTrainingServiceTests
                 Filename = filename,
                 Category = "BREAKING BAD",
                 Confidence = 0.95 + (Random.Shared.NextDouble() * 0.05),
-                Source = TrainingSampleSource.UserConfirmed,
+                Source = TrainingSampleSource.UserFeedback,
                 CreatedAt = DateTime.UtcNow.AddDays(-Random.Shared.Next(30))
             });
         }
@@ -643,7 +644,7 @@ public class ModelTrainingServiceTests
                 Filename = italianFilenames[i],
                 Category = italianCategories[i],
                 Confidence = 0.88 + (Random.Shared.NextDouble() * 0.1),
-                Source = TrainingSampleSource.UserConfirmed,
+                Source = TrainingSampleSource.UserFeedback,
                 CreatedAt = DateTime.UtcNow.AddDays(-Random.Shared.Next(30))
             });
         }
@@ -673,7 +674,7 @@ public class ModelTrainingServiceTests
                 Filename = otherFilenames[i],
                 Category = otherCategories[i],
                 Confidence = 0.92 + (Random.Shared.NextDouble() * 0.08),
-                Source = TrainingSampleSource.UserConfirmed,
+                Source = TrainingSampleSource.UserFeedback,
                 CreatedAt = DateTime.UtcNow.AddDays(-Random.Shared.Next(30))
             });
         }
