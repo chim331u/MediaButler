@@ -1,4 +1,5 @@
 using System;
+using MediaButler.Core.Events;
 
 namespace MediaButler.Core.Common;
 
@@ -43,6 +44,18 @@ public abstract class BaseEntity
     /// </summary>
     /// <value>true if the entity is active; false if it has been soft-deleted.</value>
     public bool IsActive { get; set; } = true;
+
+    /// <summary>
+    /// Collection of domain events raised by this entity.
+    /// Events are processed asynchronously to maintain loose coupling.
+    /// </summary>
+    private readonly List<IDomainEvent> _domainEvents = new();
+
+    /// <summary>
+    /// Gets the collection of domain events raised by this entity.
+    /// Events should be processed and cleared after handling.
+    /// </summary>
+    public IReadOnlyCollection<IDomainEvent> DomainEvents => _domainEvents.AsReadOnly();
 
     /// <summary>
     /// Marks this entity as modified by updating the LastUpdateDate to the current UTC time.
@@ -103,5 +116,33 @@ public abstract class BaseEntity
                 ? $"Restored: {reason}" 
                 : $"{Note}\nRestored: {reason}";
         }
+    }
+
+    /// <summary>
+    /// Adds a domain event to be published when this entity is saved.
+    /// Events represent significant business occurrences that other parts of the system may react to.
+    /// </summary>
+    /// <param name="domainEvent">The domain event to add.</param>
+    protected void AddDomainEvent(IDomainEvent domainEvent)
+    {
+        _domainEvents.Add(domainEvent ?? throw new ArgumentNullException(nameof(domainEvent)));
+    }
+
+    /// <summary>
+    /// Removes a specific domain event from the collection.
+    /// </summary>
+    /// <param name="domainEvent">The domain event to remove.</param>
+    protected void RemoveDomainEvent(IDomainEvent domainEvent)
+    {
+        _domainEvents.Remove(domainEvent);
+    }
+
+    /// <summary>
+    /// Clears all domain events from the collection.
+    /// This is typically called after events have been processed and published.
+    /// </summary>
+    public void ClearDomainEvents()
+    {
+        _domainEvents.Clear();
     }
 }

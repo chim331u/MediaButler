@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using MediaButler.Core.Entities;
 using MediaButler.Core.Common;
 using MediaButler.Data.Configurations;
+using MediaButler.Core.Services;
 
 namespace MediaButler.Data;
 
@@ -18,12 +19,16 @@ namespace MediaButler.Data;
 /// </remarks>
 public class MediaButlerDbContext : DbContext
 {
+    private readonly IDomainEventPublisher? _domainEventPublisher;
+
     /// <summary>
     /// Initializes a new instance of the MediaButlerDbContext class.
     /// </summary>
     /// <param name="options">The options to be used by the DbContext.</param>
-    public MediaButlerDbContext(DbContextOptions<MediaButlerDbContext> options) : base(options)
+    /// <param name="domainEventPublisher">Optional service for publishing domain events.</param>
+    public MediaButlerDbContext(DbContextOptions<MediaButlerDbContext> options, IDomainEventPublisher? domainEventPublisher = null) : base(options)
     {
+        _domainEventPublisher = domainEventPublisher;
     }
 
     /// <summary>
@@ -126,7 +131,7 @@ public class MediaButlerDbContext : DbContext
     /// <summary>
     /// Asynchronously saves all changes made in the context to the underlying database.
     /// This override ensures that audit properties in BaseEntity are properly
-    /// updated before saving changes.
+    /// updated before saving changes and publishes domain events.
     /// </summary>
     /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete.</param>
     /// <returns>A task that represents the asynchronous save operation. The task result contains the number of state entries written to the database.</returns>
@@ -134,11 +139,28 @@ public class MediaButlerDbContext : DbContext
     /// This method automatically updates LastUpdateDate for modified entities
     /// and sets CreatedDate for new entities that inherit from BaseEntity,
     /// ensuring consistent audit trail without requiring manual intervention.
+    /// It also publishes domain events after successful save operations.
     /// </remarks>
-    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         UpdateAuditProperties();
-        return base.SaveChangesAsync(cancellationToken);
+        
+        // Collect entities with domain events before saving
+        var entitiesWithEvents = ChangeTracker.Entries<BaseEntity>()
+            .Where(e => e.Entity.DomainEvents.Any())
+            .Select(e => e.Entity)
+            .ToList();
+
+        // Save changes to database
+        var result = await base.SaveChangesAsync(cancellationToken);
+
+        // Publish domain events after successful save
+        if (_domainEventPublisher != null && entitiesWithEvents.Any())
+        {
+            await _domainEventPublisher.PublishEventsAsync(entitiesWithEvents, cancellationToken);
+        }
+
+        return result;
     }
 
     /// <summary>

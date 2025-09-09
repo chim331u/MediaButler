@@ -1,6 +1,7 @@
 using System;
 using MediaButler.Core.Common;
 using MediaButler.Core.Enums;
+using MediaButler.Core.Events;
 
 namespace MediaButler.Core.Entities;
 
@@ -81,6 +82,13 @@ public class TrackedFile : BaseEntity
     public string? TargetPath { get; set; }
 
     /// <summary>
+    /// Gets or sets the actual path where the file was moved after successful organization.
+    /// May differ from TargetPath due to conflict resolution or path adjustments.
+    /// </summary>
+    /// <value>The final path where the file resides, or null if not yet moved.</value>
+    public string? MovedToPath { get; set; }
+
+    /// <summary>
     /// Gets or sets the timestamp when ML classification was completed.
     /// Used for performance tracking and audit purposes.
     /// </summary>
@@ -116,6 +124,37 @@ public class TrackedFile : BaseEntity
     public int RetryCount { get; set; } = 0;
 
     /// <summary>
+    /// Factory method to create a new TrackedFile with automatic domain event generation.
+    /// </summary>
+    /// <param name="hash">The SHA256 hash of the file content</param>
+    /// <param name="fileName">The original filename including extension</param>
+    /// <param name="originalPath">The full path where the file was originally discovered</param>
+    /// <param name="fileSize">The file size in bytes</param>
+    /// <returns>A new TrackedFile instance with FileDiscoveredEvent raised</returns>
+    public static TrackedFile CreateNew(string hash, string fileName, string originalPath, long fileSize)
+    {
+        var file = new TrackedFile
+        {
+            Hash = hash ?? throw new ArgumentNullException(nameof(hash)),
+            FileName = fileName ?? throw new ArgumentNullException(nameof(fileName)),
+            OriginalPath = originalPath ?? throw new ArgumentNullException(nameof(originalPath)),
+            FileSize = fileSize,
+            Status = FileStatus.New
+        };
+
+        // Raise domain event for file discovery
+        file.AddDomainEvent(new FileDiscoveredEvent
+        {
+            FileHash = hash,
+            FileName = fileName,
+            OriginalPath = originalPath,
+            FileSize = fileSize
+        });
+
+        return file;
+    }
+
+    /// <summary>
     /// Marks this file as classified by the ML system.
     /// Updates the classification timestamp and transitions to Classified status.
     /// </summary>
@@ -127,11 +166,34 @@ public class TrackedFile : BaseEntity
         if (confidence < 0.0m || confidence > 1.0m)
             throw new ArgumentException("Confidence must be between 0.0 and 1.0", nameof(confidence));
 
+        var previousStatus = Status;
         SuggestedCategory = suggestedCategory ?? throw new ArgumentNullException(nameof(suggestedCategory));
         Confidence = confidence;
         ClassifiedAt = DateTime.UtcNow;
         Status = FileStatus.Classified;
         MarkAsModified();
+
+        // Raise domain events
+        AddDomainEvent(new FileClassifiedEvent
+        {
+            FileHash = Hash,
+            FileName = FileName,
+            SuggestedCategory = suggestedCategory,
+            Confidence = confidence,
+            ClassifiedAt = ClassifiedAt.Value
+        });
+
+        if (previousStatus != FileStatus.Classified)
+        {
+            AddDomainEvent(new FileStatusChangedEvent
+            {
+                FileHash = Hash,
+                FileName = FileName,
+                PreviousStatus = previousStatus,
+                NewStatus = FileStatus.Classified,
+                Reason = "ML classification completed"
+            });
+        }
     }
 
     /// <summary>
@@ -142,10 +204,35 @@ public class TrackedFile : BaseEntity
     /// <param name="targetPath">The calculated target path for file organization.</param>
     public void ConfirmCategory(string confirmedCategory, string targetPath)
     {
+        var previousStatus = Status;
+        var previousSuggestedCategory = SuggestedCategory;
+
         Category = confirmedCategory ?? throw new ArgumentNullException(nameof(confirmedCategory));
         TargetPath = targetPath ?? throw new ArgumentNullException(nameof(targetPath));
         Status = FileStatus.ReadyToMove;
         MarkAsModified();
+
+        // Raise domain events
+        AddDomainEvent(new FileCategoryConfirmedEvent
+        {
+            FileHash = Hash,
+            FileName = FileName,
+            ConfirmedCategory = confirmedCategory,
+            TargetPath = targetPath,
+            PreviousSuggestedCategory = previousSuggestedCategory
+        });
+
+        if (previousStatus != FileStatus.ReadyToMove)
+        {
+            AddDomainEvent(new FileStatusChangedEvent
+            {
+                FileHash = Hash,
+                FileName = FileName,
+                PreviousStatus = previousStatus,
+                NewStatus = FileStatus.ReadyToMove,
+                Reason = "Category confirmed by user"
+            });
+        }
     }
 
     /// <summary>
@@ -155,10 +242,35 @@ public class TrackedFile : BaseEntity
     /// <param name="finalPath">The actual path where the file was moved (may differ from TargetPath due to conflicts).</param>
     public void MarkAsMoved(string finalPath)
     {
-        TargetPath = finalPath ?? throw new ArgumentNullException(nameof(finalPath));
+        var previousStatus = Status;
+        
+        MovedToPath = finalPath ?? throw new ArgumentNullException(nameof(finalPath));
         MovedAt = DateTime.UtcNow;
         Status = FileStatus.Moved;
         MarkAsModified();
+
+        // Raise domain events
+        AddDomainEvent(new FileMovedEvent
+        {
+            FileHash = Hash,
+            FileName = FileName,
+            OriginalPath = OriginalPath,
+            FinalPath = finalPath,
+            Category = Category ?? "UNKNOWN",
+            MovedAt = MovedAt.Value
+        });
+
+        if (previousStatus != FileStatus.Moved)
+        {
+            AddDomainEvent(new FileStatusChangedEvent
+            {
+                FileHash = Hash,
+                FileName = FileName,
+                PreviousStatus = previousStatus,
+                NewStatus = FileStatus.Moved,
+                Reason = "File successfully moved to final location"
+            });
+        }
     }
 
     /// <summary>
@@ -167,12 +279,51 @@ public class TrackedFile : BaseEntity
     /// </summary>
     /// <param name="errorMessage">A description of the error that occurred.</param>
     /// <param name="shouldRetry">Whether this file should be queued for retry.</param>
-    public void RecordError(string errorMessage, bool shouldRetry = true)
+    /// <param name="exception">Optional exception details for debugging.</param>
+    public void RecordError(string errorMessage, bool shouldRetry = true, Exception? exception = null)
     {
+        var previousStatus = Status;
+        
         LastError = errorMessage ?? throw new ArgumentNullException(nameof(errorMessage));
         LastErrorAt = DateTime.UtcNow;
         RetryCount++;
         Status = shouldRetry ? FileStatus.Retry : FileStatus.Error;
         MarkAsModified();
+
+        // Raise domain events
+        AddDomainEvent(new FileProcessingErrorEvent
+        {
+            FileHash = Hash,
+            FileName = FileName,
+            ErrorMessage = errorMessage,
+            Exception = exception?.ToString(),
+            PreviousStatus = previousStatus,
+            NewStatus = Status,
+            RetryCount = RetryCount
+        });
+
+        if (shouldRetry && RetryCount <= 3)
+        {
+            AddDomainEvent(new FileRetryScheduledEvent
+            {
+                FileHash = Hash,
+                FileName = FileName,
+                Reason = errorMessage,
+                RetryAttempt = RetryCount,
+                MaxRetries = 3
+            });
+        }
+
+        if (previousStatus != Status)
+        {
+            AddDomainEvent(new FileStatusChangedEvent
+            {
+                FileHash = Hash,
+                FileName = FileName,
+                PreviousStatus = previousStatus,
+                NewStatus = Status,
+                Reason = $"Error occurred: {errorMessage}"
+            });
+        }
     }
 }

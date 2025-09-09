@@ -1,3 +1,7 @@
+using MediaButler.Core.Services;
+using MediaButler.Data.Repositories;
+using MediaButler.Services.Domain;
+using MediaButler.Services.EventHandlers;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -38,6 +42,22 @@ public static class ServiceCollectionExtensions
         services.AddHostedService<FileProcessingService>();
         services.AddHostedService<FileDiscoveryHostedService>();
         services.AddHostedService<ProcessingCoordinatorHostedService>();
+
+        // Register processing log repository for audit trail
+        services.AddScoped<IProcessingLogRepository, ProcessingLogRepository>();
+        
+        // Register domain event publisher
+        services.AddScoped<IDomainEventPublisher, DomainEventPublisher>();
+        
+        // Register event handlers for audit trail
+        services.AddScoped<ProcessingLogEventHandler>();
+        
+        // Register concurrency handling services
+        services.AddScoped<ConcurrencyHandler>();
+        services.AddScoped<TransactionalFileService>();
+        
+        // Register MediatR for domain event handling
+        services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblyContaining<ProcessingLogEventHandler>());
 
         return services;
     }
