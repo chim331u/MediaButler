@@ -1,5 +1,6 @@
 using MediaButler.Core.Common;
 using MediaButler.Core.Entities;
+using MediaButler.Core.Enums;
 using MediaButler.Data.Repositories;
 using Microsoft.Extensions.Logging;
 

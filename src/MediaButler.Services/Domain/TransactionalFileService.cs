@@ -13,7 +13,7 @@ namespace MediaButler.Services.Domain;
 /// </summary>
 public class TransactionalFileService
 {
-    private readonly IFileRepository _fileRepository;
+    private readonly ITrackedFileRepository _trackedFileRepository;
     private readonly IProcessingLogRepository _processingLogRepository;
     private readonly ConcurrencyHandler _concurrencyHandler;
     private readonly ILogger<TransactionalFileService> _logger;
@@ -22,12 +22,12 @@ public class TransactionalFileService
     private static readonly TimeSpan RetryDelay = TimeSpan.FromMilliseconds(100);
 
     public TransactionalFileService(
-        IFileRepository fileRepository,
+        ITrackedFileRepository trackedFileRepository,
         IProcessingLogRepository processingLogRepository,
         ConcurrencyHandler concurrencyHandler,
         ILogger<TransactionalFileService> logger)
     {
-        _fileRepository = fileRepository ?? throw new ArgumentNullException(nameof(fileRepository));
+        _trackedFileRepository = trackedFileRepository ?? throw new ArgumentNullException(nameof(trackedFileRepository));
         _processingLogRepository = processingLogRepository ?? throw new ArgumentNullException(nameof(processingLogRepository));
         _concurrencyHandler = concurrencyHandler ?? throw new ArgumentNullException(nameof(concurrencyHandler));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -59,13 +59,7 @@ public class TransactionalFileService
             try
             {
                 // Get the current file state
-                var getCurrentResult = await _fileRepository.GetByHashAsync(fileHash, cancellationToken);
-                if (!getCurrentResult.IsSuccess)
-                {
-                    return Result<TrackedFile>.Failure($"Failed to get current file state: {getCurrentResult.Error}");
-                }
-
-                var currentFile = getCurrentResult.Value;
+                var currentFile = await _trackedFileRepository.GetByHashAsync(fileHash, cancellationToken);
                 if (currentFile == null)
                 {
                     return Result<TrackedFile>.Failure($"File with hash {fileHash} not found");
@@ -98,11 +92,8 @@ public class TransactionalFileService
                 var resolvedFile = concurrencyResult.Value;
 
                 // Update the file in repository
-                var updateResult = await _fileRepository.UpdateAsync(resolvedFile, cancellationToken);
-                if (!updateResult.IsSuccess)
-                {
-                    return Result<TrackedFile>.Failure($"Failed to update file: {updateResult.Error}");
-                }
+                _trackedFileRepository.Update(resolvedFile);
+                await _trackedFileRepository.SaveChangesAsync(cancellationToken);
 
                 _logger.LogDebug("Successfully updated file {FileHash} after {Attempts} attempt(s) for operation: {Operation}", 
                     fileHash, attempt, operation);
@@ -258,8 +249,8 @@ public class TransactionalFileService
 /// </summary>
 public record BulkUpdateResult
 {
-    public int TotalFiles { get; init; }
-    public int SuccessfulUpdates { get; init; }
-    public int FailedUpdates { get; init; }
-    public List<string> Errors { get; init; } = new();
+    public int TotalFiles { get; set; }
+    public int SuccessfulUpdates { get; set; }
+    public int FailedUpdates { get; set; }
+    public List<string> Errors { get; set; } = new();
 }
