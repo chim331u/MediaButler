@@ -7,6 +7,7 @@ using MediaButler.Services.Interfaces;
 using MediaButler.API.Middleware;
 using MediaButler.API.Filters;
 using MediaButler.ML.Extensions;
+using MediaButler.Services.Background;
 using Serilog;
 using Serilog.Events;
 
@@ -33,6 +34,9 @@ builder.Services.AddScoped<IStatsService, StatsService>();
 
 // Add ML services with configuration
 builder.Services.AddMediaButlerML(builder.Configuration);
+
+// Add background processing services
+builder.Services.AddBackgroundServices();
 
 // Add API services with validation
 builder.Services.AddControllers(options =>
