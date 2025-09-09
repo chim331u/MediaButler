@@ -31,9 +31,13 @@ public static class ServiceCollectionExtensions
         // Register file discovery service as singleton
         services.AddSingleton<IFileDiscoveryService, FileDiscoveryService>();
         
+        // Register processing coordinator as singleton
+        services.AddSingleton<IProcessingCoordinator, ProcessingCoordinator>();
+        
         // Register background services as hosted services
         services.AddHostedService<FileProcessingService>();
         services.AddHostedService<FileDiscoveryHostedService>();
+        services.AddHostedService<ProcessingCoordinatorHostedService>();
 
         return services;
     }
