@@ -35,8 +35,8 @@ builder.Services.AddScoped<IStatsService, StatsService>();
 // Add ML services with configuration
 builder.Services.AddMediaButlerML(builder.Configuration);
 
-// Add background processing services
-builder.Services.AddBackgroundServices();
+// Add background processing services with configuration
+builder.Services.AddBackgroundServices(builder.Configuration);
 
 // Add API services with validation
 builder.Services.AddControllers(options =>

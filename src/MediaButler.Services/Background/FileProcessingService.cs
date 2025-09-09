@@ -1,6 +1,7 @@
 using MediaButler.Core.Entities;
 using MediaButler.Core.Enums;
 using MediaButler.Services.Interfaces;
+using MediaButler.ML.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -134,21 +135,42 @@ public class FileProcessingService : BackgroundService
             // Create service scope for proper dependency injection lifecycle
             using var scope = _serviceScopeFactory.CreateScope();
             var fileService = scope.ServiceProvider.GetRequiredService<IFileService>();
+            var predictionService = scope.ServiceProvider.GetRequiredService<IPredictionService>();
             
-            // TODO: Integrate ML classification service when available
-            // For now, simulate classification with placeholder category
-            var placeholderCategory = "UNCATEGORIZED";
-            var placeholderConfidence = 0.5m; // Low confidence to trigger manual review
+            // Perform ML classification using the filename
+            _logger.LogDebug("Starting ML classification for file: {FileName}", file.FileName);
+            var mlResult = await predictionService.PredictAsync(file.FileName, cancellationToken);
             
-            // Update file with classification results
+            if (!mlResult.IsSuccess)
+            {
+                _logger.LogWarning("ML classification failed for {FileName}: {Error}", 
+                    file.FileName, mlResult.Error);
+                
+                // Fallback to manual categorization
+                var fallbackResult = await fileService.UpdateClassificationAsync(
+                    file.Hash, "UNCATEGORIZED", 0.3m, cancellationToken);
+                
+                if (!fallbackResult.IsSuccess)
+                {
+                    await fileService.RecordErrorAsync(file.Hash, 
+                        $"Both ML classification and fallback failed: {mlResult.Error}", 
+                        null, cancellationToken);
+                }
+                return;
+            }
+            
+            var classification = mlResult.Value;
+            var confidence = (decimal)classification.Confidence;
+            
+            // Update file with ML classification results
             var classificationResult = await fileService.UpdateClassificationAsync(
-                file.Hash, placeholderCategory, placeholderConfidence, cancellationToken);
+                file.Hash, classification.PredictedCategory, confidence, cancellationToken);
             
             if (classificationResult.IsSuccess)
             {
                 _logger.LogInformation(
-                    "Successfully processed file {FileHash} ({FileName}). Category: {Category}, Confidence: {Confidence}",
-                    file.Hash, file.FileName, placeholderCategory, placeholderConfidence);
+                    "Successfully processed file {FileHash} ({FileName}). Category: {Category}, Confidence: {Confidence:F2}, Decision: {Decision}",
+                    file.Hash, file.FileName, classification.PredictedCategory, confidence, classification.Decision);
             }
             else
             {
@@ -159,7 +181,7 @@ public class FileProcessingService : BackgroundService
                 // Record processing error
                 await fileService.RecordErrorAsync(
                     file.Hash, 
-                    $"Classification failed: {classificationResult.Error}",
+                    $"Classification update failed: {classificationResult.Error}",
                     null,
                     cancellationToken);
             }
