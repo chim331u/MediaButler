@@ -1,7 +1,9 @@
 using MediaButler.Core.Services;
 using MediaButler.Data.Repositories;
+using MediaButler.Services.BackgroundServices;
 using MediaButler.Services.Domain;
 using MediaButler.Services.EventHandlers;
+using MediaButler.Services.Monitoring;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -55,6 +57,13 @@ public static class ServiceCollectionExtensions
         // Register concurrency handling services
         services.AddScoped<ConcurrencyHandler>();
         services.AddScoped<TransactionalFileService>();
+        
+        // Register metrics collection services
+        services.AddSingleton<IMetricsCollectionService, MetricsCollectionService>();
+        services.AddHostedService<MetricsMonitoringHostedService>();
+        
+        // Register metrics event handler for automatic metrics collection
+        services.AddScoped<MetricsEventHandler>();
         
         // Register MediatR for domain event handling
         services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblyContaining<ProcessingLogEventHandler>());

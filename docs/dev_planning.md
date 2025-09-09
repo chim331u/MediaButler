@@ -617,17 +617,27 @@ dotnet test  # All projects must show "Passed: X, Failed: 0"
 - ✅ **ENHANCED**: Error handling with batch retry logic and individual file fallback processing
 - **Result**: Production-ready processing coordinator orchestrating ML classification with 69 acceptance tests passing
 
-**Task 2.3.4: Integration with Domain (1.5 hours)**
-- Update TrackedFile entities with ML results
-- Trigger domain events for state changes
-- Maintain audit trail in ProcessingLog
-- Handle concurrent access scenarios
+**Task 2.3.4: Integration with Domain (1.5 hours) ✅ COMPLETED**
+- ✅ Update TrackedFile entities with ML results - Enhanced TrackedFile with MovedToPath field and domain events
+- ✅ Trigger domain events for state changes - Comprehensive event system with FileDiscoveredEvent, FileClassifiedEvent, etc.
+- ✅ Maintain audit trail in ProcessingLog - Full ProcessingLog repository with statistics and filtering
+- ✅ Handle concurrent access scenarios - ConcurrencyHandler with optimistic concurrency control and conflict resolution
+- ✅ **ENHANCED**: Complete domain event publishing system with MediatR integration
+- ✅ **ENHANCED**: TransactionalFileService for thread-safe file operations with retry logic
+- ✅ **ENHANCED**: BaseEntity enhanced with domain events support and lifecycle management
+- ✅ **ENHANCED**: Event handlers for automatic audit trail creation from domain events
+**Result**: Comprehensive domain integration with audit trails, event-driven architecture, and robust concurrency control
 
-**Task 2.3.5: Monitoring and Metrics (30 minutes)**
-- Processing queue metrics
-- ML classification success rates
-- Performance counters for throughput
-- Error rate monitoring and alerting
+**Task 2.3.5: Monitoring and Metrics (30 minutes) ✅ COMPLETED**
+- ✅ Processing queue metrics - Comprehensive queue depth, throughput, and processing time tracking
+- ✅ ML classification success rates - Accuracy rates, confidence distributions, and category performance
+- ✅ Performance counters for throughput - Operation timing, resource utilization, and system performance
+- ✅ Error rate monitoring and alerting - Real-time error tracking with automated alert generation
+- ✅ **ENHANCED**: Complete metrics collection service with ARM32 optimized in-memory storage
+- ✅ **ENHANCED**: Background monitoring service with health checks and automated cleanup
+- ✅ **ENHANCED**: RESTful API endpoints for metrics access and system health monitoring
+- ✅ **ENHANCED**: Event-driven metrics collection integrated with domain events
+**Result**: Production-ready monitoring and metrics system providing comprehensive system visibility
 
 #### Sprint 2.4: ML Testing & Validation (Day 8, 8 hours)
 **Focus**: Comprehensive testing of ML pipeline with mock strategies

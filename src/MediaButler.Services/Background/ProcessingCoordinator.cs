@@ -3,6 +3,7 @@ using System.Diagnostics;
 using MediaButler.Core.Common;
 using MediaButler.Core.Entities;
 using MediaButler.Core.Enums;
+using MediaButler.Core.Services;
 using MediaButler.ML.Interfaces;
 using MediaButler.Services.Interfaces;
 using Microsoft.Extensions.Logging;
@@ -17,6 +18,7 @@ public class ProcessingCoordinator : IProcessingCoordinator, IDisposable
 {
     private readonly IFileService _fileService;
     private readonly IPredictionService _predictionService;
+    private readonly IMetricsCollectionService? _metricsService;
     private readonly ILogger<ProcessingCoordinator> _logger;
     
     // ARM32 optimized configuration
@@ -43,11 +45,13 @@ public class ProcessingCoordinator : IProcessingCoordinator, IDisposable
     public ProcessingCoordinator(
         IFileService fileService,
         IPredictionService predictionService,
-        ILogger<ProcessingCoordinator> logger)
+        ILogger<ProcessingCoordinator> logger,
+        IMetricsCollectionService? metricsService = null)
     {
         _fileService = fileService ?? throw new ArgumentNullException(nameof(fileService));
         _predictionService = predictionService ?? throw new ArgumentNullException(nameof(predictionService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _metricsService = metricsService;
 
         _processingLock = new SemaphoreSlim(MaxConcurrentBatches, MaxConcurrentBatches);
         _processingMetrics = new ConcurrentDictionary<string, ProcessingMetric>();
@@ -204,6 +208,17 @@ public class ProcessingCoordinator : IProcessingCoordinator, IDisposable
         _logger.LogInformation("Starting batch processing {BatchId}: {FileCount} files, Priority: {Priority}",
             batchId, files.Count, isHighPriority ? "HIGH" : "NORMAL");
 
+        // Record batch processing start metrics
+        if (_metricsService != null)
+        {
+            foreach (var file in files)
+            {
+                await _metricsService.RecordProcessingEventAsync(
+                    ProcessingEventType.ClassificationStarted, 
+                    file.Hash);
+            }
+        }
+
         // Fire batch started event
         BatchProcessingStarted?.Invoke(this, new BatchProcessingStartedEventArgs
         {
@@ -335,7 +350,17 @@ public class ProcessingCoordinator : IProcessingCoordinator, IDisposable
         try
         {
             // Use batch prediction for efficiency
+            var batchStopwatch = Stopwatch.StartNew();
             var predictionResult = await _predictionService.PredictBatchAsync(filenames, cancellationToken);
+            batchStopwatch.Stop();
+
+            // Record batch processing performance
+            if (_metricsService != null)
+            {
+                await _metricsService.RecordPerformanceDataAsync(
+                    OperationType.BatchProcessing,
+                    batchStopwatch.Elapsed);
+            }
             
             if (predictionResult.IsSuccess)
             {
@@ -386,7 +411,17 @@ public class ProcessingCoordinator : IProcessingCoordinator, IDisposable
                     
                     try
                     {
+                        var singleStopwatch = Stopwatch.StartNew();
                         var singleResult = await _predictionService.PredictAsync(file.FileName, cancellationToken);
+                        singleStopwatch.Stop();
+
+                        // Record individual classification performance
+                        if (_metricsService != null)
+                        {
+                            await _metricsService.RecordPerformanceDataAsync(
+                                OperationType.MLClassification,
+                                singleStopwatch.Elapsed);
+                        }
                         
                         if (singleResult.IsSuccess)
                         {
