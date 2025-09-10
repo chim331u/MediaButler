@@ -167,7 +167,8 @@ public class TrackedFileTests : TestBase
         file.MarkAsMoved(finalPath);
         
         // Assert
-        file.TargetPath.Should().Be(finalPath);
+        file.MovedToPath.Should().Be(finalPath);
+        file.TargetPath.Should().Be("/temp/target/path"); // TargetPath should remain unchanged
         file.MovedAt.Should().BeAfter(beforeMove);
         file.MovedAt.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromSeconds(1));
         file.Status.Should().Be(FileStatus.Moved);
