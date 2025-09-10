@@ -125,7 +125,7 @@ public class TokenizerServiceTests
     [InlineData("One.Piece.1089.Sub.ITA.720p.WEB-DLMux.x264-UBi.mkv", 
         "720p", "x264", "WEB-DLMux", QualityTier.Standard)]
     [InlineData("My.Hero.Academia.6x25.The.High.Deep.Blue.Sky.Sub.ITA.1080p.WEB-DLMux.H264-UBi.mkv", 
-        "1080p", null, "WEB-DLMux", QualityTier.High)]
+        "1080p", "H264", "WEB-DLMux", QualityTier.High)]
     public void ExtractQualityInfo_WithItalianQualityPatterns_ReturnsCorrectQualityInfo(
         string filename, string? expectedResolution, string? expectedCodec, string? expectedSource, QualityTier expectedTier)
     {
