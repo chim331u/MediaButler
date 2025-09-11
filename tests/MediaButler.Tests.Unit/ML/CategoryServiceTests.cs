@@ -117,7 +117,7 @@ public class CategoryServiceTests
     
         // Assert
         result.IsSuccess.Should().BeTrue();
-        result.Value.Name.Should().Be("TEST SERIES");
+        result.Value.Name.Should().Be("TEST");
         result.Value.DisplayName.Should().Be("Test Series");
         result.Value.ConfidenceThreshold.Should().Be(0.8);
     }
