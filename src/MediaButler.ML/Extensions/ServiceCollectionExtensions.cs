@@ -49,6 +49,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPredictionService, ML.Services.PredictionService>();
         services.AddScoped<ICategoryService, ML.Services.CategoryService>();
         services.AddScoped<IModelEvaluationService, ML.Services.ModelEvaluationService>();
+        services.AddScoped<IClassificationService, ML.Services.ClassificationService>();
         
         // Note: GracefulMLService will be registered separately in API project due to cross-project dependencies
 
@@ -84,8 +85,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPredictionService, ML.Services.PredictionService>();
         services.AddScoped<ICategoryService, ML.Services.CategoryService>();
         services.AddScoped<IModelEvaluationService, ML.Services.ModelEvaluationService>();
-        // TODO: Register remaining services when implemented
-        // services.AddScoped<IClassificationService, ClassificationService>();
+        services.AddScoped<IClassificationService, ML.Services.ClassificationService>();
 
         return services;
     }
