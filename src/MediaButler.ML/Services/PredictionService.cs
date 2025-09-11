@@ -375,14 +375,24 @@ public sealed class PredictionService : IPredictionService
         SimplePredictionResult prediction, 
         TimeSpan processingTime)
     {
-        // Determine classification decision based on confidence thresholds
-        var decision = prediction.Confidence switch
+        // Determine classification decision based on configuration thresholds
+        ClassificationDecision decision;
+        if (prediction.Confidence >= _config.AutoClassifyThreshold)
         {
-            >= 0.85 => ClassificationDecision.AutoClassify,
-            >= 0.5 => ClassificationDecision.SuggestWithAlternatives,
-            >= 0.3 => ClassificationDecision.RequestManualCategorization,
-            _ => ClassificationDecision.Unreliable
-        };
+            decision = ClassificationDecision.AutoClassify;
+        }
+        else if (prediction.Confidence >= _config.SuggestionThreshold)
+        {
+            decision = ClassificationDecision.SuggestWithAlternatives;
+        }
+        else if (prediction.Confidence >= _config.ManualCategorizationThreshold)
+        {
+            decision = ClassificationDecision.RequestManualCategorization;
+        }
+        else
+        {
+            decision = ClassificationDecision.Unreliable;
+        }
 
         return new ClassificationResult
         {

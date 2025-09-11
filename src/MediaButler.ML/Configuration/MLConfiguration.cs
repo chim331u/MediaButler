@@ -46,6 +46,17 @@ public class MLConfiguration
     public float SuggestionThreshold { get; set; } = 0.50f;
 
     /// <summary>
+    /// Gets or sets the confidence threshold for requesting manual categorization.
+    /// Files with confidence between this and SuggestionThreshold require manual categorization.
+    /// </summary>
+    /// <remarks>
+    /// Default: 0.25 (25% confidence)
+    /// Range: 0.0 to SuggestionThreshold
+    /// Files below this threshold are considered unreliable.
+    /// </remarks>
+    public float ManualCategorizationThreshold { get; set; } = 0.25f;
+
+    /// <summary>
     /// Gets or sets the maximum time allowed for a single classification in milliseconds.
     /// </summary>
     /// <remarks>
