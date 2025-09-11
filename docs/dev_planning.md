@@ -692,161 +692,234 @@ dotnet test  # All projects must show "Passed: X, Failed: 0"
 
 ---
 
-### 🏃‍♂️ SPRINT 3: File Operations & Automation (Days 9-12)
-**Theme**: Safe file operations with clear separation from business logic
-**Goal**: Automated file organization with rollback capabilities
-**Success Criteria**: Zero data loss, successful file organization, audit trail
+### 🏃‍♂️ SPRINT 3: File Operations & Automation - SIMPLIFIED (Days 9-12)
+**Theme**: Safe, atomic file operations with minimal complexity
+**Goal**: Reliable file organization with clear rollback capabilities
+**Success Criteria**: Zero data loss, atomic operations, clear audit trail
 
-#### Sprint 3.1: File System Monitoring (Day 9, 8 hours)
-**Focus**: Watch folder monitoring as independent service
+**Core Simplification Principles**:
+1. **Eliminate Over-Engineering**: Combine file watching with discovery (same concern), merge organization logic with file operations (atomic operations), remove separate "automation testing" - integrate with implementation
+2. **Focus on Essential Safety**: File operations must be atomic and reversible, progress tracking for user confidence, clear error handling without complex state machines
+3. **Reduce Moving Parts**: Single file operation service instead of multiple engines, simple state-based approach instead of complex pipelines, direct integration with existing domain events
 
-**Task 3.1.1: File Watcher Service (2 hours)**
-- FileSystemWatcher implementation with proper disposal
-- Event filtering for relevant file types
-- Debouncing for file write completion
-- Cross-platform path handling
-- Service lifecycle management
+#### Sprint 3.1: File Discovery & Monitoring (Day 9, 8 hours)
+**Focus**: Simple, reliable file detection without over-abstraction
 
-**Task 3.1.2: File Discovery Pipeline (2 hours)**
-- New file detection and validation
-- Hash generation with streaming for large files
-- Duplicate detection across watch folders
-- File metadata extraction
-- Integrity verification mechanisms
+**Task 3.1.1: Unified File Discovery Service (3 hours)**
+Combines: File watching + discovery + validation
+Implementation Strategy:
+- `IFileDiscoveryService` (single interface)
+  - FileSystemWatcher for real-time detection
+  - Periodic scanning for missed files  
+  - File validation (size, type, accessibility)
+  - Integration with existing FileService.RegisterFileAsync()
 
-**Task 3.1.3: Watch Folder Management (2 hours)**
-- Multiple watch folder support
-- Folder configuration and validation
-- Permission checking and error handling
-- Recursive vs non-recursive monitoring options
-- Exclude patterns and filtering rules
+Key Simplifications:
+- No separate "pipeline" - direct integration with domain
+- Use existing TrackedFile states instead of new abstractions
+- Single responsibility: find files, validate them, register them
+- Leverage existing BaseEntity audit trail
 
-**Task 3.1.4: Event Processing (1.5 hours)**
-- File system event queue management
-- Event deduplication and batching
-- Error handling for inaccessible files
-- Progress reporting for large operations
-- Cancellation support for long-running tasks
+**Task 3.1.2: File Operation Foundation (3 hours)**
+Focus: Core file operations with atomic safety
+Implementation Strategy:
+- `IFileOperationService` (single service)
+  - MoveFileAsync(hash, targetPath) - atomic operation
+  - CreateDirectoryStructure(path) - safe directory creation
+  - ValidateOperation(hash, targetPath) - pre-flight checks
+  - RecordOperation(operation) - audit trail integration
 
-**Task 3.1.5: Integration Testing (30 minutes)**
-- File watcher reliability testing
-- Large file handling validation
-- Multiple file type support
-- Performance under high file volume
-- Resource cleanup verification
+Key Simplifications:
+- No "transaction management" layer - use OS atomic operations
+- No separate "progress tracking" service - use existing domain events
+- Direct integration with ProcessingLog for audit trail
+- Simple copy-then-delete for cross-drive operations
 
-#### Sprint 3.2: Organization Engine (Day 10, 8 hours)
-**Focus**: Path generation and directory structure management
+**Task 3.1.3: Path Generation Logic (2 hours)**
+Focus: Simple template-based path generation
+Implementation Strategy:
+- `IPathGenerationService`
+  - GenerateTargetPath(trackedFile, category, template)
+  - ValidateTargetPath(path) - collision detection
+  - SanitizePathComponents(seriesName) - cross-platform safety
+  - ResolvePathConflicts(basePath, filename)
 
-**Task 3.2.1: Path Generation Rules (2.5 hours)**
-- Template-based target path generation
-- Series/season/episode formatting rules
-- Quality-based subfolder organization
-- Special handling for movies vs TV shows
-- Custom naming convention support
+Key Simplifications:
+- Use simple string templates instead of complex rule engines
+- Leverage existing Italian content patterns from ML service
+- No separate "naming convention engine" - built into path generation
+- Direct integration with ConfigurationService for templates
 
-**Task 3.2.2: Directory Structure Management (2 hours)**
-- Target directory creation with proper permissions
-- Existing structure validation and repair
-- Conflict resolution strategies
-- Space availability checking
-- Cross-platform path compatibility
+#### Sprint 3.2: File Organization Engine (Day 10, 8 hours)
+**Focus**: Orchestrate file operations safely
 
-**Task 3.2.3: Naming Convention Engine (2 hours)**
-- Configurable naming templates
-- Variable substitution system
-- Validation of generated names
-- Conflict resolution with existing files
-- Length and character restrictions handling
+**Task 3.2.1: Organization Coordinator (4 hours)**
+Combines: Organization policies + file movement + progress tracking
+Implementation Strategy:
+- `IFileOrganizationService`
+  - OrganizeFileAsync(hash, confirmedCategory)
+  - PreviewOrganization(hash) - dry run without execution
+  - ValidateOrganizationSafety(hash, targetPath)
+  - HandleOrganizationError(hash, error) - recovery logic
 
-**Task 3.2.4: Organization Policies (1 hour)**
-- Rule-based organization decisions
-- User preference integration
-- Category-specific organization rules
-- Quality-based folder structures
-- Exception handling for edge cases
+Key Simplifications:
+- Single service orchestrates entire operation
+- Use existing domain events for progress notifications
+- Leverage existing ProcessingLog for operation history
+- No separate "transaction coordinator" - keep operations atomic
 
-**Task 3.2.5: Preview and Validation (30 minutes)**
-- Organization preview without execution
-- Path validation before file operations
-- Collision detection and resolution
-- User confirmation workflow design
-- Rollback planning for operations
+**Task 3.2.2: Safety and Rollback Mechanisms (2 hours)**
+Focus: Simple rollback without complex transaction systems
+Implementation Strategy:
+- `IRollbackService`
+  - CreateRollbackPoint(hash, originalPath, operation)
+  - ExecuteRollback(operationId) - reverse the operation
+  - CleanupRollbackHistory(olderThan) - maintenance
+  - ValidateRollbackIntegrity(operationId)
 
-#### Sprint 3.3: File Movement System (Day 11, 8 hours)
-**Focus**: Safe file operations with atomic transactions
+Key Simplifications:
+- Store rollback info in existing ProcessingLog table
+- Simple file-based rollback (move file back)
+- No complex "two-phase commit" - rely on atomic OS operations
+- Integration with existing BaseEntity soft delete patterns
 
-**Task 3.3.1: File Operation Engine (2.5 hours)**
-- Atomic file move operations
-- Copy-then-delete for cross-drive moves
-- Progress tracking for large files
-- Verification of successful operations
-- Rollback mechanisms for failures
+**Task 3.2.3: Integration with ML Pipeline (2 hours)**
+Focus: Connect classification results to file organization
+Implementation Strategy:
+- Extend existing FileProcessingService from Sprint 2
+- Add organization step after ML classification
+- Use existing domain events for coordination
+- No new services - enhance existing workflow
 
-**Task 3.3.2: Transaction Management (2 hours)**
-- File operation transaction log
-- Two-phase commit for file operations
-- Recovery from partial failures
-- Cleanup of temporary files
-- Consistency checking after operations
+#### Sprint 3.3: Error Handling & Monitoring (Day 11, 8 hours)
+**Focus**: Robust error handling without overcomplication
 
-**Task 3.3.3: Progress Tracking (1.5 hours)**
-- Real-time progress reporting
-- Bandwidth throttling options
-- ETA calculation for operations
-- Cancellation support mid-operation
-- Status persistence across restarts
+**Task 3.3.1: Error Classification & Recovery (3 hours)**
+Implementation Strategy:
+Error Categories (simple enum):
+- TransientError (retry automatically)
+- PermissionError (user intervention needed)
+- SpaceError (insufficient disk space)
+- PathError (invalid target path)
+- UnknownError (manual investigation)
 
-**Task 3.3.4: Error Recovery (1.5 hours)**
-- Comprehensive error classification
-- Automatic retry with exponential backoff
-- Manual intervention workflow
-- Quarantine for problematic files
-- Detailed error logging and reporting
+Key Simplifications:
+- Use existing retry logic from background services
+- Leverage existing ProcessingLog for error tracking
+- No separate "error handling pipeline" - built into operations
+- Direct integration with existing notification system
 
-**Task 3.3.5: Safety Mechanisms (30 minutes)**
-- Pre-flight checks for operations
-- Disk space validation
-- Permission verification
-- Backup verification before destructive operations
-- Recovery procedures documentation
+**Task 3.3.2: Monitoring Integration (2 hours)**
+Focus: Extend existing monitoring from Sprint 1
+Implementation Strategy:
+- Add file operation metrics to existing StatsService
+- Extend existing health checks with file operation status
+- Use existing structured logging for operation tracking
+- No separate monitoring service - enhance existing infrastructure
 
-#### Sprint 3.4: Automation Testing (Day 12, 8 hours)
-**Focus**: End-to-end automation validation with safety checks
+**Task 3.3.3: User Notification System (3 hours)**
+Focus: Simple notification without complex event systems
+Implementation Strategy:
+- `INotificationService` (simple interface)
+  - NotifyOperationStarted(hash, operation)
+  - NotifyOperationProgress(hash, progress)
+  - NotifyOperationCompleted(hash, result)
+  - NotifyOperationFailed(hash, error, canRetry)
 
-**Task 3.4.1: File Operation Testing (2.5 hours)**
-- File move operation reliability
-- Cross-drive operation testing
-- Large file handling validation
-- Permission-based error scenarios
-- Rollback mechanism verification
+Key Simplifications:
+- Use existing domain events for notifications
+- Leverage existing SignalR infrastructure from Sprint 4 planning
+- No separate "alert system" - built into existing logging
+- Direct integration with existing API endpoints
 
-**Task 3.4.2: Integration Workflow Testing (2.5 hours)**
-- Complete file discovery to organization workflow
-- ML classification integration with file operations
-- Error handling throughout the pipeline
-- Concurrent operation handling
-- System resource management
+#### Sprint 3.4: Testing & Validation (Day 12, 8 hours)
+**Focus**: Comprehensive testing with realistic scenarios
 
-**Task 3.4.3: Performance Testing (1.5 hours)**
-- Bulk file processing performance
-- Memory usage during large operations
-- I/O throughput optimization
-- Network storage performance
-- System responsiveness under load
+**Task 3.4.1: Integration Testing (4 hours)**
+Focus: End-to-end file operation workflows
+Test Scenarios:
+- Complete file discovery → organization → verification workflow
+- Error scenarios with rollback verification
+- Cross-drive file operations
+- Permission-based failures and recovery
+- Concurrent file operations
 
-**Task 3.4.4: Safety and Recovery Testing (1 hour)**
-- Power failure simulation and recovery
-- Disk full scenarios and handling
-- Network interruption resilience
-- Corrupted file handling
-- Manual intervention workflow testing
+**Task 3.4.2: Safety Testing (2 hours)**
+Focus: Data loss prevention validation
+Test Scenarios:
+- Power failure simulation (incomplete operations)
+- Disk space exhaustion during operations
+- File system permission changes mid-operation
+- Network storage disconnection scenarios
 
-**Task 3.4.5: Documentation and Runbooks (30 minutes)**
-- File operation troubleshooting guide
-- Recovery procedures documentation
-- Performance tuning guidelines
-- Configuration best practices
+**Task 3.4.3: Performance & ARM32 Validation (2 hours)**
+Focus: Resource constraint compliance
+Test Scenarios:
+- Memory usage during large file operations (<300MB)
+- I/O performance with multiple concurrent operations
+- File operation speed on ARM32 hardware simulation
+- Resource cleanup after operation completion
+
+### KEY SIMPLIFICATIONS ACHIEVED
+
+**1. Reduced Service Count**
+- Before: 8+ separate services across file watching, discovery, organization, movement, etc.
+- After: 4 core services with clear, single responsibilities
+
+**2. Eliminated Complex Abstractions**
+Removed:
+- Separate "transaction management" layer
+- Complex "pipeline" abstractions
+- Separate "naming convention engine"
+- Independent "progress tracking" service
+
+Kept Simple:
+- Direct file operations with OS-level atomicity
+- Integration with existing domain services
+- Simple template-based path generation
+
+**3. Leveraged Existing Infrastructure**
+Reuse from Sprint 1:
+- BaseEntity audit trail for operation history
+- ProcessingLog for detailed operation tracking
+- Domain events for coordination
+- ConfigurationService for settings
+- StatsService for monitoring
+- Structured logging infrastructure
+
+**4. Atomic Operations Over Transactions**
+Philosophy: Use OS-level atomic file operations instead of application-level transaction management
+- Copy-then-delete for cross-drive moves (atomic at OS level)
+- Directory creation with proper error handling
+- Simple rollback: move file back to original location
+
+**5. Error Handling Without State Machines**
+Simple Error Strategy:
+- Classify errors into actionable categories
+- Use existing retry mechanisms from background services
+- Store error context in ProcessingLog
+- Clear user notification about required actions
+
+### SPRINT SUCCESS CRITERIA (SIMPLIFIED)
+
+**Functional Requirements**:
+- Files are discovered and registered in database with full audit trail
+- File organization operations are atomic and reversible
+- Clear error messages guide user actions
+- All file operations maintain data integrity
+
+**Performance Requirements**:
+- File operations complete within ARM32 memory constraints (<300MB)
+- Progress updates provide user confidence during operations
+- Error recovery completes without manual file system intervention
+
+**Safety Requirements**:
+- Zero data loss in any failure scenario
+- All operations can be reversed via rollback mechanism
+- File integrity is verified before and after operations
+- Clear audit trail for all file movements
+
+This simplified Sprint 3 maintains all essential safety and functionality requirements while following "Simple Made Easy" principles more strictly. The reduction in complexity should make implementation faster and more reliable while still achieving the core goal of safe, automated file organization.
 
 ---
 
@@ -1012,9 +1085,9 @@ dotnet test  # All projects must show "Passed: X, Failed: 0"
 ## Quality Metrics & Success Criteria
 
 ### Testing Targets by Sprint
-- **Sprint 1**: 45+ tests (Unit: 25, Integration: 12, Acceptance: 8)
-- **Sprint 2**: 30+ additional tests (ML: 15, Integration: 10, Performance: 5)
-- **Sprint 3**: 25+ additional tests (File Operations: 15, Safety: 10)
+- **Sprint 1**: 45+ tests (Unit: 25, Integration: 12, Acceptance: 8) ✅ **ACHIEVED: 243 tests**
+- **Sprint 2**: 30+ additional tests (ML: 15, Integration: 10, Performance: 5) ✅ **COMPLETE**
+- **Sprint 3**: 25+ additional tests (Simplified: Integration: 15, Safety: 10) - **REDUCED from 8+ services to 4 core services**
 - **Sprint 4**: 20+ additional tests (UI Components: 15, E2E: 5)
 - **Total**: 120+ comprehensive tests
 
@@ -1044,9 +1117,9 @@ dotnet test  # All projects must show "Passed: X, Failed: 0"
 ## Risk Management
 
 ### Technical Risks by Sprint
-**Sprint 1**: Database migration complexity, Repository pattern over-abstraction
-**Sprint 2**: ML model accuracy, Training data quality, Performance under load
-**Sprint 3**: File system permissions, Cross-platform compatibility, Data loss scenarios
+**Sprint 1**: Database migration complexity, Repository pattern over-abstraction ✅ **MITIGATED: 243 tests passing**
+**Sprint 2**: ML model accuracy, Training data quality, Performance under load ✅ **COMPLETE**  
+**Sprint 3**: **SIMPLIFIED RISKS** - File system permissions, Cross-platform compatibility, Data loss scenarios (REDUCED: No complex transaction management, no over-abstracted pipelines)
 **Sprint 4**: Real-time update complexity, Mobile responsiveness, Browser compatibility
 
 ### Mitigation Strategies
@@ -1145,12 +1218,14 @@ User Validation Results - Sprint 1:
 - [ ] Graceful degradation when ML unavailable
 - [ ] Comprehensive ML pipeline testing
 
-### Sprint 3 Success
-- [ ] Zero data loss in file operations
-- [ ] Atomic file operations with rollback
-- [ ] Cross-platform file system compatibility
-- [ ] Progress tracking for all operations
-- [ ] Complete audit trail for file movements
+### Sprint 3 Success (SIMPLIFIED)
+- [ ] **Zero data loss in file operations** - Atomic OS-level operations only
+- [ ] **Simple atomic file operations with rollback** - OS copy-then-delete, no complex transactions
+- [ ] **Cross-platform file system compatibility** - Direct OS integration
+- [ ] **Progress tracking via existing domain events** - No separate progress service
+- [ ] **Complete audit trail via existing ProcessingLog** - Reuse Sprint 1 infrastructure
+- [ ] **4 core services maximum** - Reduced from 8+ complex services
+- [ ] **Leverage existing infrastructure** - No duplicate monitoring/logging services
 
 ### Sprint 4 Success
 - [ ] Responsive design on all device sizes
