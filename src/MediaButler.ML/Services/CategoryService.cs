@@ -450,10 +450,10 @@ public sealed class CategoryService : ICategoryService
         }
     
         // Character validation
-        if (!Regex.IsMatch(normalized, @"^[A-Z0-9\s\-&'!]+$"))
+        if (!Regex.IsMatch(normalized, @"^[A-Z0-9\s\-&'!()]+$"))
         {
             issues.Add("Category name contains invalid characters");
-            suggestions.Add("Use only letters, numbers, spaces, hyphens, ampersands, apostrophes, and exclamation marks");
+            suggestions.Add("Use only letters, numbers, spaces, hyphens, ampersands, apostrophes, exclamation marks, and parentheses");
         }
     
         // Reserved word validation
