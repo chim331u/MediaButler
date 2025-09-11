@@ -2,7 +2,15 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
 using MediaButler.Data;
+using MediaButler.Data.Repositories;
+using MediaButler.Data.UnitOfWork;
+using UnitOfWorkImpl = MediaButler.Data.UnitOfWork.UnitOfWork;
+using MediaButler.Services;
+using MediaButler.Services.Interfaces;
+using MediaButler.Services.Background;
+using MediaButler.ML.Extensions;
 
 namespace MediaButler.Tests.Integration.Infrastructure;
 
@@ -42,9 +50,38 @@ public class DatabaseFixture : IDisposable
             builder.SetMinimumLevel(LogLevel.Information);
         });
         
-        // Add repository services (will be added when repositories are implemented)
-        // services.AddScoped<IUnitOfWork, UnitOfWork>();
-        // services.AddScoped<ITrackedFileRepository, TrackedFileRepository>();
+        // Create minimal configuration for testing
+        var configDict = new Dictionary<string, string?>
+        {
+            ["MediaButler:FileDiscovery:WatchFolders:0"] = "/tmp/test",
+            ["MediaButler:FileDiscovery:FileExtensions:0"] = ".mkv",
+            ["MediaButler:FileDiscovery:FileExtensions:1"] = ".mp4",
+            ["MediaButler:FileDiscovery:ScanIntervalMinutes"] = "5",
+            ["MediaButler:FileDiscovery:MinFileSizeMB"] = "1",
+            ["MediaButler:FileDiscovery:DebounceDelaySeconds"] = "3",
+            ["MediaButler:FileDiscovery:MaxConcurrentScans"] = "2",
+            ["MediaButler:ML:ModelPath"] = "models",
+            ["MediaButler:ML:ActiveModelVersion"] = "1.0.0"
+        };
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(configDict)
+            .Build();
+        services.AddSingleton<IConfiguration>(configuration);
+        
+        // Add repository services
+        services.AddScoped<IUnitOfWork, UnitOfWorkImpl>();
+        services.AddScoped<ITrackedFileRepository, TrackedFileRepository>();
+        
+        // Add application services
+        services.AddScoped<IFileService, FileService>();
+        services.AddScoped<IConfigurationService, ConfigurationService>();
+        services.AddScoped<IStatsService, StatsService>();
+        
+        // Add ML services with test configuration
+        services.AddMediaButlerML(configuration);
+        
+        // Add background services
+        services.AddBackgroundServices(configuration);
         
         _serviceProvider = services.BuildServiceProvider();
         

@@ -705,25 +705,37 @@ dotnet test  # All projects must show "Passed: X, Failed: 0"
 #### Sprint 3.1: File Discovery & Monitoring (Day 9, 8 hours)
 **Focus**: Simple, reliable file detection without over-abstraction
 
-**Task 3.1.1: Unified File Discovery Service (3 hours)**
+**Task 3.1.1: Unified File Discovery Service (3 hours)** 🚨 **IN PROGRESS - CRITICAL ISSUES**
 Combines: File watching + discovery + validation
 Implementation Strategy:
-- `IFileDiscoveryService` (single interface)
-  - FileSystemWatcher for real-time detection
-  - Periodic scanning for missed files  
-  - File validation (size, type, accessibility)
-  - Integration with existing FileService.RegisterFileAsync()
+- ✅ `IFileDiscoveryService` interface implemented (108 lines, 6 methods + events)
+- ✅ `FileDiscoveryService` implementation (541 lines) with ARM32 optimization
+- ✅ FileSystemWatcher for real-time detection with proper disposal
+- ✅ Periodic scanning for missed files with configurable intervals
+- ✅ File validation (size, type, accessibility) with exclusion patterns
+- ✅ Integration with existing FileService.RegisterFileAsync()
 
-Key Simplifications:
-- No separate "pipeline" - direct integration with domain
-- Use existing TrackedFile states instead of new abstractions
-- Single responsibility: find files, validate them, register them
-- Leverage existing BaseEntity audit trail
+Key Simplifications Achieved:
+- ✅ No separate "pipeline" - direct integration with domain
+- ✅ Use existing TrackedFile states instead of new abstractions
+- ✅ Single responsibility: find files, validate them, register them
+- ✅ Leverage existing BaseEntity audit trail
 
-**Task 3.1.2: File Operation Foundation (3 hours)**
+**🚨 CRITICAL ISSUES REQUIRING IMMEDIATE ATTENTION:**
+- ❌ **31/76 integration tests failing** (59% pass rate - below 95% quality gate)
+- ❌ **FileDiscoveryService integration test failing** - `IFileProcessingQueue` dependency injection missing
+- ❌ **Task cannot be marked complete** until dependency resolution fixed
+- ❌ **Sprint 3.1.2-3.1.3 BLOCKED** until tests pass
+
+**REQUIRED FIXES:**
+1. Register `IFileProcessingQueue` in DI container (Program.cs)
+2. Resolve dependency chain: FileDiscoveryService → IFileProcessingQueue → Background services
+3. Achieve >95% test pass rate before proceeding
+
+**Task 3.1.2: File Operation Foundation (3 hours)** ❌ **NOT STARTED - BLOCKED**
 Focus: Core file operations with atomic safety
 Implementation Strategy:
-- `IFileOperationService` (single service)
+- `IFileOperationService` (single service) - ❌ **NOT IMPLEMENTED**
   - MoveFileAsync(hash, targetPath) - atomic operation
   - CreateDirectoryStructure(path) - safe directory creation
   - ValidateOperation(hash, targetPath) - pre-flight checks
@@ -735,10 +747,12 @@ Key Simplifications:
 - Direct integration with ProcessingLog for audit trail
 - Simple copy-then-delete for cross-drive operations
 
-**Task 3.1.3: Path Generation Logic (2 hours)**
+**🚨 BLOCKED: Cannot start until Task 3.1.1 test failures resolved**
+
+**Task 3.1.3: Path Generation Logic (2 hours)** ❌ **NOT STARTED - BLOCKED**
 Focus: Simple template-based path generation
 Implementation Strategy:
-- `IPathGenerationService`
+- `IPathGenerationService` - ❌ **NOT IMPLEMENTED**
   - GenerateTargetPath(trackedFile, category, template)
   - ValidateTargetPath(path) - collision detection
   - SanitizePathComponents(seriesName) - cross-platform safety
@@ -749,6 +763,8 @@ Key Simplifications:
 - Leverage existing Italian content patterns from ML service
 - No separate "naming convention engine" - built into path generation
 - Direct integration with ConfigurationService for templates
+
+**🚨 BLOCKED: Cannot start until Task 3.1.1 test failures resolved**
 
 #### Sprint 3.2: File Organization Engine (Day 10, 8 hours)
 **Focus**: Orchestrate file operations safely
@@ -1087,9 +1103,24 @@ This simplified Sprint 3 maintains all essential safety and functionality requir
 ### Testing Targets by Sprint
 - **Sprint 1**: 45+ tests (Unit: 25, Integration: 12, Acceptance: 8) ✅ **ACHIEVED: 243 tests**
 - **Sprint 2**: 30+ additional tests (ML: 15, Integration: 10, Performance: 5) ✅ **COMPLETE**
-- **Sprint 3**: 25+ additional tests (Simplified: Integration: 15, Safety: 10) - **REDUCED from 8+ services to 4 core services**
+- **Sprint 3**: 25+ additional tests (Simplified: Integration: 15, Safety: 10) 🚨 **BLOCKED: 31/76 tests failing**
 - **Sprint 4**: 20+ additional tests (UI Components: 15, E2E: 5)
 - **Total**: 120+ comprehensive tests
+
+### 🚨 CRITICAL TEST FAILURES - IMMEDIATE ACTION REQUIRED
+
+**Current Status**: Sprint 3 development **HALTED** due to test failures
+- **Failed Tests**: 31/76 integration tests (59% pass rate)
+- **Quality Gate**: Requires >95% pass rate to proceed
+- **Root Cause**: Missing `IFileProcessingQueue` dependency registration
+- **Impact**: All Sprint 3 tasks blocked until resolution
+
+**MANDATORY FIXES (Priority Order)**:
+1. **Register IFileProcessingQueue in DI** (Program.cs)
+2. **Resolve FileProcessingQueue → Background Services chain**
+3. **Verify all Sprint 2 dependencies still registered**
+4. **Run full test suite and achieve >95% pass rate**
+5. **Only then proceed with Task 3.1.2 implementation**
 
 ### Performance Targets
 - **Memory Usage**: <300MB under normal load
