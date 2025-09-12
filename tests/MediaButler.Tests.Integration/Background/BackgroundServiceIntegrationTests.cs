@@ -50,9 +50,13 @@ public class BackgroundServiceIntegrationTests : IntegrationTestBase
         using var scope = CreateScope();
         var processingCoordinator = scope.ServiceProvider.GetRequiredService<IProcessingCoordinator>();
         
+        // Start the coordinator first
+        var startResult = await processingCoordinator.StartAsync(CancellationToken.None);
+        startResult.IsSuccess.Should().BeTrue(startResult.IsSuccess ? "Success" : $"Failed to start coordinator: {startResult.Error}");
+        
         // Simulate background service batch processing
         var batchResult = await processingCoordinator.ProcessBatchAsync(testFiles, CancellationToken.None);
-        batchResult.IsSuccess.Should().BeTrue();
+        batchResult.IsSuccess.Should().BeTrue(batchResult.IsSuccess ? "Success" : $"ProcessBatchAsync failed with error: {batchResult.Error}");
 
         // Then - Files should be classified
         var processedFiles = Context.TrackedFiles.Where(f => 
@@ -60,8 +64,8 @@ public class BackgroundServiceIntegrationTests : IntegrationTestBase
         
         processedFiles.Should().HaveCount(2);
         processedFiles.Should().OnlyContain(f => f.Status == FileStatus.Classified);
-        processedFiles.Should().OnlyContain(f => !string.IsNullOrEmpty(f.Category));
-        processedFiles.Should().OnlyContain(f => f.Confidence >= 0);
+        processedFiles.Should().OnlyContain(f => !string.IsNullOrEmpty(f.SuggestedCategory));
+        processedFiles.Should().OnlyContain(f => f.Confidence > 0);
     }
 
     [Fact]

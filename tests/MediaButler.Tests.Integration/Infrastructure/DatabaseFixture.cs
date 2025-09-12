@@ -11,6 +11,7 @@ using MediaButler.Services;
 using MediaButler.Services.Interfaces;
 using MediaButler.Services.Background;
 using MediaButler.ML.Extensions;
+using MediaButler.Core.Services;
 
 namespace MediaButler.Tests.Integration.Infrastructure;
 
@@ -76,6 +77,7 @@ public class DatabaseFixture : IDisposable
         services.AddScoped<IFileService, FileService>();
         services.AddScoped<IConfigurationService, ConfigurationService>();
         services.AddScoped<IStatsService, StatsService>();
+        services.AddScoped<IRollbackService, RollbackService>();
         
         // Add ML services with test configuration
         services.AddMediaButlerML(configuration);
