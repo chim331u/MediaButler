@@ -79,6 +79,11 @@ public class DatabaseFixture : IDisposable
         services.AddScoped<IStatsService, StatsService>();
         services.AddScoped<IRollbackService, RollbackService>();
         services.AddScoped<IErrorClassificationService, ErrorClassificationService>();
+        services.AddScoped<IFileOrganizationService, FileOrganizationService>();
+        
+        // Add file operation services
+        services.AddScoped<IFileOperationService, FileOperationService>();
+        services.AddScoped<IPathGenerationService, PathGenerationService>();
         
         // Add ML services with test configuration
         services.AddMediaButlerML(configuration);
