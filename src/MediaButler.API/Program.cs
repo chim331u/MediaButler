@@ -4,6 +4,7 @@ using MediaButler.Data.Repositories;
 using MediaButler.Data.UnitOfWork;
 using MediaButler.Services;
 using MediaButler.Services.Interfaces;
+using MediaButler.Core.Services;
 using MediaButler.API.Middleware;
 using MediaButler.API.Filters;
 using MediaButler.ML.Extensions;
@@ -32,6 +33,8 @@ builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<IFileService, FileService>();
 builder.Services.AddScoped<IConfigurationService, ConfigurationService>();
 builder.Services.AddScoped<IStatsService, StatsService>();
+builder.Services.AddScoped<IRollbackService, RollbackService>();
+builder.Services.AddScoped<IErrorClassificationService, ErrorClassificationService>();
 
 // Add file operation services
 builder.Services.AddScoped<IFileOperationService, FileOperationService>();

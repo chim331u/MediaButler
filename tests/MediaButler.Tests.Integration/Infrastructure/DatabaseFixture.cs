@@ -78,6 +78,7 @@ public class DatabaseFixture : IDisposable
         services.AddScoped<IConfigurationService, ConfigurationService>();
         services.AddScoped<IStatsService, StatsService>();
         services.AddScoped<IRollbackService, RollbackService>();
+        services.AddScoped<IErrorClassificationService, ErrorClassificationService>();
         
         // Add ML services with test configuration
         services.AddMediaButlerML(configuration);
