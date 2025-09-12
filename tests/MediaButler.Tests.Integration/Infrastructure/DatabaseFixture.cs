@@ -10,6 +10,7 @@ using UnitOfWorkImpl = MediaButler.Data.UnitOfWork.UnitOfWork;
 using MediaButler.Services;
 using MediaButler.Services.Interfaces;
 using MediaButler.Services.Background;
+using MediaButler.Services.FileOperations;
 using MediaButler.ML.Extensions;
 using MediaButler.Core.Services;
 
