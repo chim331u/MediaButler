@@ -30,6 +30,10 @@ public class FileOrganizationServiceIntegrationTests : IClassFixture<DatabaseFix
         // Given
         await _databaseFixture.CleanupAsync();
         
+        // Ensure media library directory exists
+        var mediaLibraryPath = "/tmp/mediabutler/library";
+        Directory.CreateDirectory(mediaLibraryPath);
+        
         using var scope = _databaseFixture.CreateScope();
         var service = scope.ServiceProvider.GetRequiredService<IFileOrganizationService>();
         
@@ -44,6 +48,10 @@ public class FileOrganizationServiceIntegrationTests : IClassFixture<DatabaseFix
         var result = await service.OrganizeFileAsync("office-hash", "THE OFFICE");
 
         // Then
+        if (!result.IsSuccess)
+        {
+            throw new Exception($"OrganizeFileAsync failed with error: {result.Error}");
+        }
         result.IsSuccess.Should().BeTrue();
         result.Value.Should().NotBeNull();
         result.Value.IsSuccess.Should().BeTrue();
