@@ -1,7 +1,9 @@
 using MediaButler.Core.Entities;
 using MediaButler.Core.Enums;
+using MediaButler.Core.Services;
 using MediaButler.Services.Interfaces;
 using MediaButler.ML.Interfaces;
+using MediaButler.ML.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -9,9 +11,10 @@ using Microsoft.Extensions.Logging;
 namespace MediaButler.Services.Background;
 
 /// <summary>
-/// Background service responsible for processing files from the queue.
-/// Implements IHostedService for integration with the .NET hosting model,
-/// following "Simple Made Easy" principles with clear separation of concerns.
+/// Background service responsible for processing files through ML classification and intelligent organization.
+/// Implements the complete pipeline: file dequeue → ML classification → automatic organization (high confidence) 
+/// or staging for user confirmation (medium confidence). Implements IHostedService for integration with the 
+/// .NET hosting model, following "Simple Made Easy" principles with clear separation of concerns.
 /// </summary>
 public class FileProcessingService : BackgroundService
 {
@@ -121,8 +124,9 @@ public class FileProcessingService : BackgroundService
     }
 
     /// <summary>
-    /// Processes a single file through the classification and organization pipeline.
+    /// Processes a single file through the complete ML classification and file organization pipeline.
     /// Uses scoped services to ensure proper resource cleanup and transaction boundaries.
+    /// Integrates ML classification results with intelligent file organization based on confidence levels.
     /// </summary>
     private async Task ProcessFileAsync(TrackedFile file, CancellationToken cancellationToken)
     {
@@ -136,6 +140,7 @@ public class FileProcessingService : BackgroundService
             using var scope = _serviceScopeFactory.CreateScope();
             var fileService = scope.ServiceProvider.GetRequiredService<IFileService>();
             var predictionService = scope.ServiceProvider.GetRequiredService<IPredictionService>();
+            var fileOrganizationService = scope.ServiceProvider.GetRequiredService<IFileOrganizationService>();
             
             // Perform ML classification using the filename
             _logger.LogDebug("Starting ML classification for file: {FileName}", file.FileName);
@@ -169,8 +174,11 @@ public class FileProcessingService : BackgroundService
             if (classificationResult.IsSuccess)
             {
                 _logger.LogInformation(
-                    "Successfully processed file {FileHash} ({FileName}). Category: {Category}, Confidence: {Confidence:F2}, Decision: {Decision}",
+                    "Successfully classified file {FileHash} ({FileName}). Category: {Category}, Confidence: {Confidence:F2}, Decision: {Decision}",
                     file.Hash, file.FileName, classification.PredictedCategory, confidence, classification.Decision);
+
+                // Step 2: File Organization - Automatically organize high-confidence classifications
+                await ProcessFileOrganizationAsync(file, classification, fileOrganizationService, cancellationToken);
             }
             else
             {
@@ -216,6 +224,90 @@ public class FileProcessingService : BackgroundService
                     "Failed to record error for file {FileHash} after processing failure",
                     file.Hash);
             }
+        }
+    }
+
+    /// <summary>
+    /// Processes file organization after successful ML classification.
+    /// Implements intelligent organization logic based on confidence scores and classification decisions.
+    /// </summary>
+    private async Task ProcessFileOrganizationAsync(TrackedFile file, ClassificationResult classification, 
+        IFileOrganizationService organizationService, CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Parse classification decision and confidence for organization logic
+            var confidence = (decimal)classification.Confidence;
+            var category = classification.PredictedCategory;
+            var decision = classification.Decision;
+
+            _logger.LogDebug("Processing organization for file {FileHash} - Category: {Category}, Confidence: {Confidence}, Decision: {Decision}",
+                file.Hash, category, confidence, decision);
+
+            // Organization logic based on ML confidence and decision
+            if (decision == ClassificationDecision.AutoClassify && confidence >= 0.85m)
+            {
+                // High confidence: Auto-organize immediately
+                _logger.LogInformation("Auto-organizing high-confidence file {FileHash} to category {Category}", 
+                    file.Hash, category);
+
+                var organizationResult = await organizationService.OrganizeFileAsync(file.Hash, category);
+                
+                if (organizationResult.IsSuccess)
+                {
+                    _logger.LogInformation("Successfully auto-organized file {FileHash} ({FileName}) to {TargetPath}",
+                        file.Hash, file.FileName, organizationResult.Value.TargetPath);
+                }
+                else
+                {
+                    _logger.LogWarning("Auto-organization failed for file {FileHash}: {Error}. File remains classified for manual review.",
+                        file.Hash, organizationResult.Error);
+                }
+            }
+            else if (decision == ClassificationDecision.SuggestWithAlternatives && confidence >= 0.50m)
+            {
+                // Medium confidence: Preview and stage for user confirmation
+                _logger.LogInformation("Staging medium-confidence file {FileHash} for user confirmation", file.Hash);
+
+                var previewResult = await organizationService.PreviewOrganizationAsync(file.Hash, category);
+                
+                if (previewResult.IsSuccess)
+                {
+                    _logger.LogDebug("Preview created for file {FileHash} - Target: {ProposedPath}, Safe: {IsSafe}",
+                        file.Hash, previewResult.Value.ProposedPath, previewResult.Value.IsSafe);
+                    
+                    // File remains in "Classified" state for user to review and confirm
+                    // The preview information can be accessed through the organization service when needed
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to create organization preview for file {FileHash}: {Error}",
+                        file.Hash, previewResult.Error);
+                }
+            }
+            else
+            {
+                // Low confidence or other decisions: Leave for manual categorization
+                var reasonMsg = decision switch
+                {
+                    ClassificationDecision.RequestManualCategorization => "likely new series",
+                    ClassificationDecision.Unreliable => "unreliable classification",
+                    ClassificationDecision.Failed => "classification failed",
+                    _ => "requires manual review"
+                };
+                
+                _logger.LogInformation("File {FileHash} requires manual categorization - Confidence: {Confidence}, Decision: {Decision}, Reason: {Reason}",
+                    file.Hash, confidence, decision, reasonMsg);
+                
+                // File remains in "Classified" state with the ML suggestion for user to review
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during file organization for {FileHash}: {Error}", file.Hash, ex.Message);
+            
+            // Organization failure doesn't block the overall processing
+            // File remains classified and available for manual organization
         }
     }
 
