@@ -206,24 +206,156 @@ public class FileProcessingService : BackgroundService
                 "Error processing file {FileHash} ({FileName})",
                 file.Hash, file.FileName);
 
-            try
+            // Use error classification to determine recovery strategy
+            await HandleProcessingErrorAsync(file, ex, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Handles processing errors using intelligent error classification and recovery strategies.
+    /// Implements retry logic for transient errors and records user intervention requirements for others.
+    /// </summary>
+    private async Task HandleProcessingErrorAsync(TrackedFile file, Exception ex, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var scope = _serviceScopeFactory.CreateScope();
+            var fileService = scope.ServiceProvider.GetRequiredService<IFileService>();
+            var errorClassificationService = scope.ServiceProvider.GetRequiredService<IErrorClassificationService>();
+
+            // Create error context for classification
+            var errorContext = new Core.Models.ErrorContext
             {
-                // Record the error using the proper service method
-                using var scope = _serviceScopeFactory.CreateScope();
-                var fileService = scope.ServiceProvider.GetRequiredService<IFileService>();
+                Exception = ex,
+                OperationType = "FileProcessing",
+                SourcePath = file.OriginalPath,
+                FileHash = file.Hash,
+                FileSize = file.FileSize,
+                RetryAttempts = file.RetryCount,
+                AdditionalContext = new Dictionary<string, object>
+                {
+                    ["FileName"] = file.FileName,
+                    ["Status"] = file.Status.ToString(),
+                    ["ProcessingAttempt"] = DateTime.UtcNow
+                }
+            };
+
+            // Classify the error to determine recovery strategy
+            var classificationResult = await errorClassificationService.ClassifyErrorAsync(errorContext);
+            
+            if (classificationResult.IsSuccess)
+            {
+                var classification = classificationResult.Value;
+                _logger.LogInformation(
+                    "Error classified for file {FileHash}: Type={ErrorType}, CanRetry={CanRetry}, RequiresIntervention={RequiresIntervention}",
+                    file.Hash, classification.ErrorType, classification.CanRetry, classification.RequiresUserIntervention);
+
+                // Determine recovery action
+                var recoveryResult = await errorClassificationService.DetermineRecoveryActionAsync(errorContext, classification);
                 
-                await fileService.RecordErrorAsync(
-                    file.Hash, 
-                    ex.Message,
-                    ex.ToString(),
-                    cancellationToken);
+                if (recoveryResult.IsSuccess)
+                {
+                    var recoveryAction = recoveryResult.Value;
+                    
+                    // Apply recovery strategy based on classification
+                    await ApplyRecoveryStrategyAsync(file, classification, recoveryAction, fileService, cancellationToken);
+                    
+                    // Record error outcome for learning
+                    await errorClassificationService.RecordErrorOutcomeAsync(
+                        errorContext, classification, recoveryAction, wasSuccessful: true);
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to determine recovery action for file {FileHash}: {Error}",
+                        file.Hash, recoveryResult.Error);
+                }
             }
-            catch (Exception updateEx)
+            else
             {
-                _logger.LogError(updateEx,
-                    "Failed to record error for file {FileHash} after processing failure",
-                    file.Hash);
+                _logger.LogWarning("Failed to classify error for file {FileHash}: {Error}",
+                    file.Hash, classificationResult.Error);
             }
+
+            // Always record the error for audit trail
+            await fileService.RecordErrorAsync(
+                file.Hash,
+                ex.Message,
+                ex.ToString(),
+                cancellationToken);
+        }
+        catch (Exception handlingEx)
+        {
+            _logger.LogError(handlingEx,
+                "Failed to handle processing error for file {FileHash}",
+                file.Hash);
+        }
+    }
+
+    /// <summary>
+    /// Applies the appropriate recovery strategy based on error classification.
+    /// Uses existing services and focuses on recording error information for user action.
+    /// </summary>
+    private async Task ApplyRecoveryStrategyAsync(
+        TrackedFile file, 
+        Core.Models.ErrorClassificationResult classification,
+        Core.Models.ErrorRecoveryAction recoveryAction,
+        IFileService fileService,
+        CancellationToken cancellationToken)
+    {
+        var errorDetails = $"Error Type: {classification.ErrorType}, " +
+                          $"User Message: {classification.UserMessage}, " +
+                          $"Can Retry: {classification.CanRetry}, " +
+                          $"Requires Intervention: {classification.RequiresUserIntervention}";
+
+        switch (classification.ErrorType)
+        {
+            case Core.Enums.FileOperationErrorType.TransientError:
+                // Transient errors: log for retry by existing background service logic
+                if (file.RetryCount < classification.MaxRetryAttempts)
+                {
+                    _logger.LogInformation(
+                        "File {FileHash} eligible for retry (attempt {RetryCount}/{MaxRetries}). " +
+                        "Background service will retry with delay: {DelayMs}ms",
+                        file.Hash, file.RetryCount + 1, classification.MaxRetryAttempts, classification.RecommendedRetryDelayMs);
+                    
+                    // Record as retryable error - existing retry logic will handle the actual retry
+                    await fileService.RecordErrorAsync(file.Hash, 
+                        $"Transient error - retry recommended: {classification.UserMessage}", 
+                        errorDetails, cancellationToken);
+                }
+                else
+                {
+                    _logger.LogWarning("File {FileHash} exceeded max retry attempts", file.Hash);
+                    await fileService.RecordErrorAsync(file.Hash, 
+                        "Max retry attempts exceeded - manual intervention required", 
+                        errorDetails, cancellationToken);
+                }
+                break;
+
+            case Core.Enums.FileOperationErrorType.PermissionError:
+            case Core.Enums.FileOperationErrorType.SpaceError:
+            case Core.Enums.FileOperationErrorType.PathError:
+                // These require user intervention - record detailed error information
+                _logger.LogWarning(
+                    "File {FileHash} requires user intervention: {ErrorType} - {Message}",
+                    file.Hash, classification.ErrorType, classification.UserMessage);
+                
+                await fileService.RecordErrorAsync(file.Hash, 
+                    $"User intervention required: {classification.UserMessage}", 
+                    errorDetails, cancellationToken);
+                break;
+
+            case Core.Enums.FileOperationErrorType.UnknownError:
+            default:
+                // Unknown errors - record for manual investigation
+                _logger.LogError(
+                    "File {FileHash} encountered unknown error and requires manual investigation",
+                    file.Hash);
+                
+                await fileService.RecordErrorAsync(file.Hash, 
+                    $"Unknown error requires investigation: {classification.UserMessage}", 
+                    errorDetails, cancellationToken);
+                break;
         }
     }
 
