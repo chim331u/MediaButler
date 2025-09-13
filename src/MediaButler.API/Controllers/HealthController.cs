@@ -66,6 +66,7 @@ public class HealthController : ControllerBase
         try
         {
             var statsResult = await _statsService.GetProcessingStatsAsync();
+            var systemHealthResult = await _statsService.GetSystemHealthStatsAsync();
             
             if (!statsResult.IsSuccess)
             {
@@ -107,6 +108,7 @@ public class HealthController : ControllerBase
                     StatusCounts = statsResult.Value.StatusCounts,
                     AverageProcessingTimeMinutes = statsResult.Value.AverageProcessingTimeMinutes
                 },
+                FileOperations = GetFileOperationsHealth(systemHealthResult),
                 MachineLearning = mlHealthStatus
             });
         }
@@ -307,6 +309,68 @@ public class HealthController : ControllerBase
                 GracefulDegradation = true,
                 Impact = "File classification will be disabled, manual categorization required"
             };
+        }
+    }
+
+    /// <summary>
+    /// Gets file operations health information with consistent return type.
+    /// Implements Task 3.3.2 file operation monitoring integration requirements.
+    /// </summary>
+    /// <param name="systemHealthResult">System health result containing file operation metrics</param>
+    /// <returns>File operations health object with consistent structure</returns>
+    private static object GetFileOperationsHealth(MediaButler.Core.Common.Result<MediaButler.Services.Interfaces.SystemHealthStats> systemHealthResult)
+    {
+        if (!systemHealthResult.IsSuccess)
+        {
+            return new
+            {
+                Status = "Unknown",
+                Error = "Health data unavailable",
+                Details = systemHealthResult.Error,
+                SuccessfulOperations24h = (int?)null,
+                FailedOperations24h = (int?)null,
+                ActiveOperations = (int?)null,
+                AverageOperationTimeMs = (double?)null,
+                ErrorRatePercentage = (double?)null,
+                RetryRatePercentage = (double?)null
+            };
+        }
+
+        var health = systemHealthResult.Value;
+        return new
+        {
+            Status = GetFileOperationHealthStatus(health),
+            Error = (string?)null,
+            Details = (string?)null,
+            SuccessfulOperations24h = (int?)health.SuccessfulFileOperations,
+            FailedOperations24h = (int?)health.FailedFileOperations,
+            ActiveOperations = (int?)health.ActiveFileOperations,
+            AverageOperationTimeMs = (double?)health.AverageFileOperationTimeMs,
+            ErrorRatePercentage = (double?)health.FileOperationErrorRatePercentage,
+            RetryRatePercentage = (double?)health.FileOperationRetryRatePercentage
+        };
+    }
+
+    /// <summary>
+    /// Determines the health status of file operations based on error and retry rates.
+    /// Implements thresholds following Task 3.3.2 monitoring integration requirements.
+    /// </summary>
+    /// <param name="systemHealth">System health statistics containing file operation metrics</param>
+    /// <returns>File operation health status (Healthy, Warning, Critical)</returns>
+    private static string GetFileOperationHealthStatus(MediaButler.Services.Interfaces.SystemHealthStats systemHealth)
+    {
+        // Determine health based on error rate percentage
+        if (systemHealth.FileOperationErrorRatePercentage <= 2.0)
+        {
+            return "Healthy";
+        }
+        else if (systemHealth.FileOperationErrorRatePercentage <= 5.0)
+        {
+            return "Warning";
+        }
+        else
+        {
+            return "Critical";
         }
     }
 

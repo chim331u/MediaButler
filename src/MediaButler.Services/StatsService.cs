@@ -97,6 +97,13 @@ public class StatsService : IStatsService
 
             var filesWithErrors = allFiles.Where(f => f.Status == FileStatus.Error || f.RetryCount > 0);
             var filesInProgress = allFiles.Where(f => f.Status == FileStatus.Processing || f.Status == FileStatus.Moving);
+            
+            // Calculate file operation metrics for the last 24 hours
+            var yesterday = DateTime.UtcNow.AddDays(-1);
+            var recentFiles = allFiles.Where(f => f.LastUpdateDate >= yesterday);
+            var successfulOperations = recentFiles.Where(f => f.Status == FileStatus.Moved || f.Status == FileStatus.ReadyToMove);
+            var failedOperations = recentFiles.Where(f => f.Status == FileStatus.Error);
+            var totalRecentOperations = recentFiles.Count();
 
             var stats = new SystemHealthStats
             {
@@ -104,7 +111,19 @@ public class StatsService : IStatsService
                 RetryRatePercentage = allFiles.Any() ? (double)allFiles.Count(f => f.RetryCount > 0) / allFiles.Count() * 100 : 0,
                 QueueSize = filesInProgress.Count(),
                 AverageResponseTimeMs = CalculateAverageResponseTime(allFiles),
-                UptimeHours = GetSystemUptimeHours()
+                UptimeHours = GetSystemUptimeHours(),
+                
+                // New file operation metrics
+                SuccessfulFileOperations = successfulOperations.Count(),
+                FailedFileOperations = failedOperations.Count(),
+                ActiveFileOperations = filesInProgress.Count(),
+                AverageFileOperationTimeMs = CalculateAverageFileOperationTime(recentFiles),
+                FileOperationErrorRatePercentage = totalRecentOperations > 0 
+                    ? (double)failedOperations.Count() / totalRecentOperations * 100 
+                    : 0,
+                FileOperationRetryRatePercentage = totalRecentOperations > 0 
+                    ? (double)recentFiles.Count(f => f.RetryCount > 0) / totalRecentOperations * 100 
+                    : 0
             };
 
             return Result<SystemHealthStats>.Success(stats);
@@ -539,6 +558,27 @@ public class StatsService : IStatsService
             return lastValue > 0 ? 100 : 0;
 
         return (double)(lastValue - firstValue) / firstValue * 100;
+    }
+
+    /// <summary>
+    /// Calculates the average file operation time based on file processing duration.
+    /// Uses the time between file creation and completion for moved files.
+    /// </summary>
+    /// <param name="files">Collection of tracked files to analyze</param>
+    /// <returns>Average file operation time in milliseconds</returns>
+    private static double CalculateAverageFileOperationTime(IEnumerable<Core.Entities.TrackedFile> files)
+    {
+        var completedFiles = files.Where(f => 
+            f.Status == FileStatus.Moved && 
+            f.MovedAt.HasValue);
+            
+        if (!completedFiles.Any())
+            return 0;
+            
+        var operationTimes = completedFiles.Select(f => 
+            (f.MovedAt!.Value - f.CreatedDate).TotalMilliseconds);
+            
+        return operationTimes.Average();
     }
 
     #endregion

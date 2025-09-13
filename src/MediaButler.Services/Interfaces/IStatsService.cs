@@ -161,6 +161,24 @@ public class SystemHealthStats
     
     /// <summary>Gets or sets the system uptime in hours.</summary>
     public double UptimeHours { get; set; }
+    
+    /// <summary>Gets or sets the number of successful file operations in the last 24 hours.</summary>
+    public int SuccessfulFileOperations { get; set; }
+    
+    /// <summary>Gets or sets the number of failed file operations in the last 24 hours.</summary>
+    public int FailedFileOperations { get; set; }
+    
+    /// <summary>Gets or sets the average time for file operations in milliseconds.</summary>
+    public double AverageFileOperationTimeMs { get; set; }
+    
+    /// <summary>Gets or sets the number of files currently being processed.</summary>
+    public int ActiveFileOperations { get; set; }
+    
+    /// <summary>Gets or sets the error rate percentage for file operations.</summary>
+    public double FileOperationErrorRatePercentage { get; set; }
+    
+    /// <summary>Gets or sets the retry rate percentage for file operations.</summary>
+    public double FileOperationRetryRatePercentage { get; set; }
 }
 
 /// <summary>

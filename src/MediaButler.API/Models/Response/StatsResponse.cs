@@ -371,6 +371,60 @@ public class SystemHealthStats
         < 95 => 50,
         _ => 25
     };
+
+    /// <summary>
+    /// Gets or sets the number of successful file operations in the last 24 hours.
+    /// </summary>
+    /// <value>Count of file operations that completed successfully.</value>
+    /// <example>156</example>
+    public int SuccessfulFileOperations { get; set; }
+
+    /// <summary>
+    /// Gets or sets the number of failed file operations in the last 24 hours.
+    /// </summary>
+    /// <value>Count of file operations that failed.</value>
+    /// <example>3</example>
+    public int FailedFileOperations { get; set; }
+
+    /// <summary>
+    /// Gets or sets the average time for file operations in milliseconds.
+    /// </summary>
+    /// <value>Average duration of file move/copy operations.</value>
+    /// <example>1250.5</example>
+    public double AverageFileOperationTimeMs { get; set; }
+
+    /// <summary>
+    /// Gets or sets the number of files currently being processed.
+    /// </summary>
+    /// <value>Count of files in processing or moving status.</value>
+    /// <example>5</example>
+    public int ActiveFileOperations { get; set; }
+
+    /// <summary>
+    /// Gets or sets the error rate percentage for file operations.
+    /// </summary>
+    /// <value>Percentage of file operations that resulted in errors.</value>
+    /// <example>1.2</example>
+    public double FileOperationErrorRatePercentage { get; set; }
+
+    /// <summary>
+    /// Gets or sets the retry rate percentage for file operations.
+    /// </summary>
+    /// <value>Percentage of file operations that required retries.</value>
+    /// <example>2.8</example>
+    public double FileOperationRetryRatePercentage { get; set; }
+
+    /// <summary>
+    /// Gets the file operation health status based on error and retry rates.
+    /// </summary>
+    /// <value>Health status of file operations (Healthy, Warning, Critical).</value>
+    [JsonInclude]
+    public string FileOperationHealthStatus => FileOperationErrorRatePercentage switch
+    {
+        <= 2.0 => "Healthy",
+        <= 5.0 => "Warning", 
+        _ => "Critical"
+    };
 }
 
 /// <summary>
