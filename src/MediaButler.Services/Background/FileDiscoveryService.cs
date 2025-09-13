@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
 using MediaButler.Core.Common;
 using MediaButler.Services.Interfaces;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -15,7 +16,7 @@ namespace MediaButler.Services.Background;
 public class FileDiscoveryService : IFileDiscoveryService, IDisposable
 {
     private readonly FileDiscoveryConfiguration _config;
-    private readonly IFileService _fileService;
+    private readonly IServiceScopeFactory _serviceScopeFactory;
     private readonly IFileProcessingQueue _processingQueue;
     private readonly ILogger<FileDiscoveryService> _logger;
     
@@ -30,12 +31,12 @@ public class FileDiscoveryService : IFileDiscoveryService, IDisposable
 
     public FileDiscoveryService(
         IOptions<FileDiscoveryConfiguration> config,
-        IFileService fileService,
+        IServiceScopeFactory serviceScopeFactory,
         IFileProcessingQueue processingQueue,
         ILogger<FileDiscoveryService> logger)
     {
         _config = config?.Value ?? throw new ArgumentNullException(nameof(config));
-        _fileService = fileService ?? throw new ArgumentNullException(nameof(fileService));
+        _serviceScopeFactory = serviceScopeFactory ?? throw new ArgumentNullException(nameof(serviceScopeFactory));
         _processingQueue = processingQueue ?? throw new ArgumentNullException(nameof(processingQueue));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
@@ -452,7 +453,10 @@ public class FileDiscoveryService : IFileDiscoveryService, IDisposable
         // Check if already tracked
         try
         {
-            var alreadyTracked = await _fileService.IsFileAlreadyTrackedAsync(filePath);
+            using var scope = _serviceScopeFactory.CreateScope();
+            var fileService = scope.ServiceProvider.GetRequiredService<IFileService>();
+            
+            var alreadyTracked = await fileService.IsFileAlreadyTrackedAsync(filePath);
             if (alreadyTracked.IsSuccess && alreadyTracked.Value)
             {
                 _logger.LogDebug("File already tracked: {FilePath}", filePath);
@@ -475,8 +479,11 @@ public class FileDiscoveryService : IFileDiscoveryService, IDisposable
     {
         try
         {
-            // Register the file with FileService
-            var registrationResult = await _fileService.RegisterFileAsync(filePath);
+            // Register the file with FileService using scoped service
+            using var scope = _serviceScopeFactory.CreateScope();
+            var fileService = scope.ServiceProvider.GetRequiredService<IFileService>();
+            
+            var registrationResult = await fileService.RegisterFileAsync(filePath);
             
             if (registrationResult.IsSuccess)
             {

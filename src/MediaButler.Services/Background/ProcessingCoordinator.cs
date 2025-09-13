@@ -6,6 +6,7 @@ using MediaButler.Core.Enums;
 using MediaButler.Core.Services;
 using MediaButler.ML.Interfaces;
 using MediaButler.Services.Interfaces;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace MediaButler.Services.Background;
@@ -16,8 +17,7 @@ namespace MediaButler.Services.Background;
 /// </summary>
 public class ProcessingCoordinator : IProcessingCoordinator, IDisposable
 {
-    private readonly IFileService _fileService;
-    private readonly IPredictionService _predictionService;
+    private readonly IServiceScopeFactory _serviceScopeFactory;
     private readonly IMetricsCollectionService? _metricsService;
     private readonly ILogger<ProcessingCoordinator> _logger;
     
@@ -43,13 +43,11 @@ public class ProcessingCoordinator : IProcessingCoordinator, IDisposable
     private long _totalFailedClassifications;
 
     public ProcessingCoordinator(
-        IFileService fileService,
-        IPredictionService predictionService,
+        IServiceScopeFactory serviceScopeFactory,
         ILogger<ProcessingCoordinator> logger,
         IMetricsCollectionService? metricsService = null)
     {
-        _fileService = fileService ?? throw new ArgumentNullException(nameof(fileService));
-        _predictionService = predictionService ?? throw new ArgumentNullException(nameof(predictionService));
+        _serviceScopeFactory = serviceScopeFactory ?? throw new ArgumentNullException(nameof(serviceScopeFactory));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _metricsService = metricsService;
 
@@ -344,6 +342,11 @@ public class ProcessingCoordinator : IProcessingCoordinator, IDisposable
         var confidenceSum = 0.0;
         var errors = new List<string>();
 
+        // Create scope for scoped service operations
+        using var scope = _serviceScopeFactory.CreateScope();
+        var fileService = scope.ServiceProvider.GetRequiredService<IFileService>();
+        var predictionService = scope.ServiceProvider.GetRequiredService<IPredictionService>();
+
         // Extract filenames for batch ML prediction
         var filenames = batch.Select(f => f.FileName).ToList();
         
@@ -351,7 +354,7 @@ public class ProcessingCoordinator : IProcessingCoordinator, IDisposable
         {
             // Use batch prediction for efficiency
             var batchStopwatch = Stopwatch.StartNew();
-            var predictionResult = await _predictionService.PredictBatchAsync(filenames, cancellationToken);
+            var predictionResult = await predictionService.PredictBatchAsync(filenames, cancellationToken);
             batchStopwatch.Stop();
 
             // Record batch processing performance
@@ -375,7 +378,7 @@ public class ProcessingCoordinator : IProcessingCoordinator, IDisposable
                     try
                     {
                         var confidence = (decimal)prediction.Confidence;
-                        var updateResult = await _fileService.UpdateClassificationAsync(
+                        var updateResult = await fileService.UpdateClassificationAsync(
                             file.Hash, prediction.PredictedCategory, confidence, cancellationToken);
                         
                         if (updateResult.IsSuccess)
@@ -412,7 +415,7 @@ public class ProcessingCoordinator : IProcessingCoordinator, IDisposable
                     try
                     {
                         var singleStopwatch = Stopwatch.StartNew();
-                        var singleResult = await _predictionService.PredictAsync(file.FileName, cancellationToken);
+                        var singleResult = await predictionService.PredictAsync(file.FileName, cancellationToken);
                         singleStopwatch.Stop();
 
                         // Record individual classification performance
@@ -426,7 +429,7 @@ public class ProcessingCoordinator : IProcessingCoordinator, IDisposable
                         if (singleResult.IsSuccess)
                         {
                             var confidence = (decimal)singleResult.Value.Confidence;
-                            var updateResult = await _fileService.UpdateClassificationAsync(
+                            var updateResult = await fileService.UpdateClassificationAsync(
                                 file.Hash, singleResult.Value.PredictedCategory, confidence, cancellationToken);
                             
                             if (updateResult.IsSuccess)

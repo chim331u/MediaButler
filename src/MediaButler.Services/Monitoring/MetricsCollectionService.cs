@@ -1,5 +1,6 @@
 using MediaButler.Core.Services;
 using MediaButler.Data.Repositories;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 using MediaButler.Core.Enums;
@@ -21,8 +22,7 @@ namespace MediaButler.Services.Monitoring;
 /// </remarks>
 public class MetricsCollectionService : IMetricsCollectionService
 {
-    private readonly ITrackedFileRepository _fileRepository;
-    private readonly IProcessingLogRepository _processingLogRepository;
+    private readonly IServiceScopeFactory _serviceScopeFactory;
     private readonly ILogger<MetricsCollectionService> _logger;
 
     // In-memory metrics storage for real-time data (ARM32 optimized)
@@ -37,12 +37,10 @@ public class MetricsCollectionService : IMetricsCollectionService
     private readonly Timer _cleanupTimer;
 
     public MetricsCollectionService(
-        ITrackedFileRepository fileRepository,
-        IProcessingLogRepository processingLogRepository,
+        IServiceScopeFactory serviceScopeFactory,
         ILogger<MetricsCollectionService> logger)
     {
-        _fileRepository = fileRepository ?? throw new ArgumentNullException(nameof(fileRepository));
-        _processingLogRepository = processingLogRepository ?? throw new ArgumentNullException(nameof(processingLogRepository));
+        _serviceScopeFactory = serviceScopeFactory ?? throw new ArgumentNullException(nameof(serviceScopeFactory));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
         // Setup periodic cleanup to manage memory usage
@@ -142,8 +140,12 @@ public class MetricsCollectionService : IMetricsCollectionService
         var window = timeWindow ?? TimeSpan.FromHours(1);
         var cutoffTime = DateTime.UtcNow - window;
 
+        // Create scope for repository operations
+        using var scope = _serviceScopeFactory.CreateScope();
+        var fileRepository = scope.ServiceProvider.GetRequiredService<ITrackedFileRepository>();
+
         // Get current queue status from repository
-        var stats = await _fileRepository.GetProcessingStatsAsync();
+        var stats = await fileRepository.GetProcessingStatsAsync();
         
         // Get throughput from in-memory events
         var recentEvents = _processingEvents
@@ -229,8 +231,12 @@ public class MetricsCollectionService : IMetricsCollectionService
             .GroupBy(e => e.ErrorType)
             .ToDictionary(g => g.Key, g => g.Count());
 
+        // Create scope for repository operations
+        using var scope = _serviceScopeFactory.CreateScope();
+        var fileRepository = scope.ServiceProvider.GetRequiredService<ITrackedFileRepository>();
+
         // Get additional error info from repository
-        var filesNeedingIntervention = await _fileRepository.GetFilesExceedingRetryLimitAsync(3);
+        var filesNeedingIntervention = await fileRepository.GetFilesExceedingRetryLimitAsync(3);
         var retryStats = await GetRetryStatistics(cutoffTime);
 
         return new ErrorMetrics
