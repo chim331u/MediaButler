@@ -36,6 +36,7 @@ builder.Services.AddScoped<IStatsService, StatsService>();
 builder.Services.AddScoped<IRollbackService, RollbackService>();
 builder.Services.AddScoped<IErrorClassificationService, ErrorClassificationService>();
 builder.Services.AddScoped<IFileOrganizationService, FileOrganizationService>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
 
 // Add file operation services
 builder.Services.AddScoped<IFileOperationService, FileOperationService>();
