@@ -1,0 +1,90 @@
+@namespace MediaButler.Web.Components.UI
+
+<div class="card @CssClass">
+    @if (!string.IsNullOrEmpty(Title) || HeaderContent != null)
+    {
+        <div class="card-header">
+            @if (!string.IsNullOrEmpty(Title))
+            {
+                <h3 class="card-title">@Title</h3>
+            }
+            @if (HeaderContent != null)
+            {
+                @HeaderContent
+            }
+        </div>
+    }
+    
+    <div class="card-body">
+        @if (IsLoading)
+        {
+            <LoadingSpinner Text="@LoadingText" Size="LoadingSpinner.SpinnerSize.Medium" />
+        }
+        else
+        {
+            @ChildContent
+        }
+    </div>
+    
+    @if (FooterContent != null)
+    {
+        <div class="card-footer">
+            @FooterContent
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? HeaderContent { get; set; }
+    [Parameter] public RenderFragment? FooterContent { get; set; }
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public string LoadingText { get; set; } = "Loading...";
+    [Parameter] public string CssClass { get; set; } = "";
+}
+
+<style>
+    .card {
+        background: white;
+        border: 1px solid var(--gray-200);
+        border-radius: 0.5rem;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+    }
+
+    .card-header {
+        padding: 1rem 1.5rem;
+        border-bottom: 1px solid var(--gray-200);
+        background: var(--gray-50);
+        display: flex;
+        align-items: center;
+        justify-content: between;
+    }
+
+    .card-title {
+        margin: 0;
+        font-size: 1.125rem;
+        font-weight: 600;
+        color: var(--gray-900);
+        flex: 1;
+    }
+
+    .card-body {
+        padding: 1.5rem;
+    }
+
+    .card-footer {
+        padding: 1rem 1.5rem;
+        border-top: 1px solid var(--gray-200);
+        background: var(--gray-50);
+    }
+
+    @@media (max-width: 768px) {
+        .card-header,
+        .card-body,
+        .card-footer {
+            padding: 1rem;
+        }
+    }
+</style>

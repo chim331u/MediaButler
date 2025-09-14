@@ -1,0 +1,96 @@
+@namespace MediaButler.Web.Components.UI
+
+<span class="status-badge status-@(Status?.ToString()?.ToLower() ?? "unknown") @CssClass">
+    @if (ShowIcon)
+    {
+        <span class="status-icon">@GetStatusIcon()</span>
+    }
+    <span class="status-text">@GetStatusText()</span>
+</span>
+
+@code {
+    [Parameter] public object Status { get; set; } = null!;
+    [Parameter] public bool ShowIcon { get; set; } = true;
+    [Parameter] public string? CustomText { get; set; }
+    [Parameter] public string CssClass { get; set; } = "";
+
+    private string GetStatusText()
+    {
+        return CustomText ?? Status?.ToString() ?? "";
+    }
+
+    private string GetStatusIcon()
+    {
+        var statusString = Status?.ToString()?.ToLower() ?? "";
+        return statusString switch
+        {
+            "discovered" or "new" => "🔍",
+            "classified" or "pending" => "📊", 
+            "confirmed" or "ready" => "✅",
+            "moved" or "complete" => "📁",
+            "error" or "failed" => "❌",
+            "processing" or "inprogress" => "⏳",
+            "retry" => "🔄",
+            _ => "📄"
+        };
+    }
+}
+
+<style>
+    .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.25rem 0.75rem;
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: 500;
+        white-space: nowrap;
+    }
+
+    .status-icon {
+        font-size: 0.875rem;
+    }
+
+    /* Default status styles */
+    .status-badge.discovered,
+    .status-badge.new {
+        background: #dbeafe;
+        color: #1e40af;
+    }
+
+    .status-badge.classified,
+    .status-badge.pending {
+        background: #fef3c7;
+        color: #92400e;
+    }
+
+    .status-badge.confirmed,
+    .status-badge.ready {
+        background: #dcfce7;
+        color: #166534;
+    }
+
+    .status-badge.moved,
+    .status-badge.complete {
+        background: #e0e7ff;
+        color: #3730a3;
+    }
+
+    .status-badge.error,
+    .status-badge.failed {
+        background: #fee2e2;
+        color: #991b1b;
+    }
+
+    .status-badge.processing,
+    .status-badge.inprogress {
+        background: #f3f4f6;
+        color: #374151;
+    }
+
+    .status-badge.retry {
+        background: #fef3c7;
+        color: #d97706;
+    }
+</style>

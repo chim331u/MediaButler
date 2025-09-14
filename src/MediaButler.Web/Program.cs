@@ -37,4 +37,9 @@ builder.Services.AddScoped(sp =>
 builder.Services.AddScoped<IApiClient, ApiClient>();
 builder.Services.AddScoped<IFileManagementService, FileManagementService>();
 
+// Register component architecture services
+builder.Services.AddScoped<MediaButler.Web.Services.State.IStateService, MediaButler.Web.Services.State.StateService>();
+builder.Services.AddScoped<MediaButler.Web.Services.Events.IEventBus, MediaButler.Web.Services.Events.EventBus>();
+builder.Services.AddScoped<MediaButler.Web.Services.Lifecycle.IComponentLifecycleService, MediaButler.Web.Services.Lifecycle.ComponentLifecycleService>();
+
 await builder.Build().RunAsync();
