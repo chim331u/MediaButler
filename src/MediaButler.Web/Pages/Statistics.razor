@@ -1,0 +1,273 @@
+@page "/stats"
+@inject IFileManagementService FileService
+
+<PageTitle>Statistics - MediaButler</PageTitle>
+
+<div class="statistics-page">
+    <h2>Statistics</h2>
+    
+    @if (isLoading)
+    {
+        <div class="loading-container">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Loading statistics...</div>
+        </div>
+    }
+    else
+    {
+        <div class="stats-grid">
+            <div class="card stats-overview">
+                <div class="card-header">
+                    File Processing Overview
+                </div>
+                <div class="card-body">
+                    <div class="stats-row">
+                        <div class="stat-item">
+                            <div class="stat-value">@statistics.TotalFiles</div>
+                            <div class="stat-label">Total Files</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value">@statistics.ProcessedFiles</div>
+                            <div class="stat-label">Processed</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value">@statistics.PendingFiles</div>
+                            <div class="stat-label">Pending Review</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value">@statistics.ErrorFiles</div>
+                            <div class="stat-label">Errors</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card today-stats">
+                <div class="card-header">
+                    Today's Activity
+                </div>
+                <div class="card-body">
+                    <div class="today-metric">
+                        <div class="metric-icon">📈</div>
+                        <div class="metric-content">
+                            <div class="metric-value">@statistics.ProcessedToday</div>
+                            <div class="metric-label">Files Processed Today</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card success-rate">
+                <div class="card-header">
+                    Processing Success Rate
+                </div>
+                <div class="card-body">
+                    <div class="rate-display">
+                        <div class="rate-circle">
+                            <div class="rate-value">@($"{CalculateSuccessRate():P0}")</div>
+                        </div>
+                        <div class="rate-description">
+                            Files successfully processed without errors
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card system-health">
+                <div class="card-header">
+                    System Health
+                </div>
+                <div class="card-body">
+                    <div class="health-items">
+                        <div class="health-item">
+                            <div class="health-indicator healthy"></div>
+                            <span>File Discovery Service</span>
+                        </div>
+                        <div class="health-item">
+                            <div class="health-indicator healthy"></div>
+                            <span>ML Classification</span>
+                        </div>
+                        <div class="health-item">
+                            <div class="health-indicator healthy"></div>
+                            <span>File Operations</span>
+                        </div>
+                        <div class="health-item">
+                            <div class="health-indicator healthy"></div>
+                            <span>Database</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private FileStatistics statistics = new();
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadStatistics();
+    }
+
+    private async Task LoadStatistics()
+    {
+        isLoading = true;
+        try
+        {
+            statistics = await FileService.GetFileStatisticsAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading statistics: {ex.Message}");
+            statistics = new FileStatistics();
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private double CalculateSuccessRate()
+    {
+        if (statistics.TotalFiles == 0)
+            return 0;
+
+        var successfulFiles = statistics.TotalFiles - statistics.ErrorFiles;
+        return (double)successfulFiles / statistics.TotalFiles;
+    }
+}
+
+<style>
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 1.5rem;
+        margin-top: 1rem;
+    }
+
+    .stats-overview .card-body {
+        padding: 1rem;
+    }
+
+    .stats-row {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1rem;
+    }
+
+    .stat-item {
+        text-align: center;
+        padding: 0.5rem;
+    }
+
+    .stat-value {
+        font-size: 1.5rem;
+        font-weight: bold;
+        color: var(--primary-color);
+        margin-bottom: 0.25rem;
+    }
+
+    .stat-label {
+        font-size: 0.8rem;
+        color: var(--gray-600);
+    }
+
+    .today-metric {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+
+    .metric-icon {
+        font-size: 2rem;
+    }
+
+    .metric-value {
+        font-size: 1.75rem;
+        font-weight: bold;
+        color: var(--success-color);
+    }
+
+    .metric-label {
+        font-size: 0.9rem;
+        color: var(--gray-600);
+    }
+
+    .rate-display {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1rem;
+    }
+
+    .rate-circle {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        background: var(--primary-color);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .rate-value {
+        color: white;
+        font-size: 1.25rem;
+        font-weight: bold;
+    }
+
+    .rate-description {
+        text-align: center;
+        font-size: 0.875rem;
+        color: var(--gray-600);
+    }
+
+    .health-items {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .health-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .health-indicator {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+    }
+
+    .health-indicator.healthy {
+        background: var(--success-color);
+    }
+
+    .health-indicator.warning {
+        background: var(--warning-color);
+    }
+
+    .health-indicator.error {
+        background: var(--error-color);
+    }
+
+    @@media (max-width: 768px) {
+        .stats-row {
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.5rem;
+        }
+        
+        .stat-value {
+            font-size: 1.25rem;
+        }
+        
+        .today-metric {
+            flex-direction: column;
+            text-align: center;
+        }
+    }
+</style>

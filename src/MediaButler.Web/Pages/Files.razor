@@ -1,0 +1,162 @@
+@page "/files"
+@inject IFileManagementService FileService
+
+<PageTitle>Files - MediaButler</PageTitle>
+
+<div class="files-page">
+    <div class="page-header">
+        <h2>File Management</h2>
+        <button class="btn btn-primary" @onclick="RefreshFiles">
+            🔄 Refresh
+        </button>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="loading-container">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Loading files...</div>
+        </div>
+    }
+    else if (files?.Any() == true)
+    {
+        <div class="card">
+            <div class="card-body">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>File Name</th>
+                            <th>Status</th>
+                            <th>Category</th>
+                            <th>Size</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var file in files)
+                        {
+                            <tr>
+                                <td>@file.FileName</td>
+                                <td>
+                                    <span class="status-badge status-@file.Status.ToString().ToLower()">
+                                        @file.Status
+                                    </span>
+                                </td>
+                                <td>@(file.Category ?? "Not classified")</td>
+                                <td>@FormatFileSize(file.FileSize)</td>
+                                <td>
+                                    <button class="btn btn-secondary btn-sm" @onclick="() => ViewFile(file)">
+                                        👁️ View
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="card">
+            <div class="card-body">
+                <p class="text-muted">No files found. Files will appear here once they are discovered and processed.</p>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private IEnumerable<TrackedFile>? files;
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadFiles();
+    }
+
+    private async Task LoadFiles()
+    {
+        isLoading = true;
+        try
+        {
+            files = await FileService.GetAllFilesAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading files: {ex.Message}");
+            files = new List<TrackedFile>();
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RefreshFiles()
+    {
+        await LoadFiles();
+    }
+
+    private void ViewFile(TrackedFile file)
+    {
+        // TODO: Implement file details view
+        Console.WriteLine($"Viewing file: {file.FileName}");
+    }
+
+    private string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+}
+
+<style>
+    .page-header {
+        display: flex;
+        justify-content: between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+    }
+
+    .page-header h2 {
+        margin: 0;
+        flex: 1;
+    }
+
+    .btn-sm {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.75rem;
+    }
+
+    .files-page .loading-container {
+        padding: 3rem 0;
+    }
+
+    @@media (max-width: 768px) {
+        .page-header {
+            flex-direction: column;
+            gap: 1rem;
+            align-items: stretch;
+        }
+        
+        .table {
+            font-size: 0.875rem;
+        }
+        
+        .table th:nth-child(3),
+        .table td:nth-child(3),
+        .table th:nth-child(4),
+        .table td:nth-child(4) {
+            display: none;
+        }
+    }
+</style>

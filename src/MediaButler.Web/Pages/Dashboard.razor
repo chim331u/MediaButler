@@ -1,0 +1,103 @@
+@page "/"
+@page "/dashboard"
+
+<PageTitle>Dashboard - MediaButler</PageTitle>
+
+<div class="dashboard">
+    <h2>Dashboard</h2>
+    
+    <div class="dashboard-grid">
+        <div class="card stats-card">
+            <div class="card-header">
+                System Overview
+            </div>
+            <div class="card-body">
+                <div class="stat-item">
+                    <div class="stat-value">@totalFiles</div>
+                    <div class="stat-label">Total Files</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">@pendingFiles</div>
+                    <div class="stat-label">Pending Review</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">@processedToday</div>
+                    <div class="stat-label">Processed Today</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card recent-activity">
+            <div class="card-header">
+                Recent Activity
+            </div>
+            <div class="card-body">
+                <p class="text-muted">Activity feed will be implemented in future versions.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private int totalFiles = 0;
+    private int pendingFiles = 0;
+    private int processedToday = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // TODO: Load actual statistics from API
+        await LoadStatistics();
+    }
+
+    private async Task LoadStatistics()
+    {
+        // Placeholder values for now
+        totalFiles = 1234;
+        pendingFiles = 45;
+        processedToday = 23;
+        
+        await Task.CompletedTask;
+    }
+}
+
+<style>
+    .dashboard-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.5rem;
+        margin-top: 1rem;
+    }
+
+    .stats-card .card-body {
+        display: flex;
+        justify-content: space-around;
+        text-align: center;
+    }
+
+    .stat-item {
+        padding: 0.5rem;
+    }
+
+    .stat-value {
+        font-size: 2rem;
+        font-weight: bold;
+        color: var(--primary-color);
+    }
+
+    .stat-label {
+        font-size: 0.875rem;
+        color: var(--gray-600);
+        margin-top: 0.25rem;
+    }
+
+    .text-muted {
+        color: var(--gray-500);
+        font-style: italic;
+    }
+
+    @@media (max-width: 768px) {
+        .dashboard-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>

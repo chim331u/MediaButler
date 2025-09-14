@@ -1,0 +1,24 @@
+@inherits LayoutComponentBase
+
+<div class="main-layout">
+    <div class="sidebar">
+        <NavMenu />
+    </div>
+    <div class="main-content">
+        <div class="top-bar">
+            <h1 class="app-title">MediaButler</h1>
+        </div>
+        <div class="content-area">
+            @Body
+        </div>
+    </div>
+</div>
+
+<style>
+    .app-title {
+        margin: 0;
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: var(--primary-color);
+    }
+</style>
