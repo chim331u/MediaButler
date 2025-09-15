@@ -19,7 +19,7 @@ builder.Services.AddScoped(sp =>
     if (baseAddress.Contains("localhost") || baseAddress.Contains("127.0.0.1"))
     {
         // Development: API runs on port 5000
-        httpClient.BaseAddress = new Uri("http://localhost:5000/");
+        httpClient.BaseAddress = new Uri("http://localhost:5271/");
     }
     else
     {
@@ -41,5 +41,9 @@ builder.Services.AddScoped<IFileManagementService, FileManagementService>();
 builder.Services.AddScoped<MediaButler.Web.Services.State.IStateService, MediaButler.Web.Services.State.StateService>();
 builder.Services.AddScoped<MediaButler.Web.Services.Events.IEventBus, MediaButler.Web.Services.Events.EventBus>();
 builder.Services.AddScoped<MediaButler.Web.Services.Lifecycle.IComponentLifecycleService, MediaButler.Web.Services.Lifecycle.ComponentLifecycleService>();
+
+// Register design system services
+builder.Services.AddScoped<MediaButler.Web.Services.Icons.IIconService, MediaButler.Web.Services.Icons.IconService>();
+builder.Services.AddScoped<MediaButler.Web.Services.Theme.IThemeService, MediaButler.Web.Services.Theme.ThemeService>();
 
 await builder.Build().RunAsync();

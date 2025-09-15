@@ -1,0 +1,73 @@
+@namespace MediaButler.Web.Components.UI
+@inject IIconService IconService
+
+<span class="icon @CssClass" title="@(Title ?? Name)">
+    @if (!string.IsNullOrEmpty(CustomIcon))
+    {
+        @CustomIcon
+    }
+    else if (!string.IsNullOrEmpty(Status))
+    {
+        @IconService.GetStatusIcon(Status)
+    }
+    else if (!string.IsNullOrEmpty(FileExtension))
+    {
+        @IconService.GetFileTypeIcon(FileExtension)
+    }
+    else if (!string.IsNullOrEmpty(Action))
+    {
+        @IconService.GetActionIcon(Action)
+    }
+    else if (!string.IsNullOrEmpty(Name))
+    {
+        @IconService.GetIcon(Name)
+    }
+    else
+    {
+        @("📄")
+    }
+</span>
+
+@code {
+    [Parameter] public string? Name { get; set; }
+    [Parameter] public string? Status { get; set; }
+    [Parameter] public string? FileExtension { get; set; }
+    [Parameter] public string? Action { get; set; }
+    [Parameter] public string? CustomIcon { get; set; }
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string CssClass { get; set; } = "";
+}
+
+<style>
+    .icon {
+        display: inline-block;
+        font-style: normal;
+        user-select: none;
+        line-height: 1;
+    }
+
+    .icon.small {
+        font-size: 0.875rem;
+    }
+
+    .icon.medium {
+        font-size: 1rem;
+    }
+
+    .icon.large {
+        font-size: 1.25rem;
+    }
+
+    .icon.xl {
+        font-size: 1.5rem;
+    }
+
+    .icon.clickable {
+        cursor: pointer;
+        transition: transform var(--transition-fast);
+    }
+
+    .icon.clickable:hover {
+        transform: scale(1.1);
+    }
+</style>

@@ -1,0 +1,119 @@
+@namespace MediaButler.Web.Components.UI
+@inject IThemeService ThemeService
+@implements IDisposable
+
+<button 
+    class="theme-toggle @CssClass" 
+    @onclick="ToggleTheme" 
+    title="@GetTooltipText()"
+    type="button">
+    
+    <span class="theme-icon">
+        @if (currentTheme == "dark")
+        {
+            <span>🌙</span>
+        }
+        else
+        {
+            <span>☀️</span>
+        }
+    </span>
+    
+    @if (ShowLabel)
+    {
+        <span class="theme-label">@GetThemeLabel()</span>
+    }
+</button>
+
+@code {
+    [Parameter] public bool ShowLabel { get; set; } = false;
+    [Parameter] public string CssClass { get; set; } = "";
+
+    private string currentTheme = "light";
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentTheme = await ThemeService.GetCurrentThemeAsync();
+        ThemeService.ThemeChanged += OnThemeChanged;
+        StateHasChanged();
+    }
+
+    private async Task ToggleTheme()
+    {
+        await ThemeService.ToggleThemeAsync();
+    }
+
+    private void OnThemeChanged(string newTheme)
+    {
+        currentTheme = newTheme;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private string GetTooltipText()
+    {
+        return currentTheme == "light" ? "Switch to dark theme" : "Switch to light theme";
+    }
+
+    private string GetThemeLabel()
+    {
+        return currentTheme == "light" ? "Light" : "Dark";
+    }
+
+    public void Dispose()
+    {
+        ThemeService.ThemeChanged -= OnThemeChanged;
+    }
+}
+
+<style>
+    .theme-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-2);
+        padding: var(--space-2) var(--space-3);
+        background: none;
+        border: 1px solid var(--gray-300);
+        border-radius: var(--radius-md);
+        color: var(--gray-700);
+        cursor: pointer;
+        transition: all var(--transition-fast);
+        font-size: var(--font-size-sm);
+    }
+
+    .theme-toggle:hover {
+        background: var(--gray-50);
+        border-color: var(--gray-400);
+    }
+
+    .theme-toggle:focus {
+        outline: 2px solid var(--primary-color);
+        outline-offset: 2px;
+    }
+
+    .theme-icon {
+        font-size: 1rem;
+        line-height: 1;
+        display: flex;
+        align-items: center;
+        transition: transform var(--transition-fast);
+    }
+
+    .theme-toggle:hover .theme-icon {
+        transform: scale(1.1);
+    }
+
+    .theme-label {
+        font-weight: var(--font-weight-medium);
+    }
+
+    /* Dark theme adjustments */
+    [data-theme="dark"] .theme-toggle {
+        border-color: var(--gray-600);
+        color: var(--gray-300);
+    }
+
+    [data-theme="dark"] .theme-toggle:hover {
+        background: var(--gray-800);
+        border-color: var(--gray-500);
+    }
+</style>
