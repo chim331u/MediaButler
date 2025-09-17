@@ -52,45 +52,46 @@
         font-size: 0.875rem;
     }
 
-    /* Default status styles */
+    /* Default status styles using design system colors */
     .status-badge.discovered,
     .status-badge.new {
-        background: #dbeafe;
-        color: #1e40af;
+        background: var(--info-color-20);
+        color: var(--info-color);
     }
 
     .status-badge.classified,
-    .status-badge.pending {
-        background: #fef3c7;
-        color: #92400e;
+    .status-badge.pending,
+    .status-badge.pendingreview {
+        background: var(--warning-color-20);
+        color: var(--warning-color);
     }
 
     .status-badge.confirmed,
     .status-badge.ready {
-        background: #dcfce7;
-        color: #166534;
+        background: var(--success-color-20);
+        color: var(--success-color);
     }
 
     .status-badge.moved,
     .status-badge.complete {
-        background: #e0e7ff;
-        color: #3730a3;
+        background: var(--primary-color-20);
+        color: var(--primary-color);
     }
 
     .status-badge.error,
     .status-badge.failed {
-        background: #fee2e2;
-        color: #991b1b;
+        background: var(--error-color-20);
+        color: var(--error-color);
     }
 
     .status-badge.processing,
     .status-badge.inprogress {
-        background: #f3f4f6;
-        color: #374151;
+        background: var(--neutral-200);
+        color: var(--text-muted);
     }
 
     .status-badge.retry {
-        background: #fef3c7;
-        color: #d97706;
+        background: var(--warning-color-20);
+        color: var(--warning-color);
     }
 </style>
