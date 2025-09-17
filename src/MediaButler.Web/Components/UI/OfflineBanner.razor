@@ -1,0 +1,338 @@
+@namespace MediaButler.Web.Components.UI
+@inject IOfflineService OfflineService
+@inject IConnectionManager ConnectionManager
+@implements IDisposable
+
+@if (showBanner)
+{
+    <div class="offline-banner @GetBannerClass()">
+        <div class="banner-content">
+            <div class="banner-icon">
+                <Icon Name="@GetBannerIcon()" CssClass="medium" />
+            </div>
+            
+            <div class="banner-message">
+                <div class="banner-title">@GetBannerTitle()</div>
+                <div class="banner-description">@GetBannerDescription()</div>
+            </div>
+            
+            @if (showRetryButton)
+            {
+                <div class="banner-actions">
+                    <button class="retry-btn" @onclick="HandleRetry" disabled="@isRetrying">
+                        @if (isRetrying)
+                        {
+                            <LoadingSpinner Size="LoadingSpinner.SpinnerSize.Small" ShowText="false" />
+                        }
+                        else
+                        {
+                            <Icon Name="refresh" CssClass="small" />
+                        }
+                        <span>@(isRetrying ? "Retrying..." : "Retry")</span>
+                    </button>
+                </div>
+            }
+            
+            @if (CanDismiss)
+            {
+                <button class="banner-dismiss" @onclick="DismissBanner" type="button">
+                    <Icon Name="close" CssClass="small" />
+                </button>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool CanDismiss { get; set; } = true;
+    [Parameter] public bool AutoShow { get; set; } = true;
+
+    private bool showBanner = false;
+    private bool showRetryButton = false;
+    private bool isRetrying = false;
+    private bool userDismissed = false;
+    private ConnectionHealth currentHealth = ConnectionHealth.Healthy;
+
+    protected override void OnInitialized()
+    {
+        if (AutoShow)
+        {
+            OfflineService.OfflineModeChanged += OnOfflineModeChanged;
+            ConnectionManager.HealthChanged += OnConnectionHealthChanged;
+            
+            // Initialize with current state
+            UpdateBannerVisibility();
+        }
+    }
+
+    private void OnOfflineModeChanged(bool isOffline)
+    {
+        InvokeAsync(() =>
+        {
+            UpdateBannerVisibility();
+            StateHasChanged();
+        });
+    }
+
+    private void OnConnectionHealthChanged(ConnectionHealth health)
+    {
+        InvokeAsync(() =>
+        {
+            currentHealth = health;
+            
+            // Reset user dismissal when connection is restored
+            if (health == ConnectionHealth.Healthy)
+            {
+                userDismissed = false;
+                isRetrying = false;
+            }
+            
+            UpdateBannerVisibility();
+            StateHasChanged();
+        });
+    }
+
+    private void UpdateBannerVisibility()
+    {
+        if (userDismissed && currentHealth != ConnectionHealth.Offline)
+        {
+            showBanner = false;
+            return;
+        }
+
+        showBanner = OfflineService.IsOfflineMode || currentHealth != ConnectionHealth.Healthy;
+        showRetryButton = currentHealth == ConnectionHealth.Offline || currentHealth == ConnectionHealth.Degraded;
+    }
+
+    private async Task HandleRetry()
+    {
+        if (isRetrying) return;
+
+        try
+        {
+            isRetrying = true;
+            StateHasChanged();
+
+            await ConnectionManager.ReconnectAsync();
+        }
+        catch
+        {
+            // Connection manager will handle error logging
+        }
+        finally
+        {
+            isRetrying = false;
+            StateHasChanged();
+        }
+    }
+
+    private void DismissBanner()
+    {
+        userDismissed = true;
+        showBanner = false;
+        StateHasChanged();
+    }
+
+    private string GetBannerClass()
+    {
+        return currentHealth switch
+        {
+            ConnectionHealth.Offline => "offline",
+            ConnectionHealth.Degraded => "degraded",
+            ConnectionHealth.Reconnecting => "reconnecting",
+            _ => "info"
+        };
+    }
+
+    private string GetBannerIcon()
+    {
+        return currentHealth switch
+        {
+            ConnectionHealth.Offline => "error",
+            ConnectionHealth.Degraded => "warning",
+            ConnectionHealth.Reconnecting => "processing",
+            _ => "info"
+        };
+    }
+
+    private string GetBannerTitle()
+    {
+        return currentHealth switch
+        {
+            ConnectionHealth.Offline => "No Connection",
+            ConnectionHealth.Degraded => "Connection Issues",
+            ConnectionHealth.Reconnecting => "Reconnecting",
+            _ => "Limited Functionality"
+        };
+    }
+
+    private string GetBannerDescription()
+    {
+        return currentHealth switch
+        {
+            ConnectionHealth.Offline => "Real-time updates are unavailable. Some features may be limited.",
+            ConnectionHealth.Degraded => "Experiencing connectivity issues. Some features may be slower than usual.",
+            ConnectionHealth.Reconnecting => "Attempting to restore connection. Please wait...",
+            _ => "Operating in offline mode. Real-time features are temporarily unavailable."
+        };
+    }
+
+    public void Dispose()
+    {
+        OfflineService.OfflineModeChanged -= OnOfflineModeChanged;
+        ConnectionManager.HealthChanged -= OnConnectionHealthChanged;
+    }
+}
+
+<style>
+    .offline-banner {
+        background: var(--warning-color);
+        color: white;
+        padding: var(--space-3) var(--space-4);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        position: sticky;
+        top: 0;
+        z-index: var(--z-sticky);
+        animation: slideDown var(--transition-base);
+    }
+
+    .banner-content {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        max-width: 100%;
+    }
+
+    .banner-icon {
+        flex-shrink: 0;
+    }
+
+    .banner-message {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .banner-title {
+        font-weight: var(--font-weight-semibold);
+        margin-bottom: var(--space-1);
+        line-height: var(--line-height-tight);
+    }
+
+    .banner-description {
+        font-size: var(--font-size-sm);
+        opacity: 0.9;
+        line-height: var(--line-height-normal);
+    }
+
+    .banner-actions {
+        flex-shrink: 0;
+    }
+
+    .retry-btn {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        padding: var(--space-2) var(--space-3);
+        background: rgba(255, 255, 255, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        border-radius: var(--radius-md);
+        color: white;
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-medium);
+        cursor: pointer;
+        transition: all var(--transition-fast);
+    }
+
+    .retry-btn:hover:not(:disabled) {
+        background: rgba(255, 255, 255, 0.3);
+    }
+
+    .retry-btn:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+    }
+
+    .banner-dismiss {
+        background: none;
+        border: none;
+        color: white;
+        cursor: pointer;
+        padding: var(--space-1);
+        border-radius: var(--radius-base);
+        opacity: 0.8;
+        transition: all var(--transition-fast);
+        flex-shrink: 0;
+    }
+
+    .banner-dismiss:hover {
+        opacity: 1;
+        background: rgba(255, 255, 255, 0.1);
+    }
+
+    /* Status-specific styling */
+    .offline-banner.offline {
+        background: var(--error-color);
+    }
+
+    .offline-banner.degraded {
+        background: var(--warning-color);
+    }
+
+    .offline-banner.reconnecting {
+        background: var(--info-color);
+    }
+
+    .offline-banner.info {
+        background: var(--gray-600);
+    }
+
+    /* Animation */
+    @@keyframes slideDown {
+        from {
+            transform: translateY(-100%);
+            opacity: 0;
+        }
+        to {
+            transform: translateY(0);
+            opacity: 1;
+        }
+    }
+
+    /* Responsive design */
+    @@media (max-width: 768px) {
+        .offline-banner {
+            padding: var(--space-2) var(--space-3);
+        }
+
+        .banner-content {
+            gap: var(--space-2);
+        }
+
+        .banner-description {
+            font-size: var(--font-size-xs);
+        }
+
+        .retry-btn {
+            padding: var(--space-1) var(--space-2);
+            font-size: var(--font-size-xs);
+        }
+
+        .retry-btn span {
+            display: none;
+        }
+    }
+
+    /* Accessibility */
+    .retry-btn:focus,
+    .banner-dismiss:focus {
+        outline: 2px solid rgba(255, 255, 255, 0.8);
+        outline-offset: 2px;
+    }
+
+    /* Reduced motion */
+    @@media (prefers-reduced-motion: reduce) {
+        .offline-banner {
+            animation: none;
+        }
+    }
+</style>

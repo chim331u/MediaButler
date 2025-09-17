@@ -46,4 +46,12 @@ builder.Services.AddScoped<MediaButler.Web.Services.Lifecycle.IComponentLifecycl
 builder.Services.AddScoped<MediaButler.Web.Services.Icons.IIconService, MediaButler.Web.Services.Icons.IconService>();
 builder.Services.AddScoped<MediaButler.Web.Services.Theme.IThemeService, MediaButler.Web.Services.Theme.ThemeService>();
 
+// Register real-time communication services
+builder.Services.AddScoped<MediaButler.Web.Services.RealTime.ISignalRService, MediaButler.Web.Services.RealTime.SignalRService>();
+builder.Services.AddScoped<MediaButler.Web.Services.RealTime.IConnectionManager, MediaButler.Web.Services.RealTime.ConnectionManager>();
+builder.Services.AddScoped<MediaButler.Web.Services.RealTime.IOfflineService, MediaButler.Web.Services.RealTime.OfflineService>();
+
+// Register notification services
+builder.Services.AddScoped<MediaButler.Web.Services.Notifications.INotificationService, MediaButler.Web.Services.Notifications.NotificationService>();
+
 await builder.Build().RunAsync();

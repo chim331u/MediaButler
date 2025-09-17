@@ -1,0 +1,272 @@
+@namespace MediaButler.Web.Components.UI
+@implements IDisposable
+
+<div class="notification-toast @NotificationType.ToString().ToLower() @(IsVisible ? "visible" : "hidden") @CssClass">
+    <div class="toast-content">
+        <div class="toast-icon">
+            <Icon Name="@GetIconName()" CssClass="medium" />
+        </div>
+        
+        <div class="toast-body">
+            <div class="toast-title">@Title</div>
+            @if (!string.IsNullOrEmpty(Message))
+            {
+                <div class="toast-message">@Message</div>
+            }
+        </div>
+        
+        @if (ShowDismiss)
+        {
+            <button class="toast-dismiss" @onclick="Dismiss" type="button">
+                <Icon Name="close" CssClass="small" />
+            </button>
+        }
+    </div>
+    
+    @if (ShowProgress && Duration.HasValue)
+    {
+        <div class="toast-progress">
+            <div class="toast-progress-bar" style="animation-duration: @($"{Duration.Value.TotalSeconds}s")"></div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = string.Empty;
+    [Parameter] public string? Message { get; set; }
+    [Parameter] public NotificationLevel NotificationType { get; set; } = NotificationLevel.Info;
+    [Parameter] public bool ShowDismiss { get; set; } = true;
+    [Parameter] public bool ShowProgress { get; set; } = true;
+    [Parameter] public TimeSpan? Duration { get; set; } = TimeSpan.FromSeconds(5);
+    [Parameter] public bool IsVisible { get; set; } = true;
+    [Parameter] public string CssClass { get; set; } = "";
+    [Parameter] public EventCallback OnDismissed { get; set; }
+
+    private Timer? _dismissTimer;
+
+    protected override void OnInitialized()
+    {
+        if (Duration.HasValue && IsVisible)
+        {
+            _dismissTimer = new Timer(async _ => await AutoDismiss(), null, Duration.Value, Timeout.InfiniteTimeSpan);
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        // Reset timer if parameters change
+        if (Duration.HasValue && IsVisible && _dismissTimer == null)
+        {
+            _dismissTimer = new Timer(async _ => await AutoDismiss(), null, Duration.Value, Timeout.InfiniteTimeSpan);
+        }
+    }
+
+    private async Task Dismiss()
+    {
+        IsVisible = false;
+        _dismissTimer?.Dispose();
+        _dismissTimer = null;
+        
+        await OnDismissed.InvokeAsync();
+        StateHasChanged();
+    }
+
+    private async Task AutoDismiss()
+    {
+        await InvokeAsync(async () => await Dismiss());
+    }
+
+    private string GetIconName()
+    {
+        return NotificationType switch
+        {
+            NotificationLevel.Success => "success",
+            NotificationLevel.Warning => "warning",
+            NotificationLevel.Error => "error",
+            NotificationLevel.Info => "info",
+            _ => "info"
+        };
+    }
+
+    public enum NotificationLevel
+    {
+        Info,
+        Success,
+        Warning,
+        Error
+    }
+
+    public void Dispose()
+    {
+        _dismissTimer?.Dispose();
+    }
+}
+
+<style>
+    .notification-toast {
+        background: white;
+        border: 1px solid var(--gray-200);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-lg);
+        max-width: 400px;
+        overflow: hidden;
+        position: relative;
+        transform: translateX(100%);
+        transition: all var(--transition-base);
+        margin-bottom: var(--space-3);
+    }
+
+    .notification-toast.visible {
+        transform: translateX(0);
+    }
+
+    .notification-toast.hidden {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+
+    .toast-content {
+        display: flex;
+        align-items: flex-start;
+        gap: var(--space-3);
+        padding: var(--space-4);
+    }
+
+    .toast-icon {
+        flex-shrink: 0;
+        margin-top: 2px;
+    }
+
+    .toast-body {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .toast-title {
+        font-weight: var(--font-weight-semibold);
+        color: var(--gray-900);
+        margin-bottom: var(--space-1);
+        line-height: var(--line-height-tight);
+    }
+
+    .toast-message {
+        font-size: var(--font-size-sm);
+        color: var(--gray-600);
+        line-height: var(--line-height-normal);
+    }
+
+    .toast-dismiss {
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: var(--space-1);
+        border-radius: var(--radius-base);
+        color: var(--gray-400);
+        transition: all var(--transition-fast);
+        flex-shrink: 0;
+    }
+
+    .toast-dismiss:hover {
+        color: var(--gray-600);
+        background: var(--gray-100);
+    }
+
+    .toast-progress {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 3px;
+        background: var(--gray-200);
+        overflow: hidden;
+    }
+
+    .toast-progress-bar {
+        height: 100%;
+        background: var(--primary-color);
+        width: 100%;
+        transform: translateX(-100%);
+        animation: toast-progress linear forwards;
+    }
+
+    @@keyframes toast-progress {
+        to {
+            transform: translateX(0);
+        }
+    }
+
+    /* Type-specific styling */
+    .notification-toast.success {
+        border-color: var(--success-color);
+    }
+
+    .notification-toast.success .toast-progress-bar {
+        background: var(--success-color);
+    }
+
+    .notification-toast.warning {
+        border-color: var(--warning-color);
+    }
+
+    .notification-toast.warning .toast-progress-bar {
+        background: var(--warning-color);
+    }
+
+    .notification-toast.error {
+        border-color: var(--error-color);
+    }
+
+    .notification-toast.error .toast-progress-bar {
+        background: var(--error-color);
+    }
+
+    .notification-toast.info {
+        border-color: var(--primary-color);
+    }
+
+    .notification-toast.info .toast-progress-bar {
+        background: var(--primary-color);
+    }
+
+    /* Dark theme support */
+    [data-theme="dark"] .notification-toast {
+        background: var(--gray-800);
+        border-color: var(--gray-700);
+    }
+
+    [data-theme="dark"] .toast-title {
+        color: var(--gray-100);
+    }
+
+    [data-theme="dark"] .toast-message {
+        color: var(--gray-300);
+    }
+
+    [data-theme="dark"] .toast-dismiss {
+        color: var(--gray-500);
+    }
+
+    [data-theme="dark"] .toast-dismiss:hover {
+        color: var(--gray-300);
+        background: var(--gray-700);
+    }
+
+    [data-theme="dark"] .toast-progress {
+        background: var(--gray-700);
+    }
+
+    /* Accessibility */
+    .toast-dismiss:focus {
+        outline: 2px solid var(--primary-color);
+        outline-offset: 2px;
+    }
+
+    /* Reduced motion */
+    @@media (prefers-reduced-motion: reduce) {
+        .notification-toast,
+        .toast-progress-bar {
+            transition: none;
+            animation: none;
+        }
+    }
+</style>
