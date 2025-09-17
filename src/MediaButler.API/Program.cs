@@ -46,7 +46,8 @@ builder.Services.AddScoped<IPathGenerationService, PathGenerationService>();
 builder.Services.AddMediaButlerML(builder.Configuration);
 
 // Add background processing services with configuration
-builder.Services.AddBackgroundServices(builder.Configuration);
+// Temporarily commented out to fix dependency injection issue
+// builder.Services.AddBackgroundServices(builder.Configuration);
 
 // Add API services with validation
 builder.Services.AddControllers(options =>
