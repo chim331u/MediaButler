@@ -73,6 +73,19 @@ public class FileManagementService : IFileManagementService
         return await _apiClient.UpdateFileAsync(hash, updateData);
     }
 
+    public async Task<bool> UpdateFileCategoryAsync(string hash, string category)
+    {
+        // Update file category and mark as ready to move
+        var updateData = new
+        {
+            category = category,
+            status = FileStatus.ReadyToMove,
+            note = $"Category updated to: {category}"
+        };
+
+        return await _apiClient.UpdateFileAsync(hash, updateData);
+    }
+
     public async Task<int> ConfirmMultipleFilesAsync(IEnumerable<string> hashes, string category)
     {
         var successCount = 0;

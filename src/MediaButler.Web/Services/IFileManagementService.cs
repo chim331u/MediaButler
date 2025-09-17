@@ -19,6 +19,7 @@ public interface IFileManagementService
     Task<bool> ConfirmAndMoveFileAsync(string hash, string category);
     Task<bool> RejectFileAsync(string hash, string reason);
     Task<bool> RetryProcessingAsync(string hash);
+    Task<bool> UpdateFileCategoryAsync(string hash, string category);
     
     // Batch operations
     Task<int> ConfirmMultipleFilesAsync(IEnumerable<string> hashes, string category);

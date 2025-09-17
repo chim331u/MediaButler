@@ -40,7 +40,7 @@ public class SignalRService : ISignalRService, IAsyncDisposable
         _logger = logger;
         
         // Get SignalR hub URL from configuration
-        var baseUrl = configuration.GetValue<string>("ApiBaseUrl") ?? "http://localhost:5000";
+        var baseUrl = configuration.GetValue<string>("ApiBaseUrl") ?? "http://localhost:5271";
         _hubUrl = $"{baseUrl.TrimEnd('/')}/mediahub";
     }
 
