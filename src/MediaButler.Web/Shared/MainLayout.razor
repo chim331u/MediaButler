@@ -1,24 +1,124 @@
 @inherits LayoutComponentBase
+@inject IThemeService ThemeService
+@inject IStateService StateService
+@implements IDisposable
 
-<div class="main-layout">
-    <div class="sidebar">
-        <NavMenu />
-    </div>
-    <div class="main-content">
-        <div class="top-bar">
-            <h1 class="app-title">MediaButler</h1>
+<div class="main-layout" data-theme="@currentTheme">
+    <!-- Mobile Header -->
+    <header class="mobile-header">
+        <div class="mobile-header-content">
+            <button class="mobile-menu-toggle" @onclick="ToggleMobileMenu" type="button">
+                <Icon Name="menu" CssClass="medium" />
+            </button>
+            
+            <div class="mobile-logo">
+                <Icon Name="files" CssClass="large" />
+                <span class="mobile-logo-text">MediaButler</span>
+            </div>
+            
+            <div class="mobile-actions">
+                <ThemeToggle />
+            </div>
         </div>
-        <div class="content-area">
+    </header>
+
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar @(isMobileMenuOpen ? "sidebar-open" : "")">
+        <div class="sidebar-header">
+            <div class="logo">
+                <Icon Name="files" CssClass="xl" />
+                <span class="logo-text">MediaButler</span>
+            </div>
+            
+            <button class="sidebar-close" @onclick="CloseMobileMenu" type="button">
+                <Icon Name="close" CssClass="medium" />
+            </button>
+        </div>
+        
+        <nav class="sidebar-nav">
+            <NavMenu />
+        </nav>
+        
+        <div class="sidebar-footer">
+            <div class="connection-status @(appState.IsConnected ? "connected" : "disconnected")">
+                <Icon Name="@(appState.IsConnected ? "health" : "error")" CssClass="small" />
+                <span>@(appState.IsConnected ? "Connected" : "Disconnected")</span>
+            </div>
+            
+            <div class="theme-section">
+                <ThemeToggle ShowLabel="true" />
+            </div>
+        </div>
+    </aside>
+
+    <!-- Mobile Overlay -->
+    @if (isMobileMenuOpen)
+    {
+        <div class="mobile-overlay" @onclick="CloseMobileMenu"></div>
+    }
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Breadcrumb Navigation -->
+        <div class="breadcrumb-container">
+            <Breadcrumb />
+        </div>
+        
+        <!-- Loading Indicator -->
+        @if (isLoading)
+        {
+            <div class="page-loading">
+                <LoadingSpinner Text="Loading..." />
+            </div>
+        }
+        
+        <!-- Page Content -->
+        <div class="page-content">
             @Body
         </div>
-    </div>
+    </main>
 </div>
 
-<style>
-    .app-title {
-        margin: 0;
-        font-size: 1.5rem;
-        font-weight: 600;
-        color: var(--primary-color);
+@code {
+    private string currentTheme = "light";
+    private bool isMobileMenuOpen = false;
+    private bool isLoading = false;
+    private AppState appState = AppState.Initial;
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentTheme = await ThemeService.GetCurrentThemeAsync();
+        appState = StateService.CurrentState;
+        
+        ThemeService.ThemeChanged += OnThemeChanged;
+        StateService.StateChanged += OnStateChanged;
     }
-</style>
+
+    private void ToggleMobileMenu()
+    {
+        isMobileMenuOpen = !isMobileMenuOpen;
+    }
+
+    private void CloseMobileMenu()
+    {
+        isMobileMenuOpen = false;
+    }
+
+    private void OnThemeChanged(string newTheme)
+    {
+        currentTheme = newTheme;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnStateChanged(AppState newState)
+    {
+        appState = newState;
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        ThemeService.ThemeChanged -= OnThemeChanged;
+        StateService.StateChanged -= OnStateChanged;
+    }
+}

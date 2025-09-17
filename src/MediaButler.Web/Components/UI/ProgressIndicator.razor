@@ -1,0 +1,173 @@
+@namespace MediaButler.Web.Components.UI
+
+<div class="progress-indicator @CssClass">
+    @if (ShowLabel && !string.IsNullOrEmpty(Label))
+    {
+        <div class="progress-label">
+            @Label
+            @if (ShowPercentage && Progress.HasValue)
+            {
+                <span class="progress-percentage">@($"{Progress.Value:P0}")</span>
+            }
+        </div>
+    }
+    
+    <div class="progress-track">
+        @if (IsIndeterminate)
+        {
+            <div class="progress-bar indeterminate"></div>
+        }
+        else if (Progress.HasValue)
+        {
+            <div class="progress-bar" style="width: @($"{Progress.Value * 100:F1}%")"></div>
+        }
+        else
+        {
+            <div class="progress-bar" style="width: 0%"></div>
+        }
+    </div>
+    
+    @if (!string.IsNullOrEmpty(Description))
+    {
+        <div class="progress-description">@Description</div>
+    }
+</div>
+
+@code {
+    [Parameter] public double? Progress { get; set; }
+    [Parameter] public bool IsIndeterminate { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Description { get; set; }
+    [Parameter] public bool ShowLabel { get; set; } = true;
+    [Parameter] public bool ShowPercentage { get; set; } = true;
+    [Parameter] public ProgressVariant Variant { get; set; } = ProgressVariant.Primary;
+    [Parameter] public ProgressSize Size { get; set; } = ProgressSize.Medium;
+    [Parameter] public string CssClass { get; set; } = "";
+
+    public enum ProgressVariant
+    {
+        Primary,
+        Success,
+        Warning,
+        Error
+    }
+
+    public enum ProgressSize
+    {
+        Small,
+        Medium,
+        Large
+    }
+}
+
+<style>
+    .progress-indicator {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-2);
+        width: 100%;
+    }
+
+    .progress-label {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-medium);
+        color: var(--gray-700);
+    }
+
+    .progress-percentage {
+        font-size: var(--font-size-xs);
+        color: var(--gray-500);
+    }
+
+    .progress-track {
+        background: var(--gray-200);
+        border-radius: var(--radius-full);
+        overflow: hidden;
+        position: relative;
+    }
+
+    .progress-bar {
+        background: var(--primary-color);
+        height: 100%;
+        border-radius: var(--radius-full);
+        transition: width var(--transition-base);
+        position: relative;
+    }
+
+    .progress-bar.indeterminate {
+        width: 30%;
+        animation: indeterminate 1.5s ease-in-out infinite;
+    }
+
+    @@keyframes indeterminate {
+        0% {
+            transform: translateX(-100%);
+        }
+        50% {
+            transform: translateX(100%);
+        }
+        100% {
+            transform: translateX(350%);
+        }
+    }
+
+    .progress-description {
+        font-size: var(--font-size-xs);
+        color: var(--gray-500);
+    }
+
+    /* Size variants */
+    .progress-indicator .progress-track {
+        height: 6px;
+    }
+
+    .progress-indicator.small .progress-track {
+        height: 4px;
+    }
+
+    .progress-indicator.large .progress-track {
+        height: 8px;
+    }
+
+    /* Color variants */
+    .progress-indicator.success .progress-bar {
+        background: var(--success-color);
+    }
+
+    .progress-indicator.warning .progress-bar {
+        background: var(--warning-color);
+    }
+
+    .progress-indicator.error .progress-bar {
+        background: var(--error-color);
+    }
+
+    /* Dark theme support */
+    [data-theme="dark"] .progress-label {
+        color: var(--gray-300);
+    }
+
+    [data-theme="dark"] .progress-percentage {
+        color: var(--gray-400);
+    }
+
+    [data-theme="dark"] .progress-track {
+        background: var(--gray-700);
+    }
+
+    [data-theme="dark"] .progress-description {
+        color: var(--gray-400);
+    }
+
+    /* Accessibility */
+    @@media (prefers-reduced-motion: reduce) {
+        .progress-bar,
+        .progress-bar.indeterminate {
+            animation: none;
+            transition: none;
+        }
+    }
+</style>
