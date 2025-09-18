@@ -1,0 +1,515 @@
+@using MediaButler.Web.Models
+@* @using MediaButler.Web.Services.Files *@
+@using MediaButler.Web.Services.System
+@inherits MediaButler.Web.Components.Base.MediaButlerComponentBase
+
+<div class="status-cards-container">
+    @if (IsLoading)
+    {
+        <div class="loading-container">
+            <div class="loading-spinner"></div>
+            <p>Loading system status...</p>
+        </div>
+    }
+    else if (HasError)
+    {
+        <div class="error-container">
+            <Icon Name="warning" CssClass="large error-color" />
+            <h3>Error Loading Status</h3>
+            <p>@ErrorMessage</p>
+            <button class="btn btn-primary" @onclick="LoadSystemStatusAsync">
+                <Icon Name="refresh" CssClass="small" />
+                Retry
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="status-cards-grid">
+            <!-- Files Status Card -->
+            <div class="status-card files-card">
+                <div class="card-header">
+                    <Icon Name="files" CssClass="large primary-color" />
+                    <div class="card-title">
+                        <h3>Files</h3>
+                        <span class="card-subtitle">Media Collection</span>
+                    </div>
+                </div>
+                <div class="card-content">
+                    <div class="metric-primary">
+                        @(_systemStatus?.TotalFiles?.ToString("N0") ?? "0")
+                    </div>
+                    <div class="metrics-grid">
+                        <div class="metric-item">
+                            <span class="metric-label">Pending</span>
+                            <span class="metric-value pending">@(_systemStatus?.PendingFiles?.ToString("N0") ?? "0")</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">Processed</span>
+                            <span class="metric-value success">@(_systemStatus?.ProcessedFiles?.ToString("N0") ?? "0")</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">Errors</span>
+                            <span class="metric-value error">@(_systemStatus?.ErrorFiles?.ToString("N0") ?? "0")</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- System Health Card -->
+            <div class="status-card health-card">
+                <div class="card-header">
+                    <Icon Name="heart" CssClass="@($"large {GetHealthIconClass()}")" />
+                    <div class="card-title">
+                        <h3>System Health</h3>
+                        <span class="card-subtitle">@GetHealthStatus()</span>
+                    </div>
+                </div>
+                <div class="card-content">
+                    <div class="metric-primary @GetHealthTextClass()">
+                        @GetHealthPercentage()%
+                    </div>
+                    <div class="metrics-grid">
+                        <div class="metric-item">
+                            <span class="metric-label">Memory</span>
+                            <span class="metric-value">@(_systemStatus?.MemoryUsageMB?.ToString("N0") ?? "0") MB</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">Uptime</span>
+                            <span class="metric-value">@GetUptimeDisplay()</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">API Status</span>
+                            <span class="metric-value @GetApiStatusClass()">@GetApiStatus()</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Processing Status Card -->
+            <div class="status-card processing-card">
+                <div class="card-header">
+                    <Icon Name="cpu" CssClass="large secondary-color" />
+                    <div class="card-title">
+                        <h3>Processing</h3>
+                        <span class="card-subtitle">Queue Status</span>
+                    </div>
+                </div>
+                <div class="card-content">
+                    <div class="metric-primary">
+                        @(_systemStatus?.QueueSize?.ToString("N0") ?? "0")
+                    </div>
+                    <div class="metrics-grid">
+                        <div class="metric-item">
+                            <span class="metric-label">In Progress</span>
+                            <span class="metric-value processing">@(_systemStatus?.ActiveJobs?.ToString("N0") ?? "0")</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">Completed Today</span>
+                            <span class="metric-value success">@(_systemStatus?.CompletedToday?.ToString("N0") ?? "0")</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">Avg Time</span>
+                            <span class="metric-value">@GetAvgProcessingTime()</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Storage Status Card -->
+            <div class="status-card storage-card">
+                <div class="card-header">
+                    <Icon Name="database" CssClass="large tertiary-color" />
+                    <div class="card-title">
+                        <h3>Storage</h3>
+                        <span class="card-subtitle">Disk Usage</span>
+                    </div>
+                </div>
+                <div class="card-content">
+                    <div class="metric-primary">
+                        @GetStorageUsageDisplay()
+                    </div>
+                    <div class="storage-bar">
+                        <div class="storage-fill" style="width: @GetStoragePercentage()%"></div>
+                    </div>
+                    <div class="metrics-grid">
+                        <div class="metric-item">
+                            <span class="metric-label">Available</span>
+                            <span class="metric-value">@GetAvailableStorageDisplay()</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">Total Size</span>
+                            <span class="metric-value">@GetTotalStorageDisplay()</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">Files Size</span>
+                            <span class="metric-value">@GetFilesTotalSizeDisplay()</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Last Updated Info -->
+        <div class="status-footer">
+            <div class="last-updated">
+                <Icon Name="refresh" CssClass="small" />
+                <span>Last updated: @GetLastUpdatedDisplay()</span>
+            </div>
+            <button class="btn btn-ghost" @onclick="LoadSystemStatusAsync" disabled="@IsLoading">
+                <Icon Name="refresh" CssClass="small" />
+                Refresh
+            </button>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public bool AutoRefresh { get; set; } = true;
+    [Parameter] public int RefreshIntervalMs { get; set; } = 30000; // 30 seconds
+
+    [Inject] private ISystemStatusService SystemStatusService { get; set; } = default!;
+
+    private SystemStatusModel? _systemStatus;
+    private DateTime _lastUpdated = DateTime.Now;
+    private Timer? _refreshTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        await LoadSystemStatusAsync();
+
+        if (AutoRefresh)
+        {
+            _refreshTimer = new Timer(_ => _ = RefreshStatusAsync(), null, RefreshIntervalMs, RefreshIntervalMs);
+        }
+    }
+
+    private async Task LoadSystemStatusAsync()
+    {
+        await ExecuteAsync(async () =>
+        {
+            _systemStatus = await SystemStatusService.GetSystemStatusAsync();
+            _lastUpdated = DateTime.Now;
+            StateHasChanged();
+        }, "Loading system status");
+    }
+
+    private async Task RefreshStatusAsync()
+    {
+        try
+        {
+            await InvokeAsync(LoadSystemStatusAsync);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error during auto-refresh");
+        }
+    }
+
+    // Health Status Methods
+    private string GetHealthIconClass()
+    {
+        var healthScore = GetHealthScore();
+        return healthScore switch
+        {
+            >= 90 => "success-color",
+            >= 70 => "warning-color",
+            _ => "error-color"
+        };
+    }
+
+    private string GetHealthTextClass()
+    {
+        var healthScore = GetHealthScore();
+        return healthScore switch
+        {
+            >= 90 => "success",
+            >= 70 => "warning",
+            _ => "error"
+        };
+    }
+
+    private string GetHealthStatus()
+    {
+        var healthScore = GetHealthScore();
+        return healthScore switch
+        {
+            >= 90 => "Excellent",
+            >= 70 => "Good",
+            >= 50 => "Fair",
+            _ => "Poor"
+        };
+    }
+
+    private int GetHealthScore()
+    {
+        if (_systemStatus == null) return 0;
+
+        var score = 100;
+        
+        // Memory usage impact (max 30 points deduction)
+        if (_systemStatus.MemoryUsageMB > 250)
+            score -= Math.Min(30, (_systemStatus.MemoryUsageMB.Value - 250) / 10);
+        
+        // Error rate impact (max 40 points deduction)
+        var totalFiles = _systemStatus.TotalFiles ?? 1;
+        var errorRate = (_systemStatus.ErrorFiles ?? 0) * 100.0 / totalFiles;
+        score -= (int)(errorRate * 0.4);
+        
+        // API availability impact (50 points if down)
+        if (!_systemStatus.IsApiHealthy)
+            score -= 50;
+
+        return Math.Max(0, score);
+    }
+
+    private int GetHealthPercentage() => GetHealthScore();
+
+    // System Status Methods
+    private string GetApiStatus() => _systemStatus?.IsApiHealthy == true ? "Online" : "Offline";
+    private string GetApiStatusClass() => _systemStatus?.IsApiHealthy == true ? "success" : "error";
+
+    private string GetUptimeDisplay()
+    {
+        var uptime = _systemStatus?.UptimeSpan ?? TimeSpan.Zero;
+        if (uptime.TotalDays >= 1)
+            return $"{(int)uptime.TotalDays}d {uptime.Hours}h";
+        if (uptime.TotalHours >= 1)
+            return $"{uptime.Hours}h {uptime.Minutes}m";
+        return $"{uptime.Minutes}m";
+    }
+
+    private string GetAvgProcessingTime()
+    {
+        var avgMs = _systemStatus?.AvgProcessingTimeMs ?? 0;
+        if (avgMs >= 1000)
+            return $"{avgMs / 1000:F1}s";
+        return $"{avgMs}ms";
+    }
+
+    // Storage Methods
+    private string GetStorageUsageDisplay()
+    {
+        var used = _systemStatus?.StorageUsedGB ?? 0;
+        return $"{used:F1} GB";
+    }
+
+    private int GetStoragePercentage()
+    {
+        var used = _systemStatus?.StorageUsedGB ?? 0;
+        var total = _systemStatus?.StorageTotalGB ?? 1;
+        return (int)((used / total) * 100);
+    }
+
+    private string GetAvailableStorageDisplay()
+    {
+        var total = _systemStatus?.StorageTotalGB ?? 0;
+        var used = _systemStatus?.StorageUsedGB ?? 0;
+        var available = total - used;
+        return $"{available:F1} GB";
+    }
+
+    private string GetTotalStorageDisplay()
+    {
+        var total = _systemStatus?.StorageTotalGB ?? 0;
+        return $"{total:F1} GB";
+    }
+
+    private string GetFilesTotalSizeDisplay()
+    {
+        var sizeGB = _systemStatus?.FilesTotalSizeGB ?? 0;
+        return $"{sizeGB:F2} GB";
+    }
+
+    private string GetLastUpdatedDisplay()
+    {
+        var elapsed = DateTime.Now - _lastUpdated;
+        if (elapsed.TotalMinutes < 1)
+            return "Just now";
+        if (elapsed.TotalMinutes < 60)
+            return $"{(int)elapsed.TotalMinutes}m ago";
+        return $"{(int)elapsed.TotalHours}h ago";
+    }
+
+    public override void Dispose()
+    {
+        _refreshTimer?.Dispose();
+        base.Dispose();
+    }
+}
+
+<style>
+    .status-cards-container {
+        width: 100%;
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+
+    .status-cards-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: var(--space-4);
+        margin-bottom: var(--space-4);
+    }
+
+    .status-card {
+        background: var(--background-elevated);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-lg);
+        padding: var(--space-4);
+        transition: all 0.2s ease;
+        box-shadow: var(--shadow-sm);
+    }
+
+    .status-card:hover {
+        box-shadow: var(--shadow-lg);
+        transform: translateY(-2px);
+    }
+
+    .card-header {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        margin-bottom: var(--space-4);
+    }
+
+    .card-title h3 {
+        margin: 0;
+        font-size: var(--text-lg);
+        font-weight: var(--font-semibold);
+        color: var(--text-primary);
+    }
+
+    .card-subtitle {
+        font-size: var(--text-sm);
+        color: var(--text-secondary);
+        font-weight: var(--font-normal);
+    }
+
+    .card-content {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-3);
+    }
+
+    .metric-primary {
+        font-size: 2.5rem;
+        font-weight: var(--font-bold);
+        color: var(--text-primary);
+        line-height: 1;
+    }
+
+    .metrics-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+        gap: var(--space-2);
+        padding-top: var(--space-2);
+        border-top: 1px solid var(--border-color);
+    }
+
+    .metric-item {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-1);
+        text-align: center;
+    }
+
+    .metric-label {
+        font-size: var(--text-xs);
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        font-weight: var(--font-medium);
+    }
+
+    .metric-value {
+        font-size: var(--text-sm);
+        font-weight: var(--font-semibold);
+        color: var(--text-primary);
+    }
+
+    .metric-value.success { color: var(--success-color); }
+    .metric-value.warning { color: var(--warning-color); }
+    .metric-value.error { color: var(--error-color); }
+    .metric-value.pending { color: var(--secondary-color); }
+    .metric-value.processing { color: var(--primary-color); }
+
+    /* Storage Bar */
+    .storage-bar {
+        height: 8px;
+        background: var(--background-subtle);
+        border-radius: var(--radius-full);
+        overflow: hidden;
+        margin: var(--space-2) 0;
+    }
+
+    .storage-fill {
+        height: 100%;
+        background: linear-gradient(90deg, var(--success-color), var(--warning-color));
+        border-radius: var(--radius-full);
+        transition: width 0.5s ease;
+    }
+
+    /* Status Footer */
+    .status-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: var(--space-3);
+        background: var(--background-subtle);
+        border-radius: var(--radius-md);
+        border: 1px solid var(--border-color);
+    }
+
+    .last-updated {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        font-size: var(--text-sm);
+        color: var(--text-secondary);
+    }
+
+    /* Loading and Error States */
+    .loading-container,
+    .error-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: var(--space-8);
+        text-align: center;
+        gap: var(--space-3);
+    }
+
+    .error-container h3 {
+        margin: 0;
+        color: var(--error-color);
+    }
+
+    /* Mobile Responsive */
+    @@media (max-width: 768px) {
+        .status-cards-grid {
+            grid-template-columns: 1fr;
+            gap: var(--space-3);
+        }
+
+        .status-card {
+            padding: var(--space-3);
+        }
+
+        .metric-primary {
+            font-size: 2rem;
+        }
+
+        .status-footer {
+            flex-direction: column;
+            gap: var(--space-2);
+            text-align: center;
+        }
+
+        .metrics-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+</style>

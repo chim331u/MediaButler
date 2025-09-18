@@ -1,0 +1,936 @@
+@using MediaButler.Web.Models
+@* @using MediaButler.Web.Services.Files *@
+@inherits MediaButler.Web.Components.Base.MediaButlerComponentBase
+
+<div class="quick-actions-container">
+    <div class="actions-header">
+        <h3>
+            <Icon Name="zap" CssClass="small primary-color" />
+            Quick Actions
+        </h3>
+        <span class="actions-subtitle">Common operations and shortcuts</span>
+    </div>
+
+    <div class="actions-grid">
+        <!-- File Operations -->
+        <div class="action-group">
+            <h4>File Operations</h4>
+            <div class="action-buttons">
+                <button class="action-btn primary" @onclick="StartFileScan" disabled="@IsLoading" title="Scan watch folder for new files">
+                    <Icon Name="search" CssClass="medium" />
+                    <div class="btn-content">
+                        <span class="btn-label">Start Scan</span>
+                        <span class="btn-description">Find new files</span>
+                    </div>
+                    @if (IsScanning)
+                    {
+                        <div class="loading-spinner small"></div>
+                    }
+                </button>
+
+                <button class="action-btn secondary" @onclick="ProcessPendingFiles" disabled="@IsLoading" title="Process all pending files">
+                    <Icon Name="play" CssClass="medium" />
+                    <div class="btn-content">
+                        <span class="btn-label">Process All</span>
+                        <span class="btn-description">@PendingFilesCount files pending</span>
+                    </div>
+                </button>
+
+                <button class="action-btn tertiary" @onclick="OpenFileManager" title="Open file management interface">
+                    <Icon Name="folder" CssClass="medium" />
+                    <div class="btn-content">
+                        <span class="btn-label">Manage Files</span>
+                        <span class="btn-description">View & organize</span>
+                    </div>
+                </button>
+            </div>
+        </div>
+
+        <!-- System Operations -->
+        <div class="action-group">
+            <h4>System</h4>
+            <div class="action-buttons">
+                <button class="action-btn success" @onclick="TrainMLModel" disabled="@IsLoading" title="Retrain ML classification model">
+                    <Icon Name="brain" CssClass="medium" />
+                    <div class="btn-content">
+                        <span class="btn-label">Train Model</span>
+                        <span class="btn-description">Update ML</span>
+                    </div>
+                    @if (IsTraining)
+                    {
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: @TrainingProgress%"></div>
+                        </div>
+                    }
+                </button>
+
+                <button class="action-btn warning" @onclick="CleanupSystem" disabled="@IsLoading" title="Clean temporary files and optimize database">
+                    <Icon Name="trash" CssClass="medium" />
+                    <div class="btn-content">
+                        <span class="btn-label">Cleanup</span>
+                        <span class="btn-description">Free space</span>
+                    </div>
+                </button>
+
+                <button class="action-btn info" @onclick="BackupData" disabled="@IsLoading" title="Create system backup">
+                    <Icon Name="download" CssClass="medium" />
+                    <div class="btn-content">
+                        <span class="btn-label">Backup</span>
+                        <span class="btn-description">Save data</span>
+                    </div>
+                </button>
+            </div>
+        </div>
+
+        <!-- Configuration -->
+        <div class="action-group">
+            <h4>Configuration</h4>
+            <div class="action-buttons">
+                <button class="action-btn secondary" @onclick="OpenSettings" title="Open system settings">
+                    <Icon Name="settings" CssClass="medium" />
+                    <div class="btn-content">
+                        <span class="btn-label">Settings</span>
+                        <span class="btn-description">Configure system</span>
+                    </div>
+                </button>
+
+                <button class="action-btn tertiary" @onclick="ViewLogs" title="View system logs and diagnostics">
+                    <Icon Name="file-text" CssClass="medium" />
+                    <div class="btn-content">
+                        <span class="btn-label">View Logs</span>
+                        <span class="btn-description">Diagnostics</span>
+                    </div>
+                </button>
+
+                <button class="action-btn info" @onclick="ExportData" disabled="@IsLoading" title="Export data and configurations">
+                    <Icon Name="upload" CssClass="medium" />
+                    <div class="btn-content">
+                        <span class="btn-label">Export</span>
+                        <span class="btn-description">Download data</span>
+                    </div>
+                </button>
+            </div>
+        </div>
+
+        <!-- Emergency Actions -->
+        <div class="action-group emergency">
+            <h4>
+                <Icon Name="alert-triangle" CssClass="small warning-color" />
+                Emergency
+            </h4>
+            <div class="action-buttons">
+                <button class="action-btn error" @onclick="StopAllProcessing" disabled="@IsLoading" title="Stop all running operations immediately">
+                    <Icon Name="stop-circle" CssClass="medium" />
+                    <div class="btn-content">
+                        <span class="btn-label">Stop All</span>
+                        <span class="btn-description">Emergency stop</span>
+                    </div>
+                </button>
+
+                <button class="action-btn warning" @onclick="RestartServices" disabled="@IsLoading" title="Restart background services">
+                    <Icon Name="refresh-cw" CssClass="medium" />
+                    <div class="btn-content">
+                        <span class="btn-label">Restart</span>
+                        <span class="btn-description">Reset services</span>
+                    </div>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Actions -->
+    @if (RecentActions?.Any() == true)
+    {
+        <div class="recent-actions-section">
+            <h4>Recent Actions</h4>
+            <div class="recent-actions-list">
+                @foreach (var action in RecentActions.Take(3))
+                {
+                    <div class="recent-action-item">
+                        <Icon Name="@action.Icon" CssClass="@($"small {action.StatusClass}")" />
+                        <div class="action-info">
+                            <span class="action-name">@action.Name</span>
+                            <span class="action-time">@GetRelativeTime(action.Timestamp)</span>
+                        </div>
+                        <div class="action-status">
+                            @if (action.IsRunning)
+                            {
+                                <div class="loading-spinner tiny"></div>
+                                <span class="status-text">Running...</span>
+                            }
+                            else
+                            {
+                                <Icon Name="@(action.IsSuccess ? "check" : "x")" CssClass="@($"tiny {(action.IsSuccess ? "success-color" : "error-color")}")" />
+                                <span class="status-text">@(action.IsSuccess ? "Success" : "Failed")</span>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+            @if (RecentActions.Count > 3)
+            {
+                <button class="view-all-btn" @onclick="ViewAllActions">
+                    View all @RecentActions.Count actions
+                </button>
+            }
+        </div>
+    }
+
+    <!-- Action Status Toast -->
+    @if (!string.IsNullOrEmpty(ActionMessage))
+    {
+        <div class="action-toast @ActionMessageType">
+            <Icon Name="@GetToastIcon(ActionMessageType)" CssClass="small" />
+            <span>@ActionMessage</span>
+            <button class="toast-close" @onclick="ClearActionMessage">
+                <Icon Name="x" CssClass="tiny" />
+            </button>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public EventCallback OnActionCompleted { get; set; }
+
+    @* [Inject] private IFileManagementService FileManagementService { get; set; } = default!; *@
+    [Inject] private NavigationManager Navigation { get; set; } = default!;
+
+    private List<RecentActionModel> RecentActions { get; set; } = new();
+    private string ActionMessage { get; set; } = string.Empty;
+    private string ActionMessageType { get; set; } = string.Empty;
+    private Timer? _messageTimer;
+
+    // Action states
+    private bool IsScanning { get; set; } = false;
+    private bool IsTraining { get; set; } = false;
+    private int TrainingProgress { get; set; } = 0;
+    private int PendingFilesCount { get; set; } = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        await LoadInitialDataAsync();
+    }
+
+    private async Task LoadInitialDataAsync()
+    {
+        await ExecuteAsync(async () =>
+        {
+            // Load pending files count
+            PendingFilesCount = await GetPendingFilesCountAsync();
+            
+            // Load recent actions
+            RecentActions = await LoadRecentActionsAsync();
+            
+            StateHasChanged();
+        }, "Loading dashboard data");
+    }
+
+    // File Operations
+    private async Task StartFileScan()
+    {
+        IsScanning = true;
+        StateHasChanged();
+
+        try
+        {
+            await ExecuteAsync(async () =>
+            {
+                // TODO: Replace with actual API call
+                await Task.Delay(3000); // Simulate scan process
+                
+                var newFilesCount = new Random().Next(0, 15);
+                PendingFilesCount += newFilesCount;
+                
+                ShowActionMessage($"Scan completed. Found {newFilesCount} new files.", "success");
+                
+                await AddRecentAction("File Scan", "search", true, false);
+                await OnActionCompleted.InvokeAsync();
+            }, "Starting file scan");
+        }
+        finally
+        {
+            IsScanning = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ProcessPendingFiles()
+    {
+        if (PendingFilesCount == 0)
+        {
+            ShowActionMessage("No pending files to process.", "info");
+            return;
+        }
+
+        await ExecuteAsync(async () =>
+        {
+            // TODO: Replace with actual API call
+            await Task.Delay(2000);
+            
+            var processedCount = PendingFilesCount;
+            PendingFilesCount = 0;
+            
+            ShowActionMessage($"Processing completed. {processedCount} files processed.", "success");
+            
+            await AddRecentAction("Process All Files", "play", true, false);
+            await OnActionCompleted.InvokeAsync();
+        }, "Processing pending files");
+    }
+
+    private async Task OpenFileManager()
+    {
+        await AddRecentAction("Open File Manager", "folder", true, false);
+        Navigation.NavigateTo("/files");
+    }
+
+    // System Operations
+    private async Task TrainMLModel()
+    {
+        IsTraining = true;
+        TrainingProgress = 0;
+        StateHasChanged();
+
+        try
+        {
+            await ExecuteAsync(async () =>
+            {
+                // Simulate training progress
+                for (int i = 0; i <= 100; i += 10)
+                {
+                    TrainingProgress = i;
+                    StateHasChanged();
+                    await Task.Delay(300);
+                }
+                
+                ShowActionMessage("ML model training completed successfully.", "success");
+                
+                await AddRecentAction("Train ML Model", "brain", true, false);
+                await OnActionCompleted.InvokeAsync();
+            }, "Training ML model");
+        }
+        finally
+        {
+            IsTraining = false;
+            TrainingProgress = 0;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CleanupSystem()
+    {
+        await ExecuteAsync(async () =>
+        {
+            // TODO: Replace with actual API call
+            await Task.Delay(2000);
+            
+            var freedSpace = new Random().Next(50, 500);
+            ShowActionMessage($"System cleanup completed. {freedSpace}MB freed.", "success");
+            
+            await AddRecentAction("System Cleanup", "trash", true, false);
+            await OnActionCompleted.InvokeAsync();
+        }, "Cleaning up system");
+    }
+
+    private async Task BackupData()
+    {
+        await ExecuteAsync(async () =>
+        {
+            // TODO: Replace with actual API call
+            await Task.Delay(3000);
+            
+            ShowActionMessage("Backup created successfully and saved to downloads.", "success");
+            
+            await AddRecentAction("Data Backup", "download", true, false);
+            await OnActionCompleted.InvokeAsync();
+        }, "Creating backup");
+    }
+
+    // Configuration
+    private async Task OpenSettings()
+    {
+        await AddRecentAction("Open Settings", "settings", true, false);
+        Navigation.NavigateTo("/settings");
+    }
+
+    private async Task ViewLogs()
+    {
+        await AddRecentAction("View Logs", "file-text", true, false);
+        Navigation.NavigateTo("/logs");
+    }
+
+    private async Task ExportData()
+    {
+        await ExecuteAsync(async () =>
+        {
+            // TODO: Replace with actual API call
+            await Task.Delay(2000);
+            
+            ShowActionMessage("Data export completed and downloaded.", "success");
+            
+            await AddRecentAction("Export Data", "upload", true, false);
+            await OnActionCompleted.InvokeAsync();
+        }, "Exporting data");
+    }
+
+    // Emergency Actions
+    private async Task StopAllProcessing()
+    {
+        await ExecuteAsync(async () =>
+        {
+            // TODO: Replace with actual API call
+            await Task.Delay(500);
+            
+            ShowActionMessage("All processing operations have been stopped.", "warning");
+            
+            await AddRecentAction("Emergency Stop", "stop-circle", true, false);
+            await OnActionCompleted.InvokeAsync();
+        }, "Stopping all operations");
+    }
+
+    private async Task RestartServices()
+    {
+        await ExecuteAsync(async () =>
+        {
+            // TODO: Replace with actual API call
+            await Task.Delay(3000);
+            
+            ShowActionMessage("Background services restarted successfully.", "success");
+            
+            await AddRecentAction("Restart Services", "refresh-cw", true, false);
+            await OnActionCompleted.InvokeAsync();
+        }, "Restarting services");
+    }
+
+    // UI Actions
+    private async Task ViewAllActions()
+    {
+        Navigation.NavigateTo("/activity");
+    }
+
+    private void ClearActionMessage()
+    {
+        ActionMessage = string.Empty;
+        ActionMessageType = string.Empty;
+        _messageTimer?.Dispose();
+    }
+
+    // Helper Methods
+    private void ShowActionMessage(string message, string type)
+    {
+        ActionMessage = message;
+        ActionMessageType = type;
+        StateHasChanged();
+
+        // Auto-clear message after 5 seconds
+        _messageTimer?.Dispose();
+        _messageTimer = new Timer(_ => InvokeAsync(() =>
+        {
+            ClearActionMessage();
+            StateHasChanged();
+        }), null, 5000, Timeout.Infinite);
+    }
+
+    private string GetToastIcon(string type)
+    {
+        return type switch
+        {
+            "success" => "check-circle",
+            "warning" => "alert-triangle",
+            "error" => "x-circle",
+            _ => "info"
+        };
+    }
+
+    private string GetRelativeTime(DateTime timestamp)
+    {
+        var elapsed = DateTime.Now - timestamp;
+        
+        if (elapsed.TotalSeconds < 30)
+            return "Just now";
+        if (elapsed.TotalMinutes < 1)
+            return $"{(int)elapsed.TotalSeconds}s ago";
+        if (elapsed.TotalMinutes < 60)
+            return $"{(int)elapsed.TotalMinutes}m ago";
+        
+        return timestamp.ToString("HH:mm");
+    }
+
+    private async Task AddRecentAction(string name, string icon, bool isSuccess, bool isRunning)
+    {
+        var action = new RecentActionModel
+        {
+            Name = name,
+            Icon = icon,
+            IsSuccess = isSuccess,
+            IsRunning = isRunning,
+            Timestamp = DateTime.Now,
+            StatusClass = isSuccess ? "success-color" : "error-color"
+        };
+
+        RecentActions.Insert(0, action);
+        
+        // Keep only last 10 actions
+        if (RecentActions.Count > 10)
+        {
+            RecentActions = RecentActions.Take(10).ToList();
+        }
+
+        // Simulate saving to storage
+        await Task.Delay(1);
+    }
+
+    // Mock Data Methods (replace with actual API calls)
+    private async Task<int> GetPendingFilesCountAsync()
+    {
+        // TODO: Replace with actual API call
+        await Task.Delay(100);
+        return new Random().Next(0, 25);
+    }
+
+    private async Task<List<RecentActionModel>> LoadRecentActionsAsync()
+    {
+        // TODO: Replace with actual API call
+        await Task.Delay(100);
+        
+        var random = new Random();
+        var actions = new List<string[]>
+        {
+            new[] { "File Scan", "search" },
+            new[] { "Process Files", "play" },
+            new[] { "Train Model", "brain" },
+            new[] { "System Cleanup", "trash" },
+            new[] { "Data Backup", "download" }
+        };
+
+        var recentActions = new List<RecentActionModel>();
+        for (int i = 0; i < 5; i++)
+        {
+            var action = actions[random.Next(actions.Count)];
+            recentActions.Add(new RecentActionModel
+            {
+                Name = action[0],
+                Icon = action[1],
+                IsSuccess = random.Next(5) > 0, // 80% success rate
+                IsRunning = false,
+                Timestamp = DateTime.Now.AddMinutes(-random.Next(1, 120)),
+                StatusClass = random.Next(5) > 0 ? "success-color" : "error-color"
+            });
+        }
+
+        return recentActions.OrderByDescending(a => a.Timestamp).ToList();
+    }
+
+    public override void Dispose()
+    {
+        _messageTimer?.Dispose();
+        base.Dispose();
+    }
+
+    // Data Model
+    private record RecentActionModel
+    {
+        public string Name { get; init; } = string.Empty;
+        public string Icon { get; init; } = string.Empty;
+        public bool IsSuccess { get; init; }
+        public bool IsRunning { get; init; }
+        public DateTime Timestamp { get; init; }
+        public string StatusClass { get; init; } = string.Empty;
+    }
+}
+
+<style>
+    .quick-actions-container {
+        width: 100%;
+        max-width: 1000px;
+        margin: 0 auto;
+        position: relative;
+    }
+
+    .actions-header {
+        margin-bottom: var(--space-6);
+        text-align: center;
+    }
+
+    .actions-header h3 {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: var(--space-2);
+        margin: 0 0 var(--space-2) 0;
+        font-size: var(--text-xl);
+        font-weight: var(--font-bold);
+        color: var(--text-primary);
+    }
+
+    .actions-subtitle {
+        font-size: var(--text-sm);
+        color: var(--text-secondary);
+    }
+
+    .actions-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: var(--space-6);
+        margin-bottom: var(--space-6);
+    }
+
+    .action-group {
+        background: var(--background-elevated);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-lg);
+        padding: var(--space-4);
+        transition: box-shadow 0.2s ease;
+    }
+
+    .action-group:hover {
+        box-shadow: var(--shadow-md);
+    }
+
+    .action-group.emergency {
+        border-color: var(--warning-color);
+        background: linear-gradient(135deg, var(--background-elevated), rgba(251, 191, 36, 0.05));
+    }
+
+    .action-group h4 {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        margin: 0 0 var(--space-4) 0;
+        font-size: var(--text-lg);
+        font-weight: var(--font-semibold);
+        color: var(--text-primary);
+        padding-bottom: var(--space-2);
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .action-buttons {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-3);
+    }
+
+    .action-btn {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        padding: var(--space-3) var(--space-4);
+        background: var(--background);
+        border: 2px solid var(--border-color);
+        border-radius: var(--radius-lg);
+        color: var(--text-primary);
+        cursor: pointer;
+        transition: all 0.2s ease;
+        position: relative;
+        min-height: 70px;
+        text-align: left;
+    }
+
+    .action-btn:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-lg);
+    }
+
+    .action-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .action-btn.primary { 
+        border-color: var(--primary-color);
+        background: linear-gradient(135deg, var(--background), rgba(59, 130, 246, 0.05));
+    }
+    .action-btn.primary:hover:not(:disabled) { 
+        border-color: var(--primary-600); 
+        background: linear-gradient(135deg, var(--background), rgba(59, 130, 246, 0.1));
+    }
+
+    .action-btn.secondary { 
+        border-color: var(--secondary-color);
+        background: linear-gradient(135deg, var(--background), rgba(107, 114, 128, 0.05));
+    }
+    .action-btn.secondary:hover:not(:disabled) { 
+        border-color: var(--secondary-600); 
+        background: linear-gradient(135deg, var(--background), rgba(107, 114, 128, 0.1));
+    }
+
+    .action-btn.tertiary { 
+        border-color: var(--tertiary-color);
+        background: linear-gradient(135deg, var(--background), rgba(139, 92, 246, 0.05));
+    }
+    .action-btn.tertiary:hover:not(:disabled) { 
+        border-color: var(--tertiary-600); 
+        background: linear-gradient(135deg, var(--background), rgba(139, 92, 246, 0.1));
+    }
+
+    .action-btn.success { 
+        border-color: var(--success-color);
+        background: linear-gradient(135deg, var(--background), rgba(16, 185, 129, 0.05));
+    }
+    .action-btn.success:hover:not(:disabled) { 
+        border-color: var(--success-600); 
+        background: linear-gradient(135deg, var(--background), rgba(16, 185, 129, 0.1));
+    }
+
+    .action-btn.warning { 
+        border-color: var(--warning-color);
+        background: linear-gradient(135deg, var(--background), rgba(251, 191, 36, 0.05));
+    }
+    .action-btn.warning:hover:not(:disabled) { 
+        border-color: var(--warning-600); 
+        background: linear-gradient(135deg, var(--background), rgba(251, 191, 36, 0.1));
+    }
+
+    .action-btn.error { 
+        border-color: var(--error-color);
+        background: linear-gradient(135deg, var(--background), rgba(220, 38, 38, 0.05));
+    }
+    .action-btn.error:hover:not(:disabled) { 
+        border-color: var(--error-600); 
+        background: linear-gradient(135deg, var(--background), rgba(220, 38, 38, 0.1));
+    }
+
+    .action-btn.info { 
+        border-color: var(--info-color);
+        background: linear-gradient(135deg, var(--background), rgba(6, 182, 212, 0.05));
+    }
+    .action-btn.info:hover:not(:disabled) { 
+        border-color: var(--info-600); 
+        background: linear-gradient(135deg, var(--background), rgba(6, 182, 212, 0.1));
+    }
+
+    .btn-content {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-1);
+    }
+
+    .btn-label {
+        font-size: var(--text-base);
+        font-weight: var(--font-semibold);
+        color: var(--text-primary);
+    }
+
+    .btn-description {
+        font-size: var(--text-sm);
+        color: var(--text-secondary);
+    }
+
+    .progress-bar {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 3px;
+        background: var(--background-subtle);
+        border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+        overflow: hidden;
+    }
+
+    .progress-fill {
+        height: 100%;
+        background: var(--success-color);
+        transition: width 0.3s ease;
+    }
+
+    /* Recent Actions */
+    .recent-actions-section {
+        background: var(--background-elevated);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-lg);
+        padding: var(--space-4);
+        margin-bottom: var(--space-4);
+    }
+
+    .recent-actions-section h4 {
+        margin: 0 0 var(--space-4) 0;
+        font-size: var(--text-lg);
+        font-weight: var(--font-semibold);
+        color: var(--text-primary);
+        padding-bottom: var(--space-2);
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .recent-actions-list {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-2);
+    }
+
+    .recent-action-item {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        padding: var(--space-2);
+        background: var(--background);
+        border-radius: var(--radius-md);
+        transition: background 0.2s ease;
+    }
+
+    .recent-action-item:hover {
+        background: var(--background-subtle);
+    }
+
+    .action-info {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-1);
+    }
+
+    .action-name {
+        font-weight: var(--font-medium);
+        color: var(--text-primary);
+        font-size: var(--text-sm);
+    }
+
+    .action-time {
+        font-size: var(--text-xs);
+        color: var(--text-secondary);
+    }
+
+    .action-status {
+        display: flex;
+        align-items: center;
+        gap: var(--space-1);
+    }
+
+    .status-text {
+        font-size: var(--text-xs);
+        color: var(--text-secondary);
+        font-weight: var(--font-medium);
+    }
+
+    .view-all-btn {
+        margin-top: var(--space-3);
+        padding: var(--space-2) var(--space-3);
+        background: none;
+        border: 1px dashed var(--border-color);
+        border-radius: var(--radius-md);
+        color: var(--text-secondary);
+        font-size: var(--text-sm);
+        cursor: pointer;
+        width: 100%;
+        transition: all 0.2s ease;
+    }
+
+    .view-all-btn:hover {
+        background: var(--background-subtle);
+        border-style: solid;
+        color: var(--text-primary);
+    }
+
+    /* Action Toast */
+    .action-toast {
+        position: fixed;
+        top: var(--space-4);
+        right: var(--space-4);
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        padding: var(--space-3) var(--space-4);
+        background: var(--background-elevated);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-lg);
+        z-index: 1000;
+        min-width: 300px;
+        animation: slideIn 0.3s ease;
+    }
+
+    .action-toast.success {
+        border-color: var(--success-color);
+        background: linear-gradient(135deg, var(--background-elevated), rgba(16, 185, 129, 0.1));
+        color: var(--success-700);
+    }
+
+    .action-toast.warning {
+        border-color: var(--warning-color);
+        background: linear-gradient(135deg, var(--background-elevated), rgba(251, 191, 36, 0.1));
+        color: var(--warning-700);
+    }
+
+    .action-toast.error {
+        border-color: var(--error-color);
+        background: linear-gradient(135deg, var(--background-elevated), rgba(220, 38, 38, 0.1));
+        color: var(--error-700);
+    }
+
+    .action-toast.info {
+        border-color: var(--info-color);
+        background: linear-gradient(135deg, var(--background-elevated), rgba(6, 182, 212, 0.1));
+        color: var(--info-700);
+    }
+
+    .toast-close {
+        background: none;
+        border: none;
+        color: inherit;
+        cursor: pointer;
+        padding: var(--space-1);
+        border-radius: var(--radius-sm);
+        transition: background 0.2s ease;
+    }
+
+    .toast-close:hover {
+        background: rgba(0, 0, 0, 0.1);
+    }
+
+    @@keyframes slideIn {
+        from {
+            transform: translateX(100%);
+            opacity: 0;
+        }
+        to {
+            transform: translateX(0);
+            opacity: 1;
+        }
+    }
+
+    /* Mobile Responsive */
+    @@media (max-width: 768px) {
+        .actions-grid {
+            grid-template-columns: 1fr;
+            gap: var(--space-4);
+        }
+
+        .action-btn {
+            min-height: 60px;
+            padding: var(--space-2) var(--space-3);
+        }
+
+        .btn-label {
+            font-size: var(--text-sm);
+        }
+
+        .btn-description {
+            font-size: var(--text-xs);
+        }
+
+        .action-toast {
+            position: fixed;
+            top: auto;
+            bottom: var(--space-4);
+            right: var(--space-4);
+            left: var(--space-4);
+            min-width: auto;
+        }
+
+        .recent-action-item {
+            padding: var(--space-3);
+        }
+    }
+
+    /* Small mobile adjustments */
+    @@media (max-width: 480px) {
+        .action-btn {
+            gap: var(--space-2);
+            min-height: 50px;
+        }
+
+        .actions-header h3 {
+            font-size: var(--text-lg);
+        }
+    }
+</style>

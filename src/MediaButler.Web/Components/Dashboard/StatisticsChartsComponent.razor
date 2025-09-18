@@ -1,0 +1,1001 @@
+@using MediaButler.Web.Models
+@* @using MediaButler.Web.Services.Files *@
+@using MediaButler.Web.Services.System
+@inherits MediaButler.Web.Components.Base.MediaButlerComponentBase
+
+<div class="statistics-container">
+    <div class="stats-header">
+        <div class="header-title">
+            <Icon Name="bar-chart" CssClass="large primary-color" />
+            <div>
+                <h2>Statistics & Analytics</h2>
+                <span class="header-subtitle">Processing insights and trends</span>
+            </div>
+        </div>
+        <div class="time-range-selector">
+            <select @bind="SelectedTimeRange" @bind:after="UpdateChartsAsync" class="time-range-select">
+                <option value="24h">Last 24 Hours</option>
+                <option value="7d">Last 7 Days</option>
+                <option value="30d">Last 30 Days</option>
+                <option value="90d">Last 90 Days</option>
+            </select>
+        </div>
+    </div>
+
+    @if (IsLoading && _statisticsData == null)
+    {
+        <div class="loading-container">
+            <div class="loading-spinner"></div>
+            <p>Loading statistics...</p>
+        </div>
+    }
+    else if (HasError)
+    {
+        <div class="error-container">
+            <Icon Name="warning" CssClass="large error-color" />
+            <h3>Error Loading Statistics</h3>
+            <p>@ErrorMessage</p>
+            <button class="btn btn-primary" @onclick="UpdateChartsAsync">
+                <Icon Name="refresh" CssClass="small" />
+                Retry
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="charts-grid">
+            <!-- Processing Volume Chart -->
+            <div class="chart-container processing-volume">
+                <div class="chart-header">
+                    <h3>
+                        <Icon Name="activity" CssClass="small" />
+                        Processing Volume
+                    </h3>
+                    <div class="chart-legend">
+                        <div class="legend-item">
+                            <div class="legend-color processed"></div>
+                            <span>Processed</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color failed"></div>
+                            <span>Failed</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="chart-content">
+                    <div class="bar-chart" id="processing-volume-chart">
+                        @if (_statisticsData?.ProcessingVolumeData?.Any() == true)
+                        {
+                            @foreach (var dataPoint in _statisticsData.ProcessingVolumeData)
+                            {
+                                <div class="bar-group">
+                                    <div class="bar-stack">
+                                        <div class="bar processed" 
+                                             style="height: @GetBarHeight(dataPoint.ProcessedCount, GetMaxProcessingVolume())%"
+                                             title="@dataPoint.Date.ToString("MMM dd"): @dataPoint.ProcessedCount processed">
+                                        </div>
+                                        <div class="bar failed" 
+                                             style="height: @GetBarHeight(dataPoint.FailedCount, GetMaxProcessingVolume())%"
+                                             title="@dataPoint.Date.ToString("MMM dd"): @dataPoint.FailedCount failed">
+                                        </div>
+                                    </div>
+                                    <div class="bar-label">@dataPoint.Date.ToString("MMM dd")</div>
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <div class="no-data">No data available for selected period</div>
+                        }
+                    </div>
+                </div>
+                <div class="chart-footer">
+                    <div class="chart-summary">
+                        <span>Total: @GetTotalProcessed() processed, @GetTotalFailed() failed</span>
+                        <span class="success-rate">Success rate: @GetSuccessRate()%</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- File Categories Distribution -->
+            <div class="chart-container categories-distribution">
+                <div class="chart-header">
+                    <h3>
+                        <Icon Name="pie-chart" CssClass="small" />
+                        Category Distribution
+                    </h3>
+                </div>
+                <div class="chart-content">
+                    @if (_statisticsData?.CategoryDistribution?.Any() == true)
+                    {
+                        <div class="donut-chart">
+                            <div class="donut-inner">
+                                <div class="donut-total">@GetTotalCategories()</div>
+                                <div class="donut-label">Categories</div>
+                            </div>
+                            <!-- SVG Donut Chart would go here in a real implementation -->
+                        </div>
+                        <div class="categories-list">
+                            @foreach (var category in _statisticsData.CategoryDistribution.OrderByDescending(c => c.Count))
+                            {
+                                <div class="category-item">
+                                    <div class="category-info">
+                                        <div class="category-color" style="background: @GetCategoryColor(category.CategoryName)"></div>
+                                        <span class="category-name">@category.CategoryName</span>
+                                    </div>
+                                    <div class="category-stats">
+                                        <span class="category-count">@category.Count.ToString("N0")</span>
+                                        <span class="category-percentage">@GetCategoryPercentage(category.Count)%</span>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="no-data">No category data available</div>
+                    }
+                </div>
+            </div>
+
+            <!-- Processing Performance -->
+            <div class="chart-container processing-performance">
+                <div class="chart-header">
+                    <h3>
+                        <Icon Name="zap" CssClass="small" />
+                        Processing Performance
+                    </h3>
+                    <div class="performance-toggle">
+                        <button class="toggle-btn @(ShowAvgTime ? "active" : "")" @onclick="() => TogglePerformanceView(true)">
+                            Avg Time
+                        </button>
+                        <button class="toggle-btn @(!ShowAvgTime ? "active" : "")" @onclick="() => TogglePerformanceView(false)">
+                            Throughput
+                        </button>
+                    </div>
+                </div>
+                <div class="chart-content">
+                    <div class="line-chart" id="performance-chart">
+                        @if (_statisticsData?.PerformanceData?.Any() == true)
+                        {
+                            @if (ShowAvgTime)
+                            {
+                                <div class="line-chart-area">
+                                    @for (int i = 0; i < _statisticsData.PerformanceData.Count - 1; i++)
+                                    {
+                                        var current = _statisticsData.PerformanceData[i];
+                                        var next = _statisticsData.PerformanceData[i + 1];
+                                        <div class="line-point" 
+                                             style="left: @(i * 100 / (_statisticsData.PerformanceData.Count - 1))%; bottom: @GetPerformanceHeight(current.AvgProcessingTimeMs)%"
+                                             title="@current.Date.ToString("MMM dd"): @current.AvgProcessingTimeMs ms avg">
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="line-chart-area">
+                                    @for (int i = 0; i < _statisticsData.PerformanceData.Count - 1; i++)
+                                    {
+                                        var current = _statisticsData.PerformanceData[i];
+                                        <div class="line-point" 
+                                             style="left: @(i * 100 / (_statisticsData.PerformanceData.Count - 1))%; bottom: @GetThroughputHeight(current.FilesPerHour)%"
+                                             title="@current.Date.ToString("MMM dd"): @current.FilesPerHour files/hour">
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <div class="no-data">No performance data available</div>
+                        }
+                    </div>
+                </div>
+                <div class="chart-footer">
+                    <div class="performance-summary">
+                        @if (ShowAvgTime)
+                        {
+                            <span>Current avg: @GetCurrentAvgTime() ms</span>
+                            <span class="trend @GetPerformanceTrendClass()">@GetPerformanceTrend()</span>
+                        }
+                        else
+                        {
+                            <span>Current throughput: @GetCurrentThroughput() files/hour</span>
+                            <span class="trend @GetThroughputTrendClass()">@GetThroughputTrend()</span>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- System Resources -->
+            <div class="chart-container system-resources">
+                <div class="chart-header">
+                    <h3>
+                        <Icon Name="cpu" CssClass="small" />
+                        System Resources
+                    </h3>
+                </div>
+                <div class="chart-content">
+                    <div class="resource-metrics">
+                        <div class="resource-item">
+                            <div class="resource-label">Memory Usage</div>
+                            <div class="resource-gauge">
+                                <div class="gauge-fill" style="width: @GetMemoryUsagePercentage()%"></div>
+                            </div>
+                            <div class="resource-value">@GetMemoryUsage() MB</div>
+                        </div>
+                        
+                        <div class="resource-item">
+                            <div class="resource-label">Storage Used</div>
+                            <div class="resource-gauge">
+                                <div class="gauge-fill storage" style="width: @GetStorageUsagePercentage()%"></div>
+                            </div>
+                            <div class="resource-value">@GetStorageUsage()%</div>
+                        </div>
+                        
+                        <div class="resource-item">
+                            <div class="resource-label">Queue Load</div>
+                            <div class="resource-gauge">
+                                <div class="gauge-fill queue" style="width: @GetQueueLoadPercentage()%"></div>
+                            </div>
+                            <div class="resource-value">@GetQueueLoad()</div>
+                        </div>
+                        
+                        <div class="resource-item">
+                            <div class="resource-label">API Response</div>
+                            <div class="resource-gauge">
+                                <div class="gauge-fill api" style="width: @GetApiResponsePercentage()%"></div>
+                            </div>
+                            <div class="resource-value">@GetApiResponseTime() ms</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Last Updated -->
+        <div class="stats-footer">
+            <span class="last-updated">
+                <Icon Name="refresh" CssClass="small" />
+                Last updated: @GetLastUpdatedDisplay()
+            </span>
+            <button class="btn btn-ghost" @onclick="UpdateChartsAsync" disabled="@IsLoading">
+                <Icon Name="refresh" CssClass="small" />
+                Refresh Data
+            </button>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public bool AutoRefreshCharts { get; set; } = true;
+    [Parameter] public int RefreshIntervalMs { get; set; } = 60000; // 1 minute
+
+    [Inject] private ISystemStatusService SystemStatusService { get; set; } = default!;
+
+    private StatisticsDataModel? _statisticsData;
+    private DateTime _lastUpdated = DateTime.Now;
+    private Timer? _refreshTimer;
+    private string SelectedTimeRange { get; set; } = "7d";
+    private bool ShowAvgTime { get; set; } = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        await UpdateChartsAsync();
+
+        if (AutoRefreshCharts)
+        {
+            _refreshTimer = new Timer(_ => _ = AutoRefreshAsync(), null, RefreshIntervalMs, RefreshIntervalMs);
+        }
+    }
+
+    private async Task UpdateChartsAsync()
+    {
+        await ExecuteAsync(async () =>
+        {
+            // TODO: Replace with actual API call
+            _statisticsData = await GenerateMockStatisticsAsync();
+            _lastUpdated = DateTime.Now;
+            StateHasChanged();
+        }, "Loading statistics data");
+    }
+
+    private async Task AutoRefreshAsync()
+    {
+        try
+        {
+            await InvokeAsync(UpdateChartsAsync);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error during statistics auto-refresh");
+        }
+    }
+
+    private void TogglePerformanceView(bool showAvgTime)
+    {
+        ShowAvgTime = showAvgTime;
+        StateHasChanged();
+    }
+
+    // Chart Data Calculation Methods
+    private int GetBarHeight(int value, int maxValue)
+    {
+        if (maxValue == 0) return 0;
+        return Math.Max(5, (int)((value * 100.0) / maxValue));
+    }
+
+    private int GetMaxProcessingVolume()
+    {
+        if (_statisticsData?.ProcessingVolumeData?.Any() != true) return 1;
+        return _statisticsData.ProcessingVolumeData.Max(d => d.ProcessedCount + d.FailedCount);
+    }
+
+    private int GetTotalProcessed() => _statisticsData?.ProcessingVolumeData?.Sum(d => d.ProcessedCount) ?? 0;
+    private int GetTotalFailed() => _statisticsData?.ProcessingVolumeData?.Sum(d => d.FailedCount) ?? 0;
+    
+    private int GetSuccessRate()
+    {
+        var total = GetTotalProcessed() + GetTotalFailed();
+        if (total == 0) return 100;
+        return (int)((GetTotalProcessed() * 100.0) / total);
+    }
+
+    private int GetTotalCategories() => _statisticsData?.CategoryDistribution?.Sum(c => c.Count) ?? 0;
+
+    private int GetCategoryPercentage(int count)
+    {
+        var total = GetTotalCategories();
+        if (total == 0) return 0;
+        return (int)((count * 100.0) / total);
+    }
+
+    private string GetCategoryColor(string categoryName)
+    {
+        // Simple color assignment based on category name hash
+        var hash = categoryName.GetHashCode();
+        var colors = new[] { "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#84cc16", "#f97316" };
+        return colors[Math.Abs(hash) % colors.Length];
+    }
+
+    // Performance Chart Methods
+    private int GetPerformanceHeight(int avgTimeMs)
+    {
+        var maxTime = _statisticsData?.PerformanceData?.Max(p => p.AvgProcessingTimeMs) ?? 1000;
+        return Math.Max(10, (int)((avgTimeMs * 90.0) / maxTime));
+    }
+
+    private int GetThroughputHeight(int filesPerHour)
+    {
+        var maxThroughput = _statisticsData?.PerformanceData?.Max(p => p.FilesPerHour) ?? 60;
+        return Math.Max(10, (int)((filesPerHour * 90.0) / maxThroughput));
+    }
+
+    private int GetCurrentAvgTime() => _statisticsData?.PerformanceData?.LastOrDefault()?.AvgProcessingTimeMs ?? 0;
+    private int GetCurrentThroughput() => _statisticsData?.PerformanceData?.LastOrDefault()?.FilesPerHour ?? 0;
+
+    private string GetPerformanceTrend()
+    {
+        var data = _statisticsData?.PerformanceData;
+        if (data?.Count < 2) return "No trend";
+        
+        var recent = data.TakeLast(2).ToList();
+        var change = recent[1].AvgProcessingTimeMs - recent[0].AvgProcessingTimeMs;
+        
+        if (change < -50) return "Much faster";
+        if (change < -10) return "Faster";
+        if (change > 50) return "Much slower";
+        if (change > 10) return "Slower";
+        return "Stable";
+    }
+
+    private string GetPerformanceTrendClass()
+    {
+        var trend = GetPerformanceTrend();
+        return trend switch
+        {
+            "Much faster" or "Faster" => "positive",
+            "Much slower" or "Slower" => "negative",
+            _ => "neutral"
+        };
+    }
+
+    private string GetThroughputTrend()
+    {
+        var data = _statisticsData?.PerformanceData;
+        if (data?.Count < 2) return "No trend";
+        
+        var recent = data.TakeLast(2).ToList();
+        var change = recent[1].FilesPerHour - recent[0].FilesPerHour;
+        
+        if (change > 10) return "Increasing";
+        if (change < -10) return "Decreasing";
+        return "Stable";
+    }
+
+    private string GetThroughputTrendClass()
+    {
+        var trend = GetThroughputTrend();
+        return trend switch
+        {
+            "Increasing" => "positive",
+            "Decreasing" => "negative",
+            _ => "neutral"
+        };
+    }
+
+    // Resource Methods
+    private int GetMemoryUsagePercentage() => _statisticsData?.SystemResources?.MemoryUsagePercentage ?? 0;
+    private int GetMemoryUsage() => _statisticsData?.SystemResources?.MemoryUsageMB ?? 0;
+    private int GetStorageUsagePercentage() => _statisticsData?.SystemResources?.StorageUsagePercentage ?? 0;
+    private int GetStorageUsage() => _statisticsData?.SystemResources?.StorageUsagePercentage ?? 0;
+    private int GetQueueLoadPercentage() => _statisticsData?.SystemResources?.QueueLoadPercentage ?? 0;
+    private string GetQueueLoad() => $"{_statisticsData?.SystemResources?.QueueSize ?? 0}";
+    private int GetApiResponsePercentage() => Math.Min(100, (_statisticsData?.SystemResources?.ApiResponseTimeMs ?? 0) / 10);
+    private int GetApiResponseTime() => _statisticsData?.SystemResources?.ApiResponseTimeMs ?? 0;
+
+    private string GetLastUpdatedDisplay()
+    {
+        var elapsed = DateTime.Now - _lastUpdated;
+        if (elapsed.TotalMinutes < 1)
+            return "just now";
+        if (elapsed.TotalMinutes < 60)
+            return $"{(int)elapsed.TotalMinutes}m ago";
+        return $"{(int)elapsed.TotalHours}h ago";
+    }
+
+    // Mock Data Generation (replace with actual API calls)
+    private async Task<StatisticsDataModel> GenerateMockStatisticsAsync()
+    {
+        await Task.Delay(200); // Simulate API call
+        
+        var days = SelectedTimeRange switch
+        {
+            "24h" => 1,
+            "7d" => 7,
+            "30d" => 30,
+            "90d" => 90,
+            _ => 7
+        };
+
+        var random = new Random();
+        var processingData = new List<ProcessingVolumeDataPoint>();
+        var performanceData = new List<PerformanceDataPoint>();
+        
+        for (int i = days - 1; i >= 0; i--)
+        {
+            var date = DateTime.Now.AddDays(-i);
+            processingData.Add(new ProcessingVolumeDataPoint
+            {
+                Date = date,
+                ProcessedCount = random.Next(10, 100),
+                FailedCount = random.Next(0, 10)
+            });
+            
+            performanceData.Add(new PerformanceDataPoint
+            {
+                Date = date,
+                AvgProcessingTimeMs = random.Next(200, 2000),
+                FilesPerHour = random.Next(20, 80)
+            });
+        }
+
+        return new StatisticsDataModel
+        {
+            ProcessingVolumeData = processingData,
+            PerformanceData = performanceData,
+            CategoryDistribution = new List<CategoryDataPoint>
+            {
+                new() { CategoryName = "TV SERIES", Count = random.Next(100, 500) },
+                new() { CategoryName = "MOVIES", Count = random.Next(50, 300) },
+                new() { CategoryName = "DOCUMENTARIES", Count = random.Next(20, 100) },
+                new() { CategoryName = "ANIME", Count = random.Next(30, 150) },
+                new() { CategoryName = "OTHER", Count = random.Next(10, 50) }
+            },
+            SystemResources = new SystemResourcesData
+            {
+                MemoryUsageMB = random.Next(150, 280),
+                MemoryUsagePercentage = random.Next(50, 90),
+                StorageUsagePercentage = random.Next(30, 80),
+                QueueSize = random.Next(0, 50),
+                QueueLoadPercentage = random.Next(0, 100),
+                ApiResponseTimeMs = random.Next(50, 500)
+            }
+        };
+    }
+
+    public override void Dispose()
+    {
+        _refreshTimer?.Dispose();
+        base.Dispose();
+    }
+
+    // Data Models
+    private record StatisticsDataModel
+    {
+        public List<ProcessingVolumeDataPoint> ProcessingVolumeData { get; init; } = new();
+        public List<PerformanceDataPoint> PerformanceData { get; init; } = new();
+        public List<CategoryDataPoint> CategoryDistribution { get; init; } = new();
+        public SystemResourcesData? SystemResources { get; init; }
+    }
+
+    private record ProcessingVolumeDataPoint
+    {
+        public DateTime Date { get; init; }
+        public int ProcessedCount { get; init; }
+        public int FailedCount { get; init; }
+    }
+
+    private record PerformanceDataPoint
+    {
+        public DateTime Date { get; init; }
+        public int AvgProcessingTimeMs { get; init; }
+        public int FilesPerHour { get; init; }
+    }
+
+    private record CategoryDataPoint
+    {
+        public string CategoryName { get; init; } = string.Empty;
+        public int Count { get; init; }
+    }
+
+    private record SystemResourcesData
+    {
+        public int MemoryUsageMB { get; init; }
+        public int MemoryUsagePercentage { get; init; }
+        public int StorageUsagePercentage { get; init; }
+        public int QueueSize { get; init; }
+        public int QueueLoadPercentage { get; init; }
+        public int ApiResponseTimeMs { get; init; }
+    }
+}
+
+<style>
+    .statistics-container {
+        width: 100%;
+        max-width: 1400px;
+        margin: 0 auto;
+    }
+
+    .stats-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: var(--space-6);
+        padding-bottom: var(--space-4);
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .header-title {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+    }
+
+    .header-title h2 {
+        margin: 0;
+        font-size: var(--text-2xl);
+        font-weight: var(--font-bold);
+        color: var(--text-primary);
+    }
+
+    .header-subtitle {
+        font-size: var(--text-sm);
+        color: var(--text-secondary);
+        font-weight: var(--font-normal);
+    }
+
+    .time-range-select {
+        padding: var(--space-2) var(--space-3);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        background: var(--background-elevated);
+        color: var(--text-primary);
+        font-size: var(--text-sm);
+    }
+
+    .charts-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+        gap: var(--space-6);
+        margin-bottom: var(--space-6);
+    }
+
+    .chart-container {
+        background: var(--background-elevated);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-lg);
+        padding: var(--space-4);
+        min-height: 300px;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .chart-container.processing-volume {
+        grid-column: span 2;
+    }
+
+    .chart-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: var(--space-4);
+        padding-bottom: var(--space-3);
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .chart-header h3 {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        margin: 0;
+        font-size: var(--text-lg);
+        font-weight: var(--font-semibold);
+        color: var(--text-primary);
+    }
+
+    .chart-content {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 200px;
+    }
+
+    .chart-footer {
+        padding-top: var(--space-3);
+        border-top: 1px solid var(--border-color);
+        font-size: var(--text-sm);
+        color: var(--text-secondary);
+    }
+
+    /* Chart Legend */
+    .chart-legend {
+        display: flex;
+        gap: var(--space-4);
+    }
+
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        font-size: var(--text-sm);
+        color: var(--text-secondary);
+    }
+
+    .legend-color {
+        width: 12px;
+        height: 12px;
+        border-radius: var(--radius-sm);
+    }
+
+    .legend-color.processed { background: var(--success-color); }
+    .legend-color.failed { background: var(--error-color); }
+
+    /* Bar Chart */
+    .bar-chart {
+        display: flex;
+        align-items: end;
+        justify-content: center;
+        gap: var(--space-2);
+        height: 200px;
+        width: 100%;
+        padding: 0 var(--space-2);
+    }
+
+    .bar-group {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: var(--space-2);
+        flex: 1;
+        max-width: 60px;
+    }
+
+    .bar-stack {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        height: 100%;
+        width: 100%;
+        justify-content: end;
+        gap: 2px;
+    }
+
+    .bar {
+        width: 100%;
+        min-height: 4px;
+        border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+        transition: all 0.3s ease;
+    }
+
+    .bar.processed { background: var(--success-color); }
+    .bar.failed { background: var(--error-color); }
+
+    .bar:hover {
+        filter: brightness(1.1);
+        transform: scaleX(1.1);
+    }
+
+    .bar-label {
+        font-size: var(--text-xs);
+        color: var(--text-secondary);
+        text-align: center;
+        transform: rotate(-45deg);
+        white-space: nowrap;
+    }
+
+    /* Categories Distribution */
+    .categories-list {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-3);
+        width: 100%;
+        max-height: 250px;
+        overflow-y: auto;
+    }
+
+    .category-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: var(--space-2);
+        background: var(--background-subtle);
+        border-radius: var(--radius-md);
+        transition: background 0.2s ease;
+    }
+
+    .category-item:hover {
+        background: var(--background);
+    }
+
+    .category-info {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+    }
+
+    .category-color {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+    }
+
+    .category-name {
+        font-weight: var(--font-medium);
+        color: var(--text-primary);
+    }
+
+    .category-stats {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+    }
+
+    .category-count {
+        font-weight: var(--font-semibold);
+        color: var(--text-primary);
+    }
+
+    .category-percentage {
+        font-size: var(--text-sm);
+        color: var(--text-secondary);
+        min-width: 40px;
+        text-align: right;
+    }
+
+    /* Performance Toggle */
+    .performance-toggle {
+        display: flex;
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        overflow: hidden;
+    }
+
+    .toggle-btn {
+        padding: var(--space-2) var(--space-3);
+        background: var(--background);
+        border: none;
+        color: var(--text-secondary);
+        font-size: var(--text-sm);
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .toggle-btn.active {
+        background: var(--primary-color);
+        color: white;
+    }
+
+    .toggle-btn:hover:not(.active) {
+        background: var(--background-subtle);
+    }
+
+    /* Line Chart */
+    .line-chart {
+        position: relative;
+        width: 100%;
+        height: 150px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .line-chart-area {
+        position: relative;
+        width: 100%;
+        height: 100%;
+    }
+
+    .line-point {
+        position: absolute;
+        width: 8px;
+        height: 8px;
+        background: var(--primary-color);
+        border: 2px solid white;
+        border-radius: 50%;
+        transform: translate(-50%, 50%);
+        box-shadow: var(--shadow-sm);
+        transition: all 0.2s ease;
+    }
+
+    .line-point:hover {
+        width: 12px;
+        height: 12px;
+        background: var(--primary-600);
+    }
+
+    /* System Resources */
+    .resource-metrics {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-4);
+        width: 100%;
+    }
+
+    .resource-item {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-2);
+    }
+
+    .resource-label {
+        font-size: var(--text-sm);
+        font-weight: var(--font-medium);
+        color: var(--text-primary);
+    }
+
+    .resource-gauge {
+        height: 8px;
+        background: var(--background-subtle);
+        border-radius: var(--radius-full);
+        overflow: hidden;
+        position: relative;
+    }
+
+    .gauge-fill {
+        height: 100%;
+        background: var(--primary-color);
+        border-radius: var(--radius-full);
+        transition: width 0.5s ease;
+    }
+
+    .gauge-fill.storage { background: var(--warning-color); }
+    .gauge-fill.queue { background: var(--secondary-color); }
+    .gauge-fill.api { background: var(--success-color); }
+
+    .resource-value {
+        font-size: var(--text-sm);
+        font-weight: var(--font-semibold);
+        color: var(--text-secondary);
+        text-align: right;
+    }
+
+    /* Chart Summary and Trends */
+    .chart-summary {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .success-rate {
+        font-weight: var(--font-semibold);
+        color: var(--success-color);
+    }
+
+    .performance-summary {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .trend {
+        font-weight: var(--font-semibold);
+        font-size: var(--text-sm);
+    }
+
+    .trend.positive { color: var(--success-color); }
+    .trend.negative { color: var(--error-color); }
+    .trend.neutral { color: var(--text-secondary); }
+
+    /* No Data State */
+    .no-data {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--text-secondary);
+        font-style: italic;
+        padding: var(--space-8);
+    }
+
+    /* Footer */
+    .stats-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: var(--space-3);
+        background: var(--background-subtle);
+        border-radius: var(--radius-md);
+        font-size: var(--text-sm);
+        color: var(--text-secondary);
+    }
+
+    .last-updated {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+    }
+
+    /* Loading and Error States */
+    .loading-container,
+    .error-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: var(--space-8);
+        text-align: center;
+        gap: var(--space-3);
+    }
+
+    /* Mobile Responsive */
+    @@media (max-width: 768px) {
+        .charts-grid {
+            grid-template-columns: 1fr;
+            gap: var(--space-4);
+        }
+
+        .chart-container.processing-volume {
+            grid-column: span 1;
+        }
+
+        .stats-header {
+            flex-direction: column;
+            gap: var(--space-3);
+            align-items: stretch;
+        }
+
+        .chart-header {
+            flex-direction: column;
+            gap: var(--space-2);
+            align-items: stretch;
+        }
+
+        .chart-legend {
+            justify-content: center;
+        }
+
+        .bar-label {
+            transform: none;
+            font-size: 10px;
+        }
+
+        .stats-footer {
+            flex-direction: column;
+            gap: var(--space-2);
+            text-align: center;
+        }
+    }
+</style>

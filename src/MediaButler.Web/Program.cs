@@ -37,6 +37,9 @@ builder.Services.AddScoped(sp =>
 builder.Services.AddScoped<IApiClient, ApiClient>();
 builder.Services.AddScoped<IFileManagementService, FileManagementService>();
 
+// Register system services
+builder.Services.AddScoped<MediaButler.Web.Services.System.ISystemStatusService, MediaButler.Web.Services.System.SystemStatusService>();
+
 // Register component architecture services
 builder.Services.AddScoped<MediaButler.Web.Services.State.IStateService, MediaButler.Web.Services.State.StateService>();
 builder.Services.AddScoped<MediaButler.Web.Services.Events.IEventBus, MediaButler.Web.Services.Events.EventBus>();
