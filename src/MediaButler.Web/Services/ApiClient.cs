@@ -133,7 +133,7 @@ public class ApiClient : IApiClient
     {
         try
         {
-            var response = await _httpClient.GetFromJsonAsync<IEnumerable<TrackedFile>>("pending", _jsonOptions);
+            var response = await _httpClient.GetFromJsonAsync<IEnumerable<TrackedFile>>("files/pending", _jsonOptions);
             return response ?? new List<TrackedFile>();
         }
         catch (Exception ex)

@@ -57,4 +57,8 @@ builder.Services.AddScoped<MediaButler.Web.Services.RealTime.IOfflineService, Me
 // Register notification services
 builder.Services.AddScoped<MediaButler.Web.Services.Notifications.INotificationService, MediaButler.Web.Services.Notifications.NotificationService>();
 
+// Register search services
+builder.Services.AddScoped<MediaButler.Web.Services.Search.ISavedSearchService, MediaButler.Web.Services.Search.SavedSearchService>();
+builder.Services.AddScoped<MediaButler.Web.Services.Search.ISearchExportService, MediaButler.Web.Services.Search.SearchExportService>();
+
 await builder.Build().RunAsync();

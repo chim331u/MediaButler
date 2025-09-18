@@ -112,6 +112,10 @@
   --breakpoint-md: 768px;
   --breakpoint-lg: 1024px;
   --breakpoint-xl: 1280px;
+  
+  /* Touch-friendly sizing */
+  --touch-target-min: 44px;  /* Apple's recommended minimum touch target */
+  --touch-spacing: 8px;       /* Minimum spacing between touch targets */
 }
 
 /* ============================================================================ */

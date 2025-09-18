@@ -1,0 +1,151 @@
+@using System.Text.RegularExpressions
+
+<span class="highlighted-text">
+    @if (Highlights?.Any() == true)
+    {
+        @((MarkupString)GetHighlightedHtml())
+    }
+    else
+    {
+        @Text
+    }
+</span>
+
+@code {
+    [Parameter] public string Text { get; set; } = string.Empty;
+    [Parameter] public List<string> Highlights { get; set; } = new();
+    [Parameter] public string HighlightClass { get; set; } = "highlight";
+    [Parameter] public bool CaseSensitive { get; set; } = false;
+    [Parameter] public bool WholeWordsOnly { get; set; } = false;
+
+    private string GetHighlightedHtml()
+    {
+        if (string.IsNullOrEmpty(Text) || Highlights?.Any() != true)
+            return Text;
+
+        var result = Text;
+        var validHighlights = Highlights
+            .Where(h => !string.IsNullOrWhiteSpace(h))
+            .OrderByDescending(h => h.Length) // Process longer terms first to avoid conflicts
+            .ToList();
+
+        foreach (var highlight in validHighlights)
+        {
+            var pattern = WholeWordsOnly 
+                ? $@"\b{Regex.Escape(highlight)}\b"
+                : Regex.Escape(highlight);
+            
+            var options = CaseSensitive 
+                ? RegexOptions.None 
+                : RegexOptions.IgnoreCase;
+
+            try
+            {
+                result = Regex.Replace(
+                    result, 
+                    pattern, 
+                    match => $"<mark class=\"{HighlightClass}\">{match.Value}</mark>",
+                    options
+                );
+            }
+            catch (Exception)
+            {
+                // If regex fails, fall back to simple string replacement
+                var comparison = CaseSensitive 
+                    ? StringComparison.Ordinal 
+                    : StringComparison.OrdinalIgnoreCase;
+                
+                if (result.Contains(highlight, comparison))
+                {
+                    result = result.Replace(
+                        highlight, 
+                        $"<mark class=\"{HighlightClass}\">{highlight}</mark>",
+                        comparison
+                    );
+                }
+            }
+        }
+
+        return result;
+    }
+}
+
+<style>
+    .highlighted-text {
+        line-height: inherit;
+        color: inherit;
+    }
+
+    .highlighted-text .highlight {
+        background: var(--warning-100);
+        color: var(--warning-800);
+        padding: 1px 3px;
+        border-radius: var(--radius-sm);
+        font-weight: var(--font-semibold);
+        border: 1px solid var(--warning-200);
+        box-decoration-break: clone;
+        -webkit-box-decoration-break: clone;
+    }
+
+    /* Dark theme support */
+    [data-theme="dark"] .highlighted-text .highlight {
+        background: var(--warning-800);
+        color: var(--warning-100);
+        border-color: var(--warning-700);
+    }
+
+    /* Alternative highlight styles */
+    .highlighted-text .highlight-primary {
+        background: var(--primary-100);
+        color: var(--primary-800);
+        border: 1px solid var(--primary-200);
+    }
+
+    [data-theme="dark"] .highlighted-text .highlight-primary {
+        background: var(--primary-800);
+        color: var(--primary-100);
+        border-color: var(--primary-700);
+    }
+
+    .highlighted-text .highlight-success {
+        background: var(--success-100);
+        color: var(--success-800);
+        border: 1px solid var(--success-200);
+    }
+
+    [data-theme="dark"] .highlighted-text .highlight-success {
+        background: var(--success-800);
+        color: var(--success-100);
+        border-color: var(--success-700);
+    }
+
+    .highlighted-text .highlight-error {
+        background: var(--error-100);
+        color: var(--error-800);
+        border: 1px solid var(--error-200);
+    }
+
+    [data-theme="dark"] .highlighted-text .highlight-error {
+        background: var(--error-800);
+        color: var(--error-100);
+        border-color: var(--error-700);
+    }
+
+    /* Animation for highlights */
+    .highlighted-text mark {
+        animation: highlightFade 0.3s ease-in-out;
+    }
+
+    @@keyframes highlightFade {
+        0% {
+            background-color: transparent;
+            transform: scale(1);
+        }
+        50% {
+            transform: scale(1.05);
+        }
+        100% {
+            transform: scale(1);
+        }
+    }
+</style>
