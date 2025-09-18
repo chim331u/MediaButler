@@ -19,6 +19,17 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseSerilog((context, configuration) => 
     configuration.ReadFrom.Configuration(context.Configuration));
 
+// Add CORS
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", builder =>
+    {
+        builder.AllowAnyOrigin()
+            .AllowAnyMethod()
+            .AllowAnyHeader();
+    });
+});
+
 // Add services to the container
 builder.Services.AddDbContext<MediaButlerDbContext>(options =>
     options.UseSqlite(
@@ -119,12 +130,14 @@ app.UseHttpsRedirection();
 app.UseRouting();
 
 // Add CORS configuration for future UI
-app.UseCors(policy =>
-{
-    policy.AllowAnyOrigin()
-          .AllowAnyMethod()
-          .AllowAnyHeader();
-});
+// app.UseCors(policy =>
+// {
+//     policy.AllowAnyOrigin()
+//           .AllowAnyMethod()
+//           .AllowAnyHeader();
+// });
+
+app.UseCors("AllowAll");
 
 // Map controllers
 app.MapControllers();
