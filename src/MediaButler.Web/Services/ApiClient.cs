@@ -212,4 +212,30 @@ public class ApiClient : IApiClient
             return new Dictionary<string, object> { { "status", "error" }, { "message", ex.Message } };
         }
     }
+
+    // Generic HTTP methods
+    public async Task<HttpResponseMessage> GetAsync(string requestUri, CancellationToken cancellationToken = default)
+    {
+        return await _httpClient.GetAsync(requestUri, cancellationToken);
+    }
+
+    public async Task<HttpResponseMessage> PostAsync(string requestUri, HttpContent? content, CancellationToken cancellationToken = default)
+    {
+        return await _httpClient.PostAsync(requestUri, content, cancellationToken);
+    }
+
+    public async Task<HttpResponseMessage> PostAsJsonAsync<T>(string requestUri, T value, CancellationToken cancellationToken = default)
+    {
+        return await _httpClient.PostAsJsonAsync(requestUri, value, _jsonOptions, cancellationToken);
+    }
+
+    public async Task<HttpResponseMessage> PutAsJsonAsync<T>(string requestUri, T value, CancellationToken cancellationToken = default)
+    {
+        return await _httpClient.PutAsJsonAsync(requestUri, value, _jsonOptions, cancellationToken);
+    }
+
+    public async Task<HttpResponseMessage> DeleteAsync(string requestUri, CancellationToken cancellationToken = default)
+    {
+        return await _httpClient.DeleteAsync(requestUri, cancellationToken);
+    }
 }

@@ -1,0 +1,496 @@
+@using MediaButler.Web.Models.Configuration
+@using MediaButler.Web.Services.Configuration
+@using MediaButler.Web.Components.Base
+@inherits MediaButlerComponentBase
+@inject IConfigurationService ConfigurationService
+
+@if (IsVisible)
+{
+    <div class="modal-overlay" @onclick="CloseModal">
+        <div class="modal-content search-modal" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <div class="header-title">
+                    <Icon Name="search" CssClass="medium primary-color" />
+                    <h3>Search Configuration Settings</h3>
+                </div>
+                <button class="btn btn-ghost" @onclick="CloseModal" aria-label="Close search">
+                    <Icon Name="x" CssClass="small" />
+                </button>
+            </div>
+            
+            <div class="modal-body">
+                <!-- Search Form -->
+                <div class="search-form">
+                    <div class="search-input-group">
+                        <Icon Name="search" CssClass="small search-icon" />
+                        <input type="text" 
+                               class="search-input" 
+                               placeholder="Search by key, description, or value..." 
+                               @bind="SearchModel.SearchTerm" 
+                               @onkeypress="HandleKeyPress" />
+                    </div>
+                    
+                    <div class="filter-group">
+                        <div class="filter-item">
+                            <label for="section-filter">Section:</label>
+                            <select id="section-filter" @bind="SearchModel.Section">
+                                <option value="">All Sections</option>
+                                <option value="Paths">File Paths</option>
+                                <option value="ML">Machine Learning</option>
+                                <option value="Processing">File Processing</option>
+                                <option value="Monitoring">System Monitoring</option>
+                                <option value="Security">Security</option>
+                                <option value="UI">User Interface</option>
+                                <option value="Performance">Performance</option>
+                            </select>
+                        </div>
+                        
+                        <div class="filter-item">
+                            <label for="datatype-filter">Data Type:</label>
+                            <select id="datatype-filter" @bind="DataTypeFilter">
+                                <option value="">All Types</option>
+                                <option value="@ConfigurationDataType.String">Text</option>
+                                <option value="@ConfigurationDataType.Integer">Integer</option>
+                                <option value="@ConfigurationDataType.Boolean">Boolean</option>
+                                <option value="@ConfigurationDataType.Path">Path</option>
+                                <option value="@ConfigurationDataType.Json">JSON</option>
+                            </select>
+                        </div>
+                        
+                        <div class="filter-checkboxes">
+                            <label class="checkbox-label">
+                                <input type="checkbox" @bind="SearchModel.ModifiedOnly" />
+                                <span>Modified only</span>
+                            </label>
+                            
+                            <label class="checkbox-label">
+                                <input type="checkbox" @bind="SearchModel.RestartRequiredOnly" />
+                                <span>Restart required</span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="search-actions">
+                        <button class="btn btn-secondary" @onclick="ClearSearch">
+                            <Icon Name="x" CssClass="small" />
+                            Clear
+                        </button>
+                        <button class="btn btn-primary" @onclick="PerformSearch" disabled="@IsLoading">
+                            <Icon Name="search" CssClass="small" />
+                            @if (IsLoading) { <span>Searching...</span> } else { <span>Search</span> }
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Search Results -->
+                @if (HasSearched)
+                {
+                    <div class="search-results">
+                        <div class="results-header">
+                            <h4>Search Results</h4>
+                            <span class="results-count">@SearchResults.Count setting@(SearchResults.Count != 1 ? "s" : "") found</span>
+                        </div>
+                        
+                        @if (!SearchResults.Any())
+                        {
+                            <div class="no-results">
+                                <Icon Name="search" CssClass="large text-muted" />
+                                <p>No settings match your search criteria</p>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="results-list">
+                                @foreach (var setting in SearchResults)
+                                {
+                                    <div class="result-item @(setting.IsModified ? "modified" : "")">
+                                        <div class="result-header">
+                                            <span class="result-key">@setting.Key</span>
+                                            <span class="result-section">@setting.Section</span>
+                                        </div>
+                                        
+                                        @if (!string.IsNullOrEmpty(setting.Description))
+                                        {
+                                            <p class="result-description">@setting.Description</p>
+                                        }
+                                        
+                                        <div class="result-meta">
+                                            <span class="result-value">@FormatValue(setting.Value)</span>
+                                            <span class="result-type">(@setting.DataTypeDescription)</span>
+                                            @if (setting.RequiresRestart)
+                                            {
+                                                <span class="restart-badge">
+                                                    <Icon Name="refresh-cw" CssClass="small" />
+                                                    Restart Required
+                                                </span>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+            
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseModal">Close</button>
+                @if (SearchResults.Any())
+                {
+                    <button class="btn btn-primary" @onclick="SelectResults">
+                        <Icon Name="check" CssClass="small" />
+                        Show Selected (@SearchResults.Count)
+                    </button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .search-modal {
+        max-width: 600px;
+        max-height: 80vh;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1.5rem;
+        border-bottom: 1px solid var(--gray-200);
+    }
+
+    .header-title {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .modal-body {
+        padding: 1.5rem;
+        overflow-y: auto;
+        flex: 1;
+    }
+
+    .search-form {
+        margin-bottom: 1.5rem;
+    }
+
+    .search-input-group {
+        position: relative;
+        margin-bottom: 1rem;
+    }
+
+    .search-icon {
+        position: absolute;
+        left: 0.75rem;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--gray-400);
+    }
+
+    .search-input {
+        width: 100%;
+        padding: 0.75rem 0.75rem 0.75rem 2.5rem;
+        border: 1px solid var(--gray-300);
+        border-radius: 0.5rem;
+        font-size: 1rem;
+    }
+
+    .search-input:focus {
+        outline: none;
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+
+    .filter-group {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .filter-item {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .filter-item label {
+        font-weight: 500;
+        color: var(--gray-700);
+        font-size: 0.875rem;
+    }
+
+    .filter-item select {
+        padding: 0.5rem;
+        border: 1px solid var(--gray-300);
+        border-radius: 0.375rem;
+    }
+
+    .filter-checkboxes {
+        grid-column: 1 / -1;
+        display: flex;
+        gap: 1rem;
+    }
+
+    .checkbox-label {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        cursor: pointer;
+        font-size: 0.875rem;
+    }
+
+    .search-actions {
+        display: flex;
+        gap: 0.75rem;
+        justify-content: flex-end;
+    }
+
+    .search-results {
+        border-top: 1px solid var(--gray-200);
+        padding-top: 1.5rem;
+    }
+
+    .results-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+
+    .results-header h4 {
+        margin: 0;
+        color: var(--gray-900);
+    }
+
+    .results-count {
+        color: var(--gray-600);
+        font-size: 0.875rem;
+    }
+
+    .no-results {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 2rem;
+        text-align: center;
+        color: var(--gray-500);
+    }
+
+    .results-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        max-height: 400px;
+        overflow-y: auto;
+    }
+
+    .result-item {
+        padding: 1rem;
+        border: 1px solid var(--gray-200);
+        border-radius: 0.375rem;
+        transition: all 0.15s ease;
+    }
+
+    .result-item:hover {
+        border-color: var(--primary-color);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    .result-item.modified {
+        border-color: var(--primary-color);
+        background: #f0f9ff;
+    }
+
+    .result-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.5rem;
+    }
+
+    .result-key {
+        font-weight: 600;
+        color: var(--gray-900);
+        font-family: 'Courier New', monospace;
+        font-size: 0.875rem;
+    }
+
+    .result-section {
+        background: var(--gray-100);
+        color: var(--gray-700);
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.25rem;
+        font-size: 0.75rem;
+        font-weight: 500;
+    }
+
+    .result-description {
+        margin: 0 0 0.5rem 0;
+        color: var(--gray-600);
+        font-size: 0.875rem;
+        line-height: 1.4;
+    }
+
+    .result-meta {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        font-size: 0.875rem;
+    }
+
+    .result-value {
+        font-weight: 500;
+        color: var(--gray-900);
+        max-width: 200px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .result-type {
+        color: var(--gray-500);
+        font-size: 0.75rem;
+    }
+
+    .restart-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        background: #fef3c7;
+        color: #92400e;
+        padding: 0.125rem 0.375rem;
+        border-radius: 0.25rem;
+        font-size: 0.75rem;
+        font-weight: 500;
+    }
+
+    .modal-footer {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.75rem;
+        padding: 1.5rem;
+        border-top: 1px solid var(--gray-200);
+    }
+
+    /* Responsive Design */
+    @@media (max-width: 768px) {
+        .search-modal {
+            max-width: 95vw;
+            max-height: 90vh;
+        }
+
+        .filter-group {
+            grid-template-columns: 1fr;
+        }
+
+        .filter-checkboxes {
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .search-actions {
+            justify-content: stretch;
+        }
+
+        .search-actions .btn {
+            flex: 1;
+        }
+
+        .result-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.5rem;
+        }
+
+        .result-meta {
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .modal-footer {
+            flex-direction: column;
+        }
+    }
+</style>
+
+@code {
+    [Parameter] public bool IsVisible { get; set; }
+    [Parameter] public EventCallback<bool> IsVisibleChanged { get; set; }
+    [Parameter] public EventCallback<List<ConfigurationSettingModel>> OnSearchResults { get; set; }
+
+    private ConfigurationSearchModel SearchModel { get; set; } = new();
+    private List<ConfigurationSettingModel> SearchResults { get; set; } = new();
+    private bool HasSearched { get; set; } = false;
+
+    private string DataTypeFilter
+    {
+        get => SearchModel.DataType?.ToString() ?? string.Empty;
+        set => SearchModel.DataType = Enum.TryParse<ConfigurationDataType>(value, out var result) ? result : null;
+    }
+
+    private async Task CloseModal()
+    {
+        IsVisible = false;
+        await IsVisibleChanged.InvokeAsync(false);
+    }
+
+    private async Task HandleKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await PerformSearch();
+        }
+    }
+
+    private async Task PerformSearch()
+    {
+        try
+        {
+            IsLoading = true;
+            SearchResults = await ConfigurationService.SearchSettingsAsync(SearchModel);
+            HasSearched = true;
+        }
+        catch (Exception ex)
+        {
+            SetError(ex.Message);
+        }
+        finally
+        {
+            IsLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ClearSearch()
+    {
+        SearchModel = new ConfigurationSearchModel();
+        SearchResults.Clear();
+        HasSearched = false;
+    }
+
+    private async Task SelectResults()
+    {
+        await OnSearchResults.InvokeAsync(SearchResults);
+        await CloseModal();
+    }
+
+    private static string FormatValue(object? value)
+    {
+        return value switch
+        {
+            null => "null",
+            bool b => b ? "true" : "false",
+            string s when string.IsNullOrEmpty(s) => "(empty)",
+            string s when s.Length > 30 => s[..27] + "...",
+            _ => value.ToString() ?? "null"
+        };
+    }
+}

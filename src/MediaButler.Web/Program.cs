@@ -61,4 +61,7 @@ builder.Services.AddScoped<MediaButler.Web.Services.Notifications.INotificationS
 builder.Services.AddScoped<MediaButler.Web.Services.Search.ISavedSearchService, MediaButler.Web.Services.Search.SavedSearchService>();
 builder.Services.AddScoped<MediaButler.Web.Services.Search.ISearchExportService, MediaButler.Web.Services.Search.SearchExportService>();
 
+// Register configuration services
+builder.Services.AddScoped<MediaButler.Web.Services.Configuration.IConfigurationService, MediaButler.Web.Services.Configuration.ConfigurationService>();
+
 await builder.Build().RunAsync();

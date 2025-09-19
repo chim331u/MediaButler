@@ -1,0 +1,549 @@
+@using MediaButler.Web.Models.Configuration
+@using MediaButler.Web.Services.Configuration
+@using MediaButler.Web.Components.Base
+@inherits MediaButlerComponentBase
+@inject IConfigurationService ConfigurationService
+@inject IJSRuntime JSRuntime
+
+@if (IsVisible)
+{
+    <div class="modal-overlay" @onclick="CloseModal">
+        <div class="modal-content export-modal" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <div class="header-title">
+                    <Icon Name="download" CssClass="medium primary-color" />
+                    <h3>Export Configuration</h3>
+                </div>
+                <button class="btn btn-ghost" @onclick="CloseModal" aria-label="Close export">
+                    <Icon Name="x" CssClass="small" />
+                </button>
+            </div>
+            
+            <div class="modal-body">
+                @if (!IsExporting && !HasExported)
+                {
+                    <!-- Export Options -->
+                    <div class="export-form">
+                        <div class="form-section">
+                            <h4>Export Format</h4>
+                            <div class="format-options">
+                                <label class="format-option @(ExportModel.Format == "json" ? "selected" : "")">
+                                    <input type="radio" 
+                                           name="format" 
+                                           value="json" 
+                                           @onchange="@(e => ExportModel.Format = e.Value?.ToString() ?? "json")" 
+                                           checked="@(ExportModel.Format == "json")" />
+                                    <div class="option-content">
+                                        <Icon Name="file-text" CssClass="medium primary-color" />
+                                        <div>
+                                            <strong>JSON</strong>
+                                            <p>Structured data format for importing into other systems</p>
+                                        </div>
+                                    </div>
+                                </label>
+                                
+                                <label class="format-option @(ExportModel.Format == "yaml" ? "selected" : "")">
+                                    <input type="radio" 
+                                           name="format" 
+                                           value="yaml" 
+                                           @onchange="@(e => ExportModel.Format = e.Value?.ToString() ?? "yaml")" 
+                                           checked="@(ExportModel.Format == "yaml")" />
+                                    <div class="option-content">
+                                        <Icon Name="file-text" CssClass="medium primary-color" />
+                                        <div>
+                                            <strong>YAML</strong>
+                                            <p>Human-readable format for configuration files</p>
+                                        </div>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="form-section">
+                            <h4>Export Options</h4>
+                            <div class="export-options">
+                                <label class="checkbox-option">
+                                    <input type="checkbox" @bind="ExportModel.IncludeDefaults" />
+                                    <div class="option-content">
+                                        <strong>Include Default Values</strong>
+                                        <p>Export settings that haven't been modified from defaults</p>
+                                    </div>
+                                </label>
+                                
+                                <label class="checkbox-option">
+                                    <input type="checkbox" @bind="ExportModel.IncludeDescriptions" />
+                                    <div class="option-content">
+                                        <strong>Include Descriptions</strong>
+                                        <p>Add setting descriptions and metadata to the export</p>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="form-section">
+                            <h4>Sections to Export</h4>
+                            <div class="section-selection">
+                                <label class="checkbox-option">
+                                    <input type="checkbox" 
+                                           @onchange="ToggleAllSections"
+                                           checked="@(ExportModel.Sections.Count == Sections.Count)" />
+                                    <div class="option-content">
+                                        <strong>All Sections</strong>
+                                        <p>Export all configuration sections</p>
+                                    </div>
+                                </label>
+                                
+                                @foreach (var section in Sections)
+                                {
+                                    <label class="checkbox-option section-option">
+                                        <input type="checkbox" 
+                                               @onchange="@(e => ToggleSection(section, (bool)(e.Value ?? false)))"
+                                               checked="@(ExportModel.Sections.Contains(section))" />
+                                        <div class="option-content">
+                                            <strong>@GetSectionTitle(section)</strong>
+                                            <p>@GetSectionDescription(section)</p>
+                                        </div>
+                                    </label>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+                else if (IsExporting)
+                {
+                    <!-- Export Progress -->
+                    <div class="export-progress">
+                        <div class="progress-content">
+                            <div class="loading-spinner"></div>
+                            <h4>Exporting Configuration</h4>
+                            <p>Generating @ExportModel.Format.ToUpper() export with selected options...</p>
+                        </div>
+                    </div>
+                }
+                else if (HasExported)
+                {
+                    <!-- Export Success -->
+                    <div class="export-success">
+                        <div class="success-content">
+                            <Icon Name="check-circle" CssClass="large success-color" />
+                            <h4>Export Completed</h4>
+                            <p>Configuration exported successfully as @ExportModel.Format.ToUpper()</p>
+                            
+                            <div class="export-stats">
+                                <div class="stat-item">
+                                    <span class="stat-value">@ExportedData?.Length</span>
+                                    <span class="stat-label">Characters</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-value">@ExportModel.Sections.Count</span>
+                                    <span class="stat-label">Sections</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-value">@DateTime.Now.ToString("HH:mm")</span>
+                                    <span class="stat-label">Export Time</span>
+                                </div>
+                            </div>
+                            
+                            <!-- Preview of exported data -->
+                            @if (!string.IsNullOrEmpty(ExportedData))
+                            {
+                                <div class="export-preview">
+                                    <h5>Preview:</h5>
+                                    <pre class="preview-content">@(ExportedData.Length > 500 ? ExportedData[..500] + "..." : ExportedData)</pre>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+            
+            <div class="modal-footer">
+                @if (!IsExporting && !HasExported)
+                {
+                    <button class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
+                    <button class="btn btn-primary" 
+                            @onclick="StartExport" 
+                            disabled="@(!ExportModel.Sections.Any())">
+                        <Icon Name="download" CssClass="small" />
+                        Export Configuration
+                    </button>
+                }
+                else if (HasExported)
+                {
+                    <button class="btn btn-secondary" @onclick="StartOver">
+                        <Icon Name="arrow-left" CssClass="small" />
+                        Back to Options
+                    </button>
+                    <button class="btn btn-primary" @onclick="DownloadExport">
+                        <Icon Name="download" CssClass="small" />
+                        Download File
+                    </button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .export-modal {
+        max-width: 500px;
+        max-height: 80vh;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1.5rem;
+        border-bottom: 1px solid var(--gray-200);
+    }
+
+    .header-title {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .modal-body {
+        padding: 1.5rem;
+        overflow-y: auto;
+        flex: 1;
+    }
+
+    .export-form {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+
+    .form-section h4 {
+        margin: 0 0 1rem 0;
+        color: var(--gray-900);
+        font-size: 1rem;
+        font-weight: 600;
+    }
+
+    .format-options {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .format-option, .checkbox-option {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.75rem;
+        padding: 1rem;
+        border: 2px solid var(--gray-200);
+        border-radius: 0.5rem;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+
+    .format-option:hover, .checkbox-option:hover {
+        border-color: var(--primary-color);
+        background: #f0f9ff;
+    }
+
+    .format-option.selected {
+        border-color: var(--primary-color);
+        background: #f0f9ff;
+    }
+
+    .format-option input[type="radio"] {
+        margin-top: 0.25rem;
+    }
+
+    .option-content {
+        flex: 1;
+        display: flex;
+        align-items: flex-start;
+        gap: 0.75rem;
+    }
+
+    .option-content > div {
+        flex: 1;
+    }
+
+    .option-content strong {
+        display: block;
+        color: var(--gray-900);
+        margin-bottom: 0.25rem;
+    }
+
+    .option-content p {
+        margin: 0;
+        color: var(--gray-600);
+        font-size: 0.875rem;
+        line-height: 1.4;
+    }
+
+    .export-options, .section-selection {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .section-option {
+        margin-left: 1rem;
+        border-color: var(--gray-100);
+    }
+
+    .export-progress, .export-success {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 300px;
+    }
+
+    .progress-content, .success-content {
+        text-align: center;
+        max-width: 300px;
+    }
+
+    .progress-content h4, .success-content h4 {
+        margin: 1rem 0 0.5rem 0;
+        color: var(--gray-900);
+    }
+
+    .progress-content p, .success-content p {
+        margin: 0 0 1rem 0;
+        color: var(--gray-600);
+    }
+
+    .loading-spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid var(--gray-200);
+        border-top: 4px solid var(--primary-color);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 1rem auto;
+    }
+
+    @@keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    .export-stats {
+        display: flex;
+        justify-content: space-around;
+        gap: 1rem;
+        margin: 1.5rem 0;
+        padding: 1rem;
+        background: var(--gray-50);
+        border-radius: 0.5rem;
+    }
+
+    .stat-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.25rem;
+    }
+
+    .stat-value {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--primary-color);
+    }
+
+    .stat-label {
+        font-size: 0.75rem;
+        color: var(--gray-500);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .export-preview {
+        text-align: left;
+        margin-top: 1rem;
+    }
+
+    .export-preview h5 {
+        margin: 0 0 0.5rem 0;
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--gray-700);
+    }
+
+    .preview-content {
+        background: var(--gray-50);
+        border: 1px solid var(--gray-200);
+        border-radius: 0.375rem;
+        padding: 0.75rem;
+        font-size: 0.75rem;
+        line-height: 1.4;
+        max-height: 150px;
+        overflow-y: auto;
+        margin: 0;
+        white-space: pre-wrap;
+        word-break: break-all;
+    }
+
+    .modal-footer {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.75rem;
+        padding: 1.5rem;
+        border-top: 1px solid var(--gray-200);
+    }
+
+    /* Responsive Design */
+    @@media (max-width: 768px) {
+        .export-modal {
+            max-width: 95vw;
+            max-height: 90vh;
+        }
+
+        .option-content {
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .export-stats {
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .modal-footer {
+            flex-direction: column;
+        }
+    }
+</style>
+
+@code {
+    [Parameter] public bool IsVisible { get; set; }
+    [Parameter] public EventCallback<bool> IsVisibleChanged { get; set; }
+    [Parameter] public List<string> Sections { get; set; } = new();
+
+    private ConfigurationExportModel ExportModel { get; set; } = new() { Format = "json", IncludeDescriptions = true };
+    private bool IsExporting { get; set; } = false;
+    private bool HasExported { get; set; } = false;
+    private string? ExportedData { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        // Initialize with all sections selected
+        if (!ExportModel.Sections.Any() && Sections.Any())
+        {
+            ExportModel.Sections.AddRange(Sections);
+        }
+    }
+
+    private async Task CloseModal()
+    {
+        IsVisible = false;
+        await IsVisibleChanged.InvokeAsync(false);
+        
+        // Reset state
+        IsExporting = false;
+        HasExported = false;
+        ExportedData = null;
+    }
+
+    private void ToggleAllSections(ChangeEventArgs e)
+    {
+        var selectAll = (bool)(e.Value ?? false);
+        ExportModel.Sections.Clear();
+        
+        if (selectAll)
+        {
+            ExportModel.Sections.AddRange(Sections);
+        }
+    }
+
+    private void ToggleSection(string section, bool selected)
+    {
+        if (selected && !ExportModel.Sections.Contains(section))
+        {
+            ExportModel.Sections.Add(section);
+        }
+        else if (!selected && ExportModel.Sections.Contains(section))
+        {
+            ExportModel.Sections.Remove(section);
+        }
+    }
+
+    private async Task StartExport()
+    {
+        try
+        {
+            IsExporting = true;
+            StateHasChanged();
+
+            // Simulate export process
+            await Task.Delay(1500);
+
+            ExportedData = await ConfigurationService.ExportConfigurationAsync(ExportModel);
+            
+            IsExporting = false;
+            HasExported = true;
+        }
+        catch (Exception ex)
+        {
+            SetError(ex.Message);
+            IsExporting = false;
+        }
+        finally
+        {
+            StateHasChanged();
+        }
+    }
+
+    private void StartOver()
+    {
+        HasExported = false;
+        ExportedData = null;
+    }
+
+    private async Task DownloadExport()
+    {
+        if (string.IsNullOrEmpty(ExportedData)) return;
+
+        try
+        {
+            var fileName = $"mediabutler-config-{DateTime.Now:yyyyMMdd-HHmmss}.{ExportModel.Format}";
+            var mimeType = ExportModel.Format == "json" ? "application/json" : "text/yaml";
+
+            // Convert string to base64 for the existing downloadFile function
+            var bytes = System.Text.Encoding.UTF8.GetBytes(ExportedData);
+            var base64Data = Convert.ToBase64String(bytes);
+
+            await JSRuntime.InvokeVoidAsync("downloadFile", base64Data, fileName, mimeType);
+            await CloseModal();
+        }
+        catch (Exception ex)
+        {
+            SetError($"Failed to download file: {ex.Message}");
+        }
+    }
+
+    private static string GetSectionTitle(string sectionName) => sectionName switch
+    {
+        "Paths" => "File Paths",
+        "ML" => "Machine Learning",
+        "Processing" => "File Processing",
+        "Monitoring" => "System Monitoring",
+        "Security" => "Security Settings",
+        "UI" => "User Interface",
+        "Performance" => "Performance Tuning",
+        _ => sectionName
+    };
+
+    private static string GetSectionDescription(string sectionName) => sectionName switch
+    {
+        "Paths" => "Watch folders, media library paths, and file locations",
+        "ML" => "Classification engine and confidence thresholds",
+        "Processing" => "File operations, concurrency, and performance",
+        "Monitoring" => "Logging, performance monitoring, and health checks",
+        "Security" => "Authentication, authorization, and security policies",
+        "UI" => "Web interface preferences and display options",
+        "Performance" => "Memory limits, caching, and optimization",
+        _ => $"Settings for {sectionName}"
+    };
+}
