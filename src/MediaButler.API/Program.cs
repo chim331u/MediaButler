@@ -104,6 +104,22 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 
 var app = builder.Build();
 
+// Ensure database is created and migrations are applied
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<MediaButlerDbContext>();
+    try
+    {
+        await context.Database.MigrateAsync();
+        Log.Information("Database migration completed successfully");
+    }
+    catch (Exception ex)
+    {
+        Log.Error(ex, "Failed to migrate database");
+        throw;
+    }
+}
+
 // Configure the HTTP request pipeline with middleware order
 if (app.Environment.IsDevelopment())
 {
