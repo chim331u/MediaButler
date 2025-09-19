@@ -1,54 +1,1083 @@
 @page "/settings"
+@using System.Text.Json
+@using static MediaButler.Web.Components.UI.Button
+@inject HttpClient Http
+@inject IJSRuntime JSRuntime
 
 <PageTitle>Settings - MediaButler</PageTitle>
 
 <div class="settings-page">
-    <h2>Settings</h2>
-    
-    <div class="settings-grid">
-        <div class="card">
-            <div class="card-header">
-                File Discovery
-            </div>
-            <div class="card-body">
-                <p class="text-muted">File discovery settings will be implemented in future versions.</p>
-            </div>
+    <div class="settings-header">
+        <div class="header-content">
+            <h2><Icon Name="settings" /> Configuration Settings</h2>
+            <p class="text-muted">Manage MediaButler system configuration and preferences</p>
         </div>
-
-        <div class="card">
-            <div class="card-header">
-                ML Configuration
-            </div>
-            <div class="card-body">
-                <p class="text-muted">ML model configuration will be implemented in future versions.</p>
-            </div>
-        </div>
-
-        <div class="card">
-            <div class="card-header">
-                Path Settings
-            </div>
-            <div class="card-body">
-                <p class="text-muted">Path configuration will be implemented in future versions.</p>
-            </div>
-        </div>
-
-        <div class="card">
-            <div class="card-header">
-                System
-            </div>
-            <div class="card-body">
-                <p class="text-muted">System settings will be implemented in future versions.</p>
-            </div>
+        <div class="header-actions">
+            <Button Variant="ButtonVariant.Secondary" OnClick="RefreshSettings" Size="ButtonSize.Small" IsLoading="isLoading">
+                <Icon Name="refresh" /> Refresh
+            </Button>
         </div>
     </div>
+
+    @if (isLoading && sections.Count == 0)
+    {
+        <div class="loading-container">
+            <LoadingSpinner Message="Loading configuration settings..." />
+        </div>
+    }
+    else if (errorMessage != null)
+    {
+        <ErrorAlert Message="@errorMessage" OnRetry="LoadSettings" />
+    }
+    else
+    {
+        <div class="settings-content">
+            <!-- Search and Filter Bar -->
+            <div class="search-filter-bar">
+                <div class="search-input">
+                    <input type="text" @bind="searchQuery" @oninput="OnSearchInput"
+                           placeholder="Search settings..." class="form-control" />
+                </div>
+                <div class="filter-controls">
+                    <select @onchange="OnSectionFilter" class="form-select">
+                        <option value="">All Sections</option>
+                        @foreach (var sectionName in availableSections)
+                        {
+                            <option value="@sectionName" selected="@(selectedSection == sectionName)">@sectionName</option>
+                        }
+                    </select>
+                </div>
+            </div>
+
+            <!-- Settings Summary -->
+            <div class="settings-summary">
+                <div class="summary-card">
+                    <div class="summary-icon"><Icon Name="settings" /></div>
+                    <div class="summary-content">
+                        <div class="summary-value">@totalSettings</div>
+                        <div class="summary-label">Total Settings</div>
+                    </div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-icon"><Icon Name="edit" /></div>
+                    <div class="summary-content">
+                        <div class="summary-value">@modifiedSettings</div>
+                        <div class="summary-label">Modified</div>
+                    </div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-icon"><Icon Name="refresh" /></div>
+                    <div class="summary-content">
+                        <div class="summary-value">@restartRequiredSettings</div>
+                        <div class="summary-label">Restart Required</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Configuration Sections -->
+            <div class="settings-sections">
+                @foreach (var configSection in filteredSections)
+                {
+                    <div class="settings-card">
+                        <div class="card-header" @onclick="() => ToggleSection(configSection.Name)">
+                            <div class="section-title">
+                                <Icon Name="@(expandedSections.Contains(configSection.Name) ? "chevron-down" : "chevron-right")" />
+                                <h4>@configSection.Title</h4>
+                                <span class="setting-count">@configSection.Settings.Count settings</span>
+                            </div>
+                            @if (configSection.ModifiedSettingCount > 0)
+                            {
+                                <StatusBadge Status="@("warning")" CustomText="@($"{configSection.ModifiedSettingCount} modified")" />
+                            }
+                        </div>
+
+                        @if (expandedSections.Contains(configSection.Name))
+                        {
+                            <div class="card-content">
+                                @if (!string.IsNullOrEmpty(configSection.Description))
+                                {
+                                    <p class="section-description">@configSection.Description</p>
+                                }
+
+                                <!-- Add New Setting Form -->
+                                @if (showAddForm == configSection.Name)
+                                {
+                                    <div class="add-setting-form">
+                                        <h5><Icon Name="plus" /> Add New Setting</h5>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label>Section</label>
+                                                <select @bind="selectedNewSection" class="form-control">
+                                                    @foreach (var section in availableSections)
+                                                    {
+                                                        <option value="section">section</option>
+                                                    }
+                                                </select>
+                                            </div>
+                                            <div class="form-group">
+                                                <label>Setting Key</label>
+                                                <div class="key-input">
+                                                    <span class="section-prefix">@(selectedNewSection).</span>
+                                                    <input type="text" @bind="newSettingKeyName" class="form-control key-name-input"
+                                                           placeholder="KeyName" />
+                                                </div>
+                                                <small class="text-muted">Full key: @newSetting.Key</small>
+                                            </div>
+                                            <div class="form-group">
+                                                <label>Value</label>
+                                                <input type="text" @bind="newSetting.Value" class="form-control"
+                                                       placeholder="Setting value" />
+                                            </div>
+                                            <div class="form-group">
+                                                <label>Description</label>
+                                                <input type="text" @bind="newSetting.Description" class="form-control"
+                                                       placeholder="Brief description" />
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label>
+                                                    <input type="checkbox" @bind="newSetting.RequiresRestart" />
+                                                    Requires Restart
+                                                </label>
+                                            </div>
+                                        </div>
+                                        <div class="form-actions">
+                                            <Button Variant="ButtonVariant.Primary" OnClick="() => SaveNewSetting(selectedNewSection)"
+                                                    IsLoading="savingNewSetting">
+                                                <Icon Name="save" /> Save
+                                            </Button>
+                                            <Button Variant="ButtonVariant.Secondary" OnClick="CancelAddSetting">
+                                                <Icon Name="x" /> Cancel
+                                            </Button>
+                                        </div>
+                                    </div>
+                                }
+
+                                <!-- Settings List -->
+                                <div class="settings-list">
+                                    @foreach (var setting in configSection.Settings)
+                                    {
+                                        <div class="setting-item @(setting.IsModified ? "modified" : "") @(editingSetting?.Key == setting.Key ? "editing" : "")">
+                                            @if (editingSetting?.Key == setting.Key)
+                                            {
+                                                <!-- Inline Edit Mode -->
+                                                <div class="setting-edit-form">
+                                                    <div class="setting-header">
+                                                        <strong>@setting.Key</strong>
+                                                        @if (setting.RequiresRestart)
+                                                        {
+                                                            <StatusBadge Status="@("warning")" CustomText="Restart Required" CssClass="badge-sm" />
+                                                        }
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label>Value</label>
+                                                        <input type="text" @bind="editingSetting.Value" class="form-control" />
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label>Description</label>
+                                                        <input type="text" @bind="editingSetting.Description" class="form-control" />
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label>
+                                                            <input type="checkbox" @bind="editingSetting.RequiresRestart" />
+                                                            Requires Restart
+                                                        </label>
+                                                    </div>
+                                                    <div class="form-actions">
+                                                        <Button Variant="ButtonVariant.Primary" OnClick="SaveEditingSetting"
+                                                                IsLoading="savingEdit">
+                                                            <Icon Name="save" /> Save
+                                                        </Button>
+                                                        <Button Variant="ButtonVariant.Secondary" OnClick="CancelEdit">
+                                                            <Icon Name="x" /> Cancel
+                                                        </Button>
+                                                        @if (setting.DefaultValue != null)
+                                                        {
+                                                            <Button Variant="ButtonVariant.Secondary" OnClick="() => ResetSetting(setting)">
+                                                                <Icon Name="undo" /> Reset
+                                                            </Button>
+                                                        }
+                                                        <Button Variant="ButtonVariant.Danger" OnClick="() => DeleteSetting(setting)">
+                                                            <Icon Name="trash" /> Delete
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            }
+                                            else
+                                            {
+                                                <!-- View Mode -->
+                                                <div class="setting-view" @onclick="() => StartEdit(setting)">
+                                                    <div class="setting-info">
+                                                        <div class="setting-header">
+                                                            <span class="setting-key">@setting.Key</span>
+                                                            @if (setting.RequiresRestart)
+                                                            {
+                                                                <StatusBadge Status="@("warning")" CustomText="Restart Required" CssClass="badge-sm" />
+                                                            }
+                                                            @if (setting.IsModified)
+                                                            {
+                                                                <StatusBadge Status="@("modified")" CustomText="Modified" CssClass="badge-sm" />
+                                                            }
+                                                        </div>
+                                                        <div class="setting-value">@RenderSettingValue(setting)</div>
+                                                        @if (!string.IsNullOrEmpty(setting.Description))
+                                                        {
+                                                            <p class="setting-description">@setting.Description</p>
+                                                        }
+                                                        <div class="setting-meta">
+                                                            <span class="data-type">@GetDataTypeIcon(setting.DataType) @setting.DataTypeDescription</span>
+                                                            <span class="last-modified">Updated: @setting.UpdatedAt.ToString("MMM dd, yyyy HH:mm")</span>
+                                                        </div>
+                                                    </div>
+                                                    <div class="edit-hint">
+                                                        <Icon Name="edit" /> Click to edit
+                                                    </div>
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+
+                                <!-- Add Setting Button -->
+                                @if (showAddForm != configSection.Name)
+                                {
+                                    <div class="add-setting-trigger">
+                                        <Button Variant="ButtonVariant.Ghost" OnClick="() => StartAddSetting(configSection.Name)">
+                                            <Icon Name="plus" /> Add Setting to @configSection.Title
+                                        </Button>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+
+                @if (sections.Count == 0)
+                {
+                    @if (showAddForm == null)
+                    {
+                        <div class="empty-state">
+                            <Icon Name="settings" Size="3x" CssClass="text-muted" />
+                            <h4>No Configuration Settings</h4>
+                            <p class="text-muted">Get started by creating your first configuration setting.</p>
+                            <Button Variant="ButtonVariant.Primary" OnClick='() => StartAddSetting("System")'>
+                                <Icon Name="plus" /> Create First Setting
+                            </Button>
+                        </div>
+                    }
+                    else
+                    {
+                        <!-- Add form for empty state -->
+                        <div class="configuration-section">
+                            <div class="section-header">
+                                <h3>@showAddForm Configuration</h3>
+                            </div>
+                            <div class="section-content">
+                                <div class="add-setting-form">
+                                    <div class="form-grid">
+                                        <div class="form-group">
+                                            <label for="newSection">Section</label>
+                                            <select id="newSection" @bind="selectedNewSection" class="form-control">
+                                                @foreach (var section in availableSections)
+                                                {
+                                                    <option value="section">section</option>
+                                                }
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="newKey">Setting Key</label>
+                                            <div class="key-input">
+                                                <span class="section-prefix">@(selectedNewSection).</span>
+                                                <input type="text" id="newKey" @bind="newSettingKeyName" class="form-control key-name-input" placeholder="KeyName" />
+                                            </div>
+                                            <small class="text-muted">Full key: @newSetting.Key</small>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="newValue">Value</label>
+                                            <input type="text" id="newValue" @bind="newSetting.Value" class="form-control" placeholder="Enter value..." />
+                                        </div>
+                                        <div class="form-group full-width">
+                                            <label for="newDescription">Description</label>
+                                            <textarea id="newDescription" @bind="newSetting.Description" class="form-control" rows="2" placeholder="Enter description..."></textarea>
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" @bind="newSetting.RequiresRestart" />
+                                                <span class="checkmark"></span>
+                                                Requires restart
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="form-actions">
+                                        <Button Variant="ButtonVariant.Primary" OnClick="() => SaveNewSetting(selectedNewSection)"
+                                                IsLoading="savingNewSetting" LoadingText="Saving...">
+                                            <Icon Name="save" /> Save Setting
+                                        </Button>
+                                        <Button Variant="ButtonVariant.Secondary" OnClick="CancelAddSetting">
+                                            <Icon Name="x" /> Cancel
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    }
 </div>
 
+@code {
+    // State variables
+    private bool isLoading = false;
+    private string? errorMessage = null;
+    private string searchQuery = "";
+    private string selectedSection = "";
+    private List<ConfigurationSection> sections = new();
+    private HashSet<string> expandedSections = new();
+    private List<string> availableSections = new();
+
+    // Editing state
+    private ConfigurationResponse? editingSetting = null;
+    private string? showAddForm = null;
+    private ConfigurationResponse newSetting = new();
+    private bool savingEdit = false;
+    private bool savingNewSetting = false;
+    private string selectedNewSection = "System";
+
+    // Helper property for key name part (without section prefix)
+    private string newSettingKeyName
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(newSetting.Key)) return "";
+            var parts = newSetting.Key.Split('.');
+            return parts.Length > 1 ? parts[1] : "";
+        }
+        set
+        {
+            if (!string.IsNullOrEmpty(selectedNewSection))
+            {
+                newSetting.Key = $"{selectedNewSection}.{value}";
+            }
+        }
+    }
+
+    // Computed properties
+    private List<ConfigurationSection> filteredSections => sections
+        .Where(s => string.IsNullOrEmpty(selectedSection) || s.Name == selectedSection)
+        .Where(s => string.IsNullOrEmpty(searchQuery) ||
+                   s.Settings.Any(setting =>
+                       setting.Key.Contains(searchQuery, StringComparison.OrdinalIgnoreCase) ||
+                       setting.Value.Contains(searchQuery, StringComparison.OrdinalIgnoreCase) ||
+                       (setting.Description?.Contains(searchQuery, StringComparison.OrdinalIgnoreCase) ?? false)))
+        .ToList();
+
+    private int totalSettings => sections.Sum(s => s.Settings.Count);
+    private int modifiedSettings => sections.Sum(s => s.ModifiedSettingCount);
+    private int restartRequiredSettings => sections.Sum(s => s.Settings.Count(setting => setting.RequiresRestart && setting.IsModified));
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSettings();
+    }
+
+    private async Task LoadSettings()
+    {
+        isLoading = true;
+        errorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var commonSections = new[] { "System", "Paths", "FileDiscovery", "Processing", "ML", "UI" };
+            var loadedSections = new List<ConfigurationSection>();
+            var allSectionNames = new HashSet<string>();
+
+            // First, try to load common sections
+            foreach (var sectionName in commonSections)
+            {
+                try
+                {
+                    var sectionSettings = await Http.GetFromJsonAsync<List<ConfigurationResponse>>($"api/config/sections/{sectionName}");
+                    if (sectionSettings != null && sectionSettings.Any())
+                    {
+                        allSectionNames.Add(sectionName);
+
+                        var section = new ConfigurationSection
+                        {
+                            Name = sectionName,
+                            Title = GetSectionTitle(sectionName),
+                            Description = GetSectionDescription(sectionName),
+                            Settings = sectionSettings.ToList()
+                        };
+
+                        loadedSections.Add(section);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error loading section {sectionName}: {ex.Message}");
+                }
+            }
+
+            sections = loadedSections;
+
+            // Always include all common sections in available sections dropdown
+            foreach (var sectionName in commonSections)
+            {
+                allSectionNames.Add(sectionName);
+            }
+
+            availableSections = allSectionNames.OrderBy(s => s).ToList();
+
+            // Auto-expand first section if none expanded
+            if (!expandedSections.Any() && sections.Any())
+            {
+                expandedSections.Add(sections.First().Name);
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to load settings: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RefreshSettings()
+    {
+        await LoadSettings();
+    }
+
+    private void ToggleSection(string sectionName)
+    {
+        if (expandedSections.Contains(sectionName))
+        {
+            expandedSections.Remove(sectionName);
+        }
+        else
+        {
+            expandedSections.Add(sectionName);
+        }
+        StateHasChanged();
+    }
+
+    private void StartEdit(ConfigurationResponse setting)
+    {
+        editingSetting = new ConfigurationResponse
+        {
+            Key = setting.Key,
+            Value = setting.Value,
+            Description = setting.Description,
+            RequiresRestart = setting.RequiresRestart,
+            DataType = setting.DataType,
+            DataTypeDescription = setting.DataTypeDescription,
+            DefaultValue = setting.DefaultValue,
+            IsModified = setting.IsModified,
+            UpdatedAt = setting.UpdatedAt
+        };
+        StateHasChanged();
+    }
+
+    private void CancelEdit()
+    {
+        editingSetting = null;
+        StateHasChanged();
+    }
+
+    private async Task SaveEditingSetting()
+    {
+        if (editingSetting == null) return;
+
+        savingEdit = true;
+        StateHasChanged();
+
+        try
+        {
+            var response = await Http.PutAsJsonAsync($"api/config/settings/{Uri.EscapeDataString(editingSetting.Key)}", new
+            {
+                Value = editingSetting.Value,
+                Description = editingSetting.Description,
+                RequiresRestart = editingSetting.RequiresRestart
+            });
+
+            if (response.IsSuccessStatusCode)
+            {
+                editingSetting = null;
+                await LoadSettings();
+            }
+            else
+            {
+                errorMessage = "Failed to save setting";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error saving setting: {ex.Message}";
+        }
+        finally
+        {
+            savingEdit = false;
+            StateHasChanged();
+        }
+    }
+
+    private void StartAddSetting(string sectionName)
+    {
+        showAddForm = sectionName;
+        selectedNewSection = sectionName;
+        newSetting = new ConfigurationResponse
+        {
+            Key = $"{sectionName}.",
+            Value = "",
+            Description = "",
+            RequiresRestart = false
+        };
+
+        // Ensure section is expanded
+        if (!expandedSections.Contains(sectionName))
+        {
+            expandedSections.Add(sectionName);
+        }
+
+        StateHasChanged();
+    }
+
+    private void CancelAddSetting()
+    {
+        showAddForm = null;
+        newSetting = new();
+        StateHasChanged();
+    }
+
+    private async Task SaveNewSetting(string sectionName)
+    {
+        if (string.IsNullOrWhiteSpace(newSetting.Key)) return;
+
+        savingNewSetting = true;
+        StateHasChanged();
+
+        try
+        {
+            var requestData = new
+            {
+                Key = newSetting.Key,
+                Value = newSetting.Value,
+                Description = newSetting.Description,
+                RequiresRestart = newSetting.RequiresRestart
+            };
+
+            var response = await Http.PostAsJsonAsync("api/config/settings", requestData);
+
+            if (response.IsSuccessStatusCode)
+            {
+                showAddForm = null;
+                newSetting = new();
+                await LoadSettings();
+            }
+            else
+            {
+                errorMessage = "Failed to create setting";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error creating setting: {ex.Message}";
+        }
+        finally
+        {
+            savingNewSetting = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ResetSetting(ConfigurationResponse setting)
+    {
+        try
+        {
+            var response = await Http.PostAsync($"api/config/settings/{Uri.EscapeDataString(setting.Key)}/reset", null);
+            if (response.IsSuccessStatusCode)
+            {
+                await LoadSettings();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error resetting setting: {ex.Message}";
+        }
+    }
+
+    private async Task DeleteSetting(ConfigurationResponse setting)
+    {
+        if (!await JSRuntime.InvokeAsync<bool>("confirm", $"Are you sure you want to delete '{setting.Key}'?"))
+            return;
+
+        try
+        {
+            var response = await Http.DeleteAsync($"api/config/settings/{Uri.EscapeDataString(setting.Key)}");
+            if (response.IsSuccessStatusCode)
+            {
+                if (editingSetting?.Key == setting.Key)
+                {
+                    editingSetting = null;
+                }
+                await LoadSettings();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error deleting setting: {ex.Message}";
+        }
+    }
+
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        searchQuery = e.Value?.ToString() ?? "";
+        StateHasChanged();
+    }
+
+    private void OnSectionFilter(ChangeEventArgs e)
+    {
+        selectedSection = e.Value?.ToString() ?? "";
+        StateHasChanged();
+    }
+
+    private string GetSectionTitle(string sectionName) => sectionName switch
+    {
+        "System" => "System Configuration",
+        "Paths" => "File Paths",
+        "FileDiscovery" => "File Discovery",
+        "Processing" => "File Processing",
+        "ML" => "Machine Learning",
+        "UI" => "User Interface",
+        _ => sectionName
+    };
+
+    private string GetSectionDescription(string sectionName) => sectionName switch
+    {
+        "System" => "Core system settings and application configuration",
+        "Paths" => "File system paths for media library, watch folder, and temporary storage",
+        "FileDiscovery" => "Settings for file monitoring and discovery processes",
+        "Processing" => "File processing and organization settings",
+        "ML" => "Machine learning model configuration and classification settings",
+        "UI" => "User interface preferences and display options",
+        _ => ""
+    };
+
+    private string GetDataTypeIcon(int dataType) => dataType switch
+    {
+        0 => "📝", // String
+        1 => "🔢", // Integer
+        2 => "🔍", // Boolean
+        3 => "💯", // Decimal
+        4 => "📅", // DateTime
+        _ => "❓"
+    };
+
+    private string RenderSettingValue(ConfigurationResponse setting)
+    {
+        if (string.IsNullOrEmpty(setting.Value))
+            return "<empty>";
+
+        return setting.DataType switch
+        {
+            2 => setting.Value.ToLower() == "true" ? "✅ Enabled" : "❌ Disabled", // Boolean
+            _ => setting.Value.Length > 50 ? setting.Value[..47] + "..." : setting.Value
+        };
+    }
+
+    // Data models (same as before)
+    public class ConfigurationSection
+    {
+        public string Name { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string Description { get; set; } = "";
+        public List<ConfigurationResponse> Settings { get; set; } = new();
+        public int ModifiedSettingCount => Settings.Count(s => s.IsModified);
+    }
+
+    public class ConfigurationResponse
+    {
+        public string Key { get; set; } = "";
+        public string Value { get; set; } = "";
+        public string? Description { get; set; }
+        public int DataType { get; set; }
+        public string DataTypeDescription { get; set; } = "";
+        public bool RequiresRestart { get; set; }
+        public string? DefaultValue { get; set; }
+        public bool IsModified { get; set; }
+        public DateTime UpdatedAt { get; set; }
+    }
+}
+
 <style>
-    .settings-grid {
+    .settings-page {
+        padding: 2rem;
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+
+    .settings-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 2rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .header-content h2 {
+        margin: 0;
+        color: var(--primary-color);
+    }
+
+    .header-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .search-filter-bar {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+        padding: 1rem;
+        background: var(--card-background);
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+    }
+
+    .search-input {
+        flex: 1;
+    }
+
+    .filter-controls {
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+    }
+
+    .settings-summary {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-        gap: 1.5rem;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
+
+    .summary-card {
+        display: flex;
+        align-items: center;
+        padding: 1rem;
+        background: var(--card-background);
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+    }
+
+    .summary-icon {
+        font-size: 1.5rem;
+        margin-right: 1rem;
+        color: var(--primary-color);
+    }
+
+    .summary-value {
+        font-size: 1.5rem;
+        font-weight: bold;
+        color: var(--text-primary);
+    }
+
+    .summary-label {
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+    }
+
+    .settings-sections {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .settings-card {
+        background: var(--card-background);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    .card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem;
+        background: var(--header-background);
+        border-bottom: 1px solid var(--border-color);
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+
+    .card-header:hover {
+        background: var(--hover-background);
+    }
+
+    .section-title {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .section-title h4 {
+        margin: 0;
+        color: var(--text-primary);
+    }
+
+    .setting-count {
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+        background: var(--background);
+        padding: 0.25rem 0.5rem;
+        border-radius: 12px;
+    }
+
+    .card-content {
+        padding: 1rem;
+    }
+
+    .section-description {
+        margin-bottom: 1rem;
+        color: var(--text-secondary);
+        font-style: italic;
+    }
+
+    .add-setting-form {
+        background: var(--accent-background);
+        border: 1px solid var(--accent-border);
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .add-setting-form h5 {
+        margin: 0 0 1rem 0;
+        color: var(--primary-color);
+    }
+
+    .form-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .form-group {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .form-group label {
+        margin-bottom: 0.25rem;
+        font-weight: 500;
+        color: var(--text-primary);
+    }
+
+    .form-actions {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .settings-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .setting-item {
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        overflow: hidden;
+        transition: all 0.2s;
+    }
+
+    .setting-item.modified {
+        border-color: var(--warning-color);
+        background: var(--warning-background);
+    }
+
+    .setting-item.editing {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 2px rgba(var(--primary-color-rgb), 0.1);
+    }
+
+    .setting-view {
+        padding: 1rem;
+        cursor: pointer;
+        transition: background-color 0.2s;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .setting-view:hover {
+        background: var(--hover-background);
+    }
+
+    .setting-edit-form {
+        padding: 1rem;
+        background: var(--edit-background);
+    }
+
+    .setting-header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .setting-key {
+        font-weight: 500;
+        color: var(--text-primary);
+    }
+
+    .setting-value {
+        color: var(--text-secondary);
+        margin: 0.25rem 0;
+    }
+
+    .setting-description {
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+        margin: 0.25rem 0;
+    }
+
+    .setting-meta {
+        display: flex;
+        gap: 1rem;
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        margin-top: 0.5rem;
+    }
+
+    .edit-hint {
+        color: var(--text-muted);
+        font-size: 0.875rem;
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+        opacity: 0;
+        transition: opacity 0.2s;
+    }
+
+    .setting-view:hover .edit-hint {
+        opacity: 1;
+    }
+
+    .add-setting-trigger {
         margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--border-color);
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 3rem 1rem;
+        color: var(--text-secondary);
+    }
+
+    .empty-state h4 {
+        margin: 1rem 0;
+        color: var(--text-primary);
+    }
+
+    .loading-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 300px;
+    }
+
+    /* CSS Variables for theming */
+    :root {
+        --primary-color: #0066cc;
+        --primary-color-rgb: 0, 102, 204;
+        --text-primary: #2c3e50;
+        --text-secondary: #7f8c8d;
+        --text-muted: #95a5a6;
+        --background: #ffffff;
+        --card-background: #ffffff;
+        --header-background: #f8f9fa;
+        --hover-background: #f1f3f5;
+        --border-color: #dee2e6;
+        --accent-background: #e3f2fd;
+        --accent-border: #90caf9;
+        --edit-background: #f0f8ff;
+        --warning-color: #ff9800;
+        --warning-background: #fff3cd;
+    }
+
+    /* Key input styling */
+    .key-input {
+        display: flex;
+        align-items: center;
+        background: var(--card-background);
+        border: 1px solid var(--border-color);
+        border-radius: 0.375rem;
+        overflow: hidden;
+    }
+
+    .section-prefix {
+        background: var(--header-background);
+        padding: 0.5rem 0.75rem;
+        font-weight: 500;
+        color: var(--text-secondary);
+        border-right: 1px solid var(--border-color);
+        white-space: nowrap;
+    }
+
+    .key-name-input {
+        border: none !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        flex: 1;
+    }
+
+    .key-name-input:focus {
+        outline: none;
+        box-shadow: none;
+    }
+
+    .key-input:focus-within {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+    }
+
+    @@media (max-width: 768px) {
+        .settings-page {
+            padding: 1rem;
+        }
+
+        .settings-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 1rem;
+        }
+
+        .search-filter-bar {
+            flex-direction: column;
+        }
+
+        .form-row {
+            grid-template-columns: 1fr;
+        }
+
+        .form-actions {
+            justify-content: stretch;
+        }
+
+        .form-actions > * {
+            flex: 1;
+        }
     }
 </style>

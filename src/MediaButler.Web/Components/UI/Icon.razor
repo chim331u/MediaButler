@@ -1,7 +1,7 @@
 @namespace MediaButler.Web.Components.UI
 @inject IIconService IconService
 
-<span class="icon @CssClass" title="@(Title ?? Name)">
+<span class="icon @GetSizeClass() @CssClass" title="@(Title ?? Name)">
     @if (!string.IsNullOrEmpty(CustomIcon))
     {
         @CustomIcon
@@ -35,7 +35,24 @@
     [Parameter] public string? Action { get; set; }
     [Parameter] public string? CustomIcon { get; set; }
     [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Size { get; set; }
     [Parameter] public string CssClass { get; set; } = "";
+
+    private string GetSizeClass()
+    {
+        return Size switch
+        {
+            "sm" or "small" => "small",
+            "md" or "medium" => "medium",
+            "lg" or "large" => "large",
+            "xl" or "x-large" => "xl",
+            "2x" => "icon-2x",
+            "3x" => "icon-3x",
+            "4x" => "icon-4x",
+            "5x" => "icon-5x",
+            _ => ""
+        };
+    }
 }
 
 <style>
@@ -60,6 +77,22 @@
 
     .icon.xl {
         font-size: 1.5rem;
+    }
+
+    .icon.icon-2x {
+        font-size: 2rem;
+    }
+
+    .icon.icon-3x {
+        font-size: 3rem;
+    }
+
+    .icon.icon-4x {
+        font-size: 4rem;
+    }
+
+    .icon.icon-5x {
+        font-size: 5rem;
     }
 
     .icon.clickable {
