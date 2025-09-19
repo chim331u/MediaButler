@@ -106,9 +106,22 @@
                                         <h5><Icon Name="plus" /> Add New Setting</h5>
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label>Key</label>
-                                                <input type="text" @bind="newSetting.Key" class="form-control"
-                                                       placeholder="e.g., Processing.BatchSize" />
+                                                <label>Section</label>
+                                                <select @bind="selectedNewSection" class="form-control">
+                                                    @foreach (var section in availableSections)
+                                                    {
+                                                        <option value="section">section</option>
+                                                    }
+                                                </select>
+                                            </div>
+                                            <div class="form-group">
+                                                <label>Setting Key</label>
+                                                <div class="key-input">
+                                                    <span class="section-prefix">@(selectedNewSection).</span>
+                                                    <input type="text" @bind="newSettingKeyName" class="form-control key-name-input"
+                                                           placeholder="KeyName" />
+                                                </div>
+                                                <small class="text-muted">Full key: @newSetting.Key</small>
                                             </div>
                                             <div class="form-group">
                                                 <label>Value</label>
@@ -130,7 +143,7 @@
                                             </div>
                                         </div>
                                         <div class="form-actions">
-                                            <Button Variant="ButtonVariant.Primary" OnClick="() => SaveNewSetting(configSection.Name)"
+                                            <Button Variant="ButtonVariant.Primary" OnClick="() => SaveNewSetting(selectedNewSection)"
                                                     IsLoading="savingNewSetting">
                                                 <Icon Name="save" /> Save
                                             </Button>
@@ -264,8 +277,21 @@
                                 <div class="add-setting-form">
                                     <div class="form-grid">
                                         <div class="form-group">
+                                            <label for="newSection">Section</label>
+                                            <select id="newSection" @bind="selectedNewSection" class="form-control">
+                                                @foreach (var section in availableSections)
+                                                {
+                                                    <option value="section">section</option>
+                                                }
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
                                             <label for="newKey">Setting Key</label>
-                                            <input type="text" id="newKey" @bind="newSetting.Key" class="form-control" placeholder="Enter setting key..." />
+                                            <div class="key-input">
+                                                <span class="section-prefix">@(selectedNewSection).</span>
+                                                <input type="text" id="newKey" @bind="newSettingKeyName" class="form-control key-name-input" placeholder="KeyName" />
+                                            </div>
+                                            <small class="text-muted">Full key: @newSetting.Key</small>
                                         </div>
                                         <div class="form-group">
                                             <label for="newValue">Value</label>
@@ -284,7 +310,7 @@
                                         </div>
                                     </div>
                                     <div class="form-actions">
-                                        <Button Variant="ButtonVariant.Primary" OnClick="() => SaveNewSetting(showAddForm)"
+                                        <Button Variant="ButtonVariant.Primary" OnClick="() => SaveNewSetting(selectedNewSection)"
                                                 IsLoading="savingNewSetting" LoadingText="Saving...">
                                             <Icon Name="save" /> Save Setting
                                         </Button>
@@ -318,6 +344,25 @@
     private ConfigurationResponse newSetting = new();
     private bool savingEdit = false;
     private bool savingNewSetting = false;
+    private string selectedNewSection = "System";
+
+    // Helper property for key name part (without section prefix)
+    private string newSettingKeyName
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(newSetting.Key)) return "";
+            var parts = newSetting.Key.Split('.');
+            return parts.Length > 1 ? parts[1] : "";
+        }
+        set
+        {
+            if (!string.IsNullOrEmpty(selectedNewSection))
+            {
+                newSetting.Key = $"{selectedNewSection}.{value}";
+            }
+        }
+    }
 
     // Computed properties
     private List<ConfigurationSection> filteredSections => sections
@@ -378,6 +423,13 @@
             }
 
             sections = loadedSections;
+
+            // Always include all common sections in available sections dropdown
+            foreach (var sectionName in commonSections)
+            {
+                allSectionNames.Add(sectionName);
+            }
+
             availableSections = allSectionNames.OrderBy(s => s).ToList();
 
             // Auto-expand first section if none expanded
@@ -478,6 +530,7 @@
     private void StartAddSetting(string sectionName)
     {
         showAddForm = sectionName;
+        selectedNewSection = sectionName;
         newSetting = new ConfigurationResponse
         {
             Key = $"{sectionName}.",
@@ -962,6 +1015,42 @@
         --edit-background: #f0f8ff;
         --warning-color: #ff9800;
         --warning-background: #fff3cd;
+    }
+
+    /* Key input styling */
+    .key-input {
+        display: flex;
+        align-items: center;
+        background: var(--card-background);
+        border: 1px solid var(--border-color);
+        border-radius: 0.375rem;
+        overflow: hidden;
+    }
+
+    .section-prefix {
+        background: var(--header-background);
+        padding: 0.5rem 0.75rem;
+        font-weight: 500;
+        color: var(--text-secondary);
+        border-right: 1px solid var(--border-color);
+        white-space: nowrap;
+    }
+
+    .key-name-input {
+        border: none !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        flex: 1;
+    }
+
+    .key-name-input:focus {
+        outline: none;
+        box-shadow: none;
+    }
+
+    .key-input:focus-within {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
     }
 
     @@media (max-width: 768px) {
