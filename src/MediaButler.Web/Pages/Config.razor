@@ -1,0 +1,910 @@
+@page "/config"
+@using MediaButler.Web.Models
+@using MediaButler.Web.Services
+@inject IConfigApiService ConfigApi
+@inject NotificationService NotificationService
+@inject DialogService DialogService
+
+<PageTitle>Configuration - MediaButler</PageTitle>
+
+<RadzenStack Gap="1rem">
+    <!-- Header Section -->
+    <RadzenRow>
+        <RadzenColumn Size="12">
+            <RadzenCard>
+                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem">
+                    <RadzenIcon Icon="settings" Style="color: var(--rz-primary); font-size: 1.5rem;" />
+                    <RadzenStack Gap="0.25rem">
+                        <RadzenText TextStyle="TextStyle.H4" Text="System Configuration" />
+                        <RadzenText TextStyle="TextStyle.Body2" Text="Manage MediaButler settings and preferences" />
+                    </RadzenStack>
+                    <div style="flex: 1;"></div>
+                    <RadzenButton Click="RefreshSettings"
+                                 Icon="refresh"
+                                 Text="Refresh"
+                                 ButtonStyle="ButtonStyle.Light"
+                                 Disabled="@_isLoading" />
+                    <RadzenButton Click="ReloadWatchFolders"
+                                 Icon="autorenew"
+                                 Text="Reload Watch Folders"
+                                 ButtonStyle="ButtonStyle.Secondary"
+                                 Disabled="@_isLoading"
+                                 title="Reload watch folder configuration without restarting the service" />
+                    <RadzenButton Click="@(async () => await ShowCreateDialog())"
+                                 Icon="add"
+                                 Text="Add Setting"
+                                 ButtonStyle="ButtonStyle.Primary"
+                                 Disabled="@_isLoading" />
+                </RadzenStack>
+            </RadzenCard>
+        </RadzenColumn>
+    </RadzenRow>
+
+    <!-- Settings List -->
+    <RadzenRow>
+        <RadzenColumn Size="12">
+            <RadzenCard>
+                @if (_isLoading)
+                {
+                    <div class="text-center p-4">
+                        <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+                        <RadzenText TextStyle="TextStyle.Body1" Text="Loading configuration settings..." class="mt-3" />
+                    </div>
+                }
+                else if (_settings != null)
+                {
+                    <RadzenDataGrid @ref="_dataGrid"
+                                   Data="@_settings"
+                                   TItem="ConfigurationDto"
+                                   AllowPaging="true"
+                                   PageSize="10"
+                                   AllowSorting="true"
+                                   AllowFiltering="true"
+                                   FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                   EditMode="DataGridEditMode.Single"
+                                   RowCreate="@OnRowCreate"
+                                   RowUpdate="@OnRowUpdate"
+                                   Density="Density.Compact">
+                        <Columns>
+                            <RadzenDataGridColumn TItem="ConfigurationDto" Property="Section" Title="Section" Width="120px">
+                                <Template Context="setting">
+                                    <RadzenBadge Text="@setting.Section" BadgeStyle="BadgeStyle.Light" />
+                                </Template>
+                                <EditTemplate Context="setting">
+                                    <RadzenDropDown Data="@_availableSections"
+                                                   Value="@setting.Section"
+                                                   ValueChanged="@((string value) => SetEditableSection(setting, value))"
+                                                   Style="width: 100%;"
+                                                   Placeholder="Select Section" />
+                                </EditTemplate>
+                            </RadzenDataGridColumn>
+
+                            <RadzenDataGridColumn TItem="ConfigurationDto" Property="Key" Title="Key" Width="200px">
+                                <Template Context="setting">
+                                    <RadzenText TextStyle="TextStyle.Body1" Text="@setting.Key" class="fw-bold" />
+                                </Template>
+                                <EditTemplate Context="setting">
+                                    <RadzenTextBox Value="@GetEditableKey(setting)"
+                                                  ValueChanged="@((string value) => SetEditableKey(setting, value))"
+                                                  Style="width: 100%;" />
+                                </EditTemplate>
+                            </RadzenDataGridColumn>
+
+                            <RadzenDataGridColumn TItem="ConfigurationDto" Property="Value" Title="Value" Width="250px">
+                                <Template Context="setting">
+                                    <RadzenText TextStyle="TextStyle.Body2" Text="@GetDisplayValue(setting)" />
+                                </Template>
+                                <EditTemplate Context="setting">
+                                    <RadzenTextBox Value="@GetEditableValue(setting)"
+                                                  ValueChanged="@((string value) => SetEditableValue(setting, value))"
+                                                  Style="width: 100%;" />
+                                </EditTemplate>
+                            </RadzenDataGridColumn>
+
+                            <RadzenDataGridColumn TItem="ConfigurationDto" Property="DataType" Title="Type" Width="100px">
+                                <Template Context="setting">
+                                    <RadzenText TextStyle="TextStyle.Caption" Text="@setting.DataTypeDescription" />
+                                </Template>
+                                <EditTemplate Context="setting">
+                                    <RadzenDropDown Value="@GetEditableDataType(setting)"
+                                                   ValueChanged="@((ConfigurationDataType value) => SetEditableDataType(setting, value))"
+                                                   Data="@_availableDataTypes"
+                                                   TextProperty="Text"
+                                                   ValueProperty="Value"
+                                                   Style="width: 100%;" />
+                                </EditTemplate>
+                            </RadzenDataGridColumn>
+
+                            <RadzenDataGridColumn TItem="ConfigurationDto" Property="Description" Title="Description" Width="300px">
+                                <Template Context="setting">
+                                    <RadzenText TextStyle="TextStyle.Body2" Text="@(string.IsNullOrEmpty(setting.Description) ? "No description" : setting.Description)" />
+                                </Template>
+                                <EditTemplate Context="setting">
+                                    <RadzenTextArea Value="@GetEditableDescription(setting)"
+                                                   ValueChanged="@((string value) => SetEditableDescription(setting, value))"
+                                                   Style="width: 100%; height: 60px;" />
+                                </EditTemplate>
+                            </RadzenDataGridColumn>
+
+                            <RadzenDataGridColumn TItem="ConfigurationDto" Title="Status" Width="150px" Sortable="false" Filterable="false">
+                                <Template Context="setting">
+                                    <RadzenStack Orientation="Orientation.Vertical" Gap="0.25rem">
+                                        @if (setting.IsModified)
+                                        {
+                                            <RadzenBadge Text="Modified" BadgeStyle="BadgeStyle.Warning" />
+                                        }
+                                        @if (setting.RequiresRestart)
+                                        {
+                                            <RadzenBadge Text="Restart Required" BadgeStyle="BadgeStyle.Danger" />
+                                        }
+                                        @if (!setting.IsModified && !setting.RequiresRestart)
+                                        {
+                                            <RadzenBadge Text="Current" BadgeStyle="BadgeStyle.Success" />
+                                        }
+                                    </RadzenStack>
+                                </Template>
+                                <EditTemplate Context="setting">
+                                    <RadzenCheckBox Value="@GetEditableRequiresRestart(setting)"
+                                                   ValueChanged="@((bool value) => SetEditableRequiresRestart(setting, value))"
+                                                   Name="requiresRestart" />
+                                    <RadzenLabel Text="Requires Restart" Component="requiresRestart" Style="margin-left: 8px;" />
+                                </EditTemplate>
+                            </RadzenDataGridColumn>
+
+                            <RadzenDataGridColumn TItem="ConfigurationDto" Title="Actions" Width="200px" Sortable="false" Filterable="false">
+                                <Template Context="setting">
+                                    @if (setting.IsEditable)
+                                    {
+                                        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.25rem">
+                                            <RadzenButton Icon="edit"
+                                                         ButtonStyle="ButtonStyle.Light"
+                                                         Size="ButtonSize.ExtraSmall"
+                                                         Click="@(() => EditRow(setting))"
+                                                         Disabled="@_isLoading"
+                                                         title="Edit" />
+
+                                            @if (setting.IsModified && setting.DefaultValue != null)
+                                            {
+                                                <RadzenButton Icon="restore"
+                                                             ButtonStyle="ButtonStyle.Secondary"
+                                                             Size="ButtonSize.ExtraSmall"
+                                                             Click="@(() => ResetSetting(setting))"
+                                                             Disabled="@_isLoading"
+                                                             title="Reset to Default" />
+                                            }
+
+                                            <RadzenButton Icon="delete"
+                                                         ButtonStyle="ButtonStyle.Danger"
+                                                         Size="ButtonSize.ExtraSmall"
+                                                         Click="@(() => DeleteSetting(setting))"
+                                                         Disabled="@_isLoading"
+                                                         title="Delete" />
+                                        </RadzenStack>
+                                    }
+                                    else
+                                    {
+                                        <RadzenText TextStyle="TextStyle.Caption" Text="Read-only" />
+                                    }
+                                </Template>
+                                <EditTemplate Context="setting">
+                                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.25rem">
+                                        <RadzenButton Icon="check"
+                                                     ButtonStyle="ButtonStyle.Success"
+                                                     Size="ButtonSize.ExtraSmall"
+                                                     Click="@(() => SaveRow(setting))"
+                                                     title="Save" />
+                                        <RadzenButton Icon="close"
+                                                     ButtonStyle="ButtonStyle.Light"
+                                                     Size="ButtonSize.ExtraSmall"
+                                                     Click="@(async () => await CancelEdit(setting))"
+                                                     title="Cancel" />
+                                    </RadzenStack>
+                                </EditTemplate>
+                            </RadzenDataGridColumn>
+                        </Columns>
+                        <EmptyTemplate>
+                            <div class="text-center p-4">
+                                <RadzenIcon Icon="settings_suggest" Style="font-size: 3rem; color: #666;" />
+                                <RadzenText TextStyle="TextStyle.H6" Text="No configuration settings found" class="mt-3" />
+                                <RadzenText TextStyle="TextStyle.Body2" Text="Click 'Add Setting' to create your first configuration setting" />
+                                <RadzenButton Text="Add Setting"
+                                             Icon="add"
+                                             ButtonStyle="ButtonStyle.Primary"
+                                             Click="@(async () => await ShowCreateDialog())"
+                                             class="mt-3" />
+                            </div>
+                        </EmptyTemplate>
+                    </RadzenDataGrid>
+                }
+                else if (!_isLoading && _settings == null)
+                {
+                    <div class="text-center p-4">
+                        <RadzenIcon Icon="settings_suggest" Style="font-size: 3rem; color: #666;" />
+                        <RadzenText TextStyle="TextStyle.H6" Text="No configuration settings found" class="mt-3" />
+                        <RadzenText TextStyle="TextStyle.Body2" Text="The configuration API may be unavailable or no settings exist" />
+                        <RadzenButton Text="Add Setting"
+                                     Icon="add"
+                                     ButtonStyle="ButtonStyle.Primary"
+                                     Click="@(async () => await ShowCreateDialog())"
+                                     class="mt-3" />
+                    </div>
+                }
+                else if (!string.IsNullOrEmpty(_errorMessage))
+                {
+                    <RadzenAlert AlertStyle="AlertStyle.Danger"
+                               Title="Configuration Load Failed"
+                               Text="@_errorMessage" />
+                }
+            </RadzenCard>
+        </RadzenColumn>
+    </RadzenRow>
+</RadzenStack>
+
+@code {
+    private IReadOnlyList<ConfigurationDto>? _settings;
+    private bool _isLoading;
+    private string? _errorMessage;
+    private RadzenDataGrid<ConfigurationDto>? _dataGrid;
+
+    // Editing state
+    private ConfigurationDto? _editingItem;
+    private Dictionary<string, object?> _editingValues = new();
+
+    // Available sections for dropdown
+    private readonly string[] _availableSections = { "Path", "General", "Future", "WatchPath" };
+
+    // Available data types for dropdown
+    private readonly List<object> _availableDataTypes = new()
+    {
+        new { Text = "String", Value = ConfigurationDataType.String },
+        new { Text = "Integer", Value = ConfigurationDataType.Integer },
+        new { Text = "Boolean", Value = ConfigurationDataType.Boolean },
+        new { Text = "File Path", Value = ConfigurationDataType.Path },
+        new { Text = "JSON", Value = ConfigurationDataType.Json }
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSettings();
+    }
+
+    private async Task LoadSettings()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var result = await ConfigApi.GetAllSettingsAsync();
+
+            if (result.IsSuccess)
+            {
+                _settings = result.Value;
+                _errorMessage = null;
+
+            }
+            else
+            {
+                _errorMessage = $"Failed to load settings: {result.Error}";
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Error,
+                    Summary = "Configuration Load Failed",
+                    Detail = result.Error,
+                    Duration = 5000
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Unexpected error: {ex.Message}";
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Configuration Error",
+                Detail = ex.Message,
+                Duration = 5000
+            });
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RefreshSettings()
+    {
+        await LoadSettings();
+    }
+
+    private async Task ReloadWatchFolders()
+    {
+        try
+        {
+            _isLoading = true;
+            StateHasChanged();
+
+            var result = await ConfigApi.ReloadWatchFoldersAsync();
+
+            if (result.IsSuccess)
+            {
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Success,
+                    Summary = "Watch Folders Reloaded",
+                    Detail = $"{result.Value!.Message}. Monitoring {result.Value.MonitoredPaths.Count()} folders.",
+                    Duration = 5000
+                });
+
+                // Refresh settings to show any changes
+                await LoadSettings();
+            }
+            else
+            {
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Error,
+                    Summary = "Reload Failed",
+                    Detail = result.Error,
+                    Duration = 5000
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Reload Error",
+                Detail = ex.Message,
+                Duration = 5000
+            });
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    // Inline editing methods
+    private void EditRow(ConfigurationDto setting)
+    {
+        if (_dataGrid != null)
+        {
+            _editingItem = setting;
+            _editingValues.Clear();
+            _editingValues["Section"] = setting.Section;
+            _editingValues["Key"] = setting.Key;
+            _editingValues["Value"] = setting.Value?.ToString() ?? "";
+            _editingValues["DataType"] = setting.DataType;
+            _editingValues["Description"] = setting.Description ?? "";
+            _editingValues["RequiresRestart"] = setting.RequiresRestart;
+
+            _dataGrid.EditRow(setting);
+        }
+    }
+
+    private async Task SaveRow(ConfigurationDto setting)
+    {
+        try
+        {
+            if (_editingItem == null || _dataGrid == null) return;
+
+            // Check if this is a new setting (empty key) or existing setting
+            var isNewSetting = string.IsNullOrEmpty(setting.Key);
+
+            if (isNewSetting)
+            {
+                // Create new setting
+                var key = _editingValues.GetValueOrDefault("Key") as string ?? "";
+                var value = _editingValues.GetValueOrDefault("Value", "") ?? "";
+
+                // Basic validation
+                if (string.IsNullOrWhiteSpace(key))
+                {
+                    NotificationService.Notify(new NotificationMessage
+                    {
+                        Severity = NotificationSeverity.Error,
+                        Summary = "Validation Error",
+                        Detail = "Configuration key is required",
+                        Duration = 3000
+                    });
+                    return;
+                }
+
+                // Key can have any value - no format restrictions
+
+
+                var createRequest = new CreateConfigurationRequest(
+                    Key: key,
+                    Value: value,
+                    Section: _editingValues.GetValueOrDefault("Section") as string ?? "General",
+                    Description: _editingValues.GetValueOrDefault("Description") as string,
+                    RequiresRestart: _editingValues.GetValueOrDefault("RequiresRestart") is bool restart ? restart : false
+                );
+
+                var result = await ConfigApi.CreateSettingAsync(createRequest);
+
+                if (result.IsSuccess)
+                {
+                    NotificationService.Notify(new NotificationMessage
+                    {
+                        Severity = NotificationSeverity.Success,
+                        Summary = "Setting Created",
+                        Detail = $"Configuration '{createRequest.Key}' created successfully",
+                        Duration = 3000
+                    });
+
+                    // Reload settings to get the actual created setting from API
+                    await LoadSettings();
+                    _editingItem = null;
+                    _editingValues.Clear();
+                }
+                else
+                {
+                    NotificationService.Notify(new NotificationMessage
+                    {
+                        Severity = NotificationSeverity.Error,
+                        Summary = "Create Failed",
+                        Detail = result.Error,
+                        Duration = 5000
+                    });
+
+                    // Remove the temporary row if creation failed
+                    await RemoveTemporaryRow(setting);
+                }
+            }
+            else
+            {
+                // Update existing setting
+                var updateRequest = new UpdateConfigurationRequest(
+                    Value: _editingValues.GetValueOrDefault("Value", "") ?? "",
+                    Section: _editingValues.GetValueOrDefault("Section") as string,
+                    Description: _editingValues.GetValueOrDefault("Description") as string,
+                    RequiresRestart: _editingValues.GetValueOrDefault("RequiresRestart") is bool restart ? restart : false
+                );
+
+                var result = await ConfigApi.UpdateSettingAsync(setting.Key, updateRequest);
+
+                if (result.IsSuccess)
+                {
+                    NotificationService.Notify(new NotificationMessage
+                    {
+                        Severity = NotificationSeverity.Success,
+                        Summary = "Setting Updated",
+                        Detail = $"Configuration '{setting.Key}' updated successfully",
+                        Duration = 3000
+                    });
+
+                    await LoadSettings();
+                    _dataGrid.CancelEditRow(setting);
+                    _editingItem = null;
+                    _editingValues.Clear();
+                }
+                else
+                {
+                    NotificationService.Notify(new NotificationMessage
+                    {
+                        Severity = NotificationSeverity.Error,
+                        Summary = "Update Failed",
+                        Detail = result.Error,
+                        Duration = 5000
+                    });
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Update Error",
+                Detail = ex.Message,
+                Duration = 5000
+            });
+        }
+    }
+
+    private async Task CancelEdit(ConfigurationDto setting)
+    {
+        if (_dataGrid != null)
+        {
+            // Check if this is a temporary row (new setting being created)
+            if (IsTemporaryRow(setting))
+            {
+                await RemoveTemporaryRow(setting);
+            }
+            else
+            {
+                _dataGrid.CancelEditRow(setting);
+            }
+
+            _editingItem = null;
+            _editingValues.Clear();
+        }
+    }
+
+    private bool IsTemporaryRow(ConfigurationDto setting)
+    {
+        // A temporary row is one that has empty key and was just created
+        return string.IsNullOrEmpty(setting.Key) &&
+               setting.CreatedAt.Date == DateTime.UtcNow.Date &&
+               _editingItem == setting;
+    }
+
+    private async Task RemoveTemporaryRow(ConfigurationDto setting)
+    {
+        if (_settings != null)
+        {
+            var settingsList = _settings.ToList();
+            settingsList.Remove(setting);
+            _settings = settingsList;
+            StateHasChanged();
+        }
+        await Task.CompletedTask;
+    }
+
+    private async Task OnRowCreate(ConfigurationDto setting)
+    {
+        try
+        {
+            var key = _editingValues.GetValueOrDefault("Key") as string ?? "";
+            var value = _editingValues.GetValueOrDefault("Value", "") ?? "";
+
+            // Basic validation
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Error,
+                    Summary = "Validation Error",
+                    Detail = "Configuration key is required",
+                    Duration = 3000
+                });
+                return;
+            }
+
+            // Key can have any value - no format restrictions
+
+            var createRequest = new CreateConfigurationRequest(
+                Key: key,
+                Value: value,
+                Section: _editingValues.GetValueOrDefault("Section") as string ?? "General",
+                Description: _editingValues.GetValueOrDefault("Description") as string,
+                RequiresRestart: _editingValues.GetValueOrDefault("RequiresRestart") is bool restart ? restart : false
+            );
+
+            var result = await ConfigApi.CreateSettingAsync(createRequest);
+
+            if (result.IsSuccess)
+            {
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Success,
+                    Summary = "Setting Created",
+                    Detail = $"Configuration '{createRequest.Key}' created successfully",
+                    Duration = 3000
+                });
+
+                // Reload settings to get the actual created setting from API
+                await LoadSettings();
+                _editingItem = null;
+                _editingValues.Clear();
+            }
+            else
+            {
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Error,
+                    Summary = "Create Failed",
+                    Detail = result.Error,
+                    Duration = 5000
+                });
+
+                // Remove the temporary row if creation failed
+                await RemoveTemporaryRow(setting);
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Create Error",
+                Detail = ex.Message,
+                Duration = 5000
+            });
+
+            // Remove the temporary row if creation failed
+            await RemoveTemporaryRow(setting);
+        }
+    }
+
+    private async Task OnRowUpdate(ConfigurationDto setting)
+    {
+        // This is called by the DataGrid automatically when inline editing is saved
+        await SaveRow(setting);
+    }
+
+    // Editable value getters and setters for inline editing
+    private string GetEditableValue(ConfigurationDto setting)
+    {
+        if (_editingItem == setting && _editingValues.ContainsKey("Value"))
+        {
+            return _editingValues["Value"]?.ToString() ?? "";
+        }
+        return setting.Value?.ToString() ?? "";
+    }
+
+    private void SetEditableValue(ConfigurationDto setting, string value)
+    {
+        if (_editingItem == setting)
+        {
+            _editingValues["Value"] = value;
+        }
+    }
+
+    private ConfigurationDataType GetEditableDataType(ConfigurationDto setting)
+    {
+        if (_editingItem == setting && _editingValues.ContainsKey("DataType"))
+        {
+            return (ConfigurationDataType)_editingValues["DataType"]!;
+        }
+        return setting.DataType;
+    }
+
+    private void SetEditableDataType(ConfigurationDto setting, ConfigurationDataType value)
+    {
+        if (_editingItem == setting)
+        {
+            _editingValues["DataType"] = value;
+        }
+    }
+
+    private string GetEditableDescription(ConfigurationDto setting)
+    {
+        if (_editingItem == setting && _editingValues.ContainsKey("Description"))
+        {
+            return _editingValues["Description"]?.ToString() ?? "";
+        }
+        return setting.Description ?? "";
+    }
+
+    private void SetEditableDescription(ConfigurationDto setting, string value)
+    {
+        if (_editingItem == setting)
+        {
+            _editingValues["Description"] = value;
+        }
+    }
+
+    private bool GetEditableRequiresRestart(ConfigurationDto setting)
+    {
+        if (_editingItem == setting && _editingValues.ContainsKey("RequiresRestart"))
+        {
+            return (bool)_editingValues["RequiresRestart"]!;
+        }
+        return setting.RequiresRestart;
+    }
+
+    private void SetEditableRequiresRestart(ConfigurationDto setting, bool value)
+    {
+        if (_editingItem == setting)
+        {
+            _editingValues["RequiresRestart"] = value;
+        }
+    }
+
+    private string GetEditableSection(ConfigurationDto setting)
+    {
+        if (_editingItem == setting && _editingValues.ContainsKey("Section"))
+        {
+            return _editingValues["Section"]?.ToString() ?? "";
+        }
+        return setting.Section;
+    }
+
+    private void SetEditableSection(ConfigurationDto setting, string value)
+    {
+        if (_editingItem == setting)
+        {
+            _editingValues["Section"] = value;
+        }
+    }
+
+    private string GetEditableKey(ConfigurationDto setting)
+    {
+        if (_editingItem == setting && _editingValues.ContainsKey("Key"))
+        {
+            return _editingValues["Key"]?.ToString() ?? "";
+        }
+        return setting.Key;
+    }
+
+    private void SetEditableKey(ConfigurationDto setting, string value)
+    {
+        if (_editingItem == setting)
+        {
+            _editingValues["Key"] = value;
+        }
+    }
+
+    private async Task ShowCreateDialog()
+    {
+        try
+        {
+
+            if (_dataGrid != null)
+            {
+                // Create a new empty configuration for inline editing
+                var newConfig = new ConfigurationDto(
+                    Key: "",
+                    Value: "",
+                    RawValue: "",
+                    Section: "General",
+                    Description: "",
+                    DataType: ConfigurationDataType.String,
+                    DataTypeDescription: "String",
+                    RequiresRestart: false,
+                    IsEditable: true,
+                    DefaultValue: null,
+                    CreatedAt: DateTime.UtcNow,
+                    UpdatedAt: DateTime.UtcNow,
+                    ValidationRules: new List<ValidationRuleDto>(),
+                    Options: null
+                );
+
+                // Set this as the editing item and initialize values
+                _editingItem = newConfig;
+                _editingValues.Clear();
+                _editingValues["Section"] = "General";
+                _editingValues["Key"] = "NewSetting";
+                _editingValues["Value"] = "";
+                _editingValues["DataType"] = ConfigurationDataType.String;
+                _editingValues["Description"] = "";
+                _editingValues["RequiresRestart"] = false;
+
+                // Add to the settings list temporarily for editing
+                var settingsList = _settings?.ToList() ?? new List<ConfigurationDto>();
+                settingsList.Insert(0, newConfig);
+                _settings = settingsList;
+
+                // Start editing the new row
+                await _dataGrid.EditRow(newConfig);
+                StateHasChanged();
+                
+            }
+            else
+            {
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Warning,
+                    Summary = "Debug",
+                    Detail = "DataGrid is null - cannot add new row",
+                    Duration = 3000
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Add Setting Error",
+                Detail = $"Failed to add new setting: {ex.Message}",
+                Duration = 5000
+            });
+        }
+    }
+
+    private async Task ResetSetting(ConfigurationDto setting)
+    {
+        try
+        {
+            var confirmed = await DialogService.Confirm(
+                $"Reset '{setting.Key}' to its default value?",
+                "Reset Configuration",
+                new ConfirmOptions() { OkButtonText = "Reset", CancelButtonText = "Cancel" });
+
+            if (confirmed == true)
+            {
+                var result = await ConfigApi.ResetSettingAsync(setting.Key);
+
+                if (result.IsSuccess)
+                {
+                    NotificationService.Notify(new NotificationMessage
+                    {
+                        Severity = NotificationSeverity.Success,
+                        Summary = "Setting Reset",
+                        Detail = $"Configuration '{setting.Key}' reset to default value",
+                        Duration = 3000
+                    });
+
+                    await LoadSettings();
+                }
+                else
+                {
+                    NotificationService.Notify(new NotificationMessage
+                    {
+                        Severity = NotificationSeverity.Error,
+                        Summary = "Reset Failed",
+                        Detail = result.Error,
+                        Duration = 5000
+                    });
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Reset Error",
+                Detail = ex.Message,
+                Duration = 5000
+            });
+        }
+    }
+
+    private async Task DeleteSetting(ConfigurationDto setting)
+    {
+        try
+        {
+            var confirmed = await DialogService.Confirm(
+                $"Delete configuration '{setting.Key}'? This action cannot be undone.",
+                "Delete Configuration",
+                new ConfirmOptions() { OkButtonText = "Delete", CancelButtonText = "Cancel" });
+
+            if (confirmed == true)
+            {
+                var result = await ConfigApi.DeleteSettingAsync(setting.Key);
+
+                if (result.IsSuccess)
+                {
+                    NotificationService.Notify(new NotificationMessage
+                    {
+                        Severity = NotificationSeverity.Success,
+                        Summary = "Setting Deleted",
+                        Detail = $"Configuration '{setting.Key}' deleted successfully",
+                        Duration = 3000
+                    });
+
+                    await LoadSettings();
+                }
+                else
+                {
+                    NotificationService.Notify(new NotificationMessage
+                    {
+                        Severity = NotificationSeverity.Error,
+                        Summary = "Delete Failed",
+                        Detail = result.Error,
+                        Duration = 5000
+                    });
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Delete Error",
+                Detail = ex.Message,
+                Duration = 5000
+            });
+        }
+    }
+
+    private static string GetDisplayValue(ConfigurationDto setting)
+    {
+        if (setting.Value == null)
+            return "null";
+
+        var valueStr = setting.Value.ToString() ?? "";
+        return valueStr.Length > 100 ? valueStr[..97] + "..." : valueStr;
+    }
+
+}

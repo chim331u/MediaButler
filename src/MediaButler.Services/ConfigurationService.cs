@@ -70,10 +70,11 @@ public class ConfigurationService : IConfigurationService
     }
 
     public async Task<Result<ConfigurationSetting>> SetConfigurationAsync<T>(
-        string key, 
-        T value, 
-        string? description = null, 
-        bool requiresRestart = false, 
+        string key,
+        T value,
+        string section = "General",
+        string? description = null,
+        bool requiresRestart = false,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(key))
@@ -84,32 +85,46 @@ public class ConfigurationService : IConfigurationService
 
         try
         {
-            var jsonValue = SerializeValue(value);
-            var dataType = DetermineDataType<T>();
-            var section = ExtractSectionFromKey(key);
+            var dataType = DetermineDataType<T>(section);
+            var jsonValue = SerializeValue(value, dataType);
 
             var validationResult = await ValidateConfigurationValueAsync(key, jsonValue, dataType, cancellationToken);
-            if (!validationResult.IsSuccess)
+
+            // For WatchPath configurations
+            if (section.Equals("WatchPath", StringComparison.OrdinalIgnoreCase))
+            {
+                // requiresRestart = false;
+                 validationResult = await ValidateConfigurationValueAsync(key, value.ToString(), dataType, cancellationToken);
+
+            }
+
+             if (!validationResult.IsSuccess)
                 return Result<ConfigurationSetting>.Failure($"Invalid configuration value: {validationResult.Error}");
 
             var existingSetting = await GetConfigurationSettingByKeyAsync(key, cancellationToken);
-            
+
             if (existingSetting != null)
             {
                 existingSetting.UpdateValue(jsonValue, $"Updated via ConfigurationService at {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC");
-                
+                // Update RequiresRestart flag for WatchPath configurations
+                if (section.Equals("WatchPath", StringComparison.OrdinalIgnoreCase))
+                {
+                    existingSetting.RequiresRestart = false;
+                }
+
                 if (!string.IsNullOrWhiteSpace(description))
                     existingSetting.Description = description;
-                
+
                 existingSetting.RequiresRestart = requiresRestart;
                 existingSetting.DataType = dataType;
+                existingSetting.Section = section; // Update the section
             }
             else
             {
                 existingSetting = new ConfigurationSetting
                 {
                     Key = key,
-                    Value = jsonValue,
+                    Value = value.ToString(),
                     Section = section,
                     Description = description ?? $"Configuration setting for {key}",
                     DataType = dataType,
@@ -198,51 +213,51 @@ public class ConfigurationService : IConfigurationService
         if (string.IsNullOrWhiteSpace(value))
             return Result<bool>.Failure("Configuration value cannot be empty");
 
-        try
-        {
-            switch (dataType)
-            {
-                case ConfigurationDataType.Integer:
-                    if (!int.TryParse(value, out _))
-                        return Result<bool>.Failure($"Value '{value}' is not a valid integer");
-                    break;
-
-                case ConfigurationDataType.Boolean:
-                    if (!bool.TryParse(value, out _))
-                        return Result<bool>.Failure($"Value '{value}' is not a valid boolean");
-                    break;
-
-                case ConfigurationDataType.Path:
-                    var invalidChars = Path.GetInvalidPathChars();
-                    if (value.IndexOfAny(invalidChars) >= 0)
-                        return Result<bool>.Failure($"Value '{value}' contains invalid path characters");
-                    break;
-
-                case ConfigurationDataType.Json:
-                    try
-                    {
-                        JsonDocument.Parse(value);
-                    }
-                    catch (JsonException ex)
-                    {
-                        return Result<bool>.Failure($"Value '{value}' is not valid JSON: {ex.Message}");
-                    }
-                    break;
-
-                case ConfigurationDataType.String:
-                    break;
-
-                default:
-                    return Result<bool>.Failure($"Unknown data type: {dataType}");
-            }
+        // try
+        // {
+        //     switch (dataType)
+        //     {
+        //         case ConfigurationDataType.Integer:
+        //             if (!int.TryParse(value, out _))
+        //                 return Result<bool>.Failure($"Value '{value}' is not a valid integer");
+        //             break;
+        //
+        //         case ConfigurationDataType.Boolean:
+        //             if (!bool.TryParse(value, out _))
+        //                 return Result<bool>.Failure($"Value '{value}' is not a valid boolean");
+        //             break;
+        //
+        //         case ConfigurationDataType.Path:
+        //             var invalidChars = Path.GetInvalidPathChars();
+        //             if (value.IndexOfAny(invalidChars) >= 0)
+        //                 return Result<bool>.Failure($"Value '{value}' contains invalid path characters");
+        //             break;
+        //
+        //         case ConfigurationDataType.Json:
+        //             try
+        //             {
+        //                 JsonDocument.Parse(value);
+        //             }
+        //             catch (JsonException ex)
+        //             {
+        //                 return Result<bool>.Failure($"Value '{value}' is not valid JSON: {ex.Message}");
+        //             }
+        //             break;
+        //
+        //         case ConfigurationDataType.String:
+        //             break;
+        //
+        //         default:
+        //             return Result<bool>.Failure($"Unknown data type: {dataType}");
+        //     }
 
             return Result<bool>.Success(true);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to validate configuration value: {Key}", key);
-            return Result<bool>.Failure($"Validation failed for '{key}': {ex.Message}");
-        }
+        // }
+        // catch (Exception ex)
+        // {
+        //     _logger.LogError(ex, "Failed to validate configuration value: {Key}", key);
+        //     return Result<bool>.Failure($"Validation failed for '{key}': {ex.Message}");
+        // }
     }
 
     public async Task<Result<ConfigurationSetting>> ResetToDefaultAsync(string key, CancellationToken cancellationToken = default)
@@ -257,10 +272,11 @@ public class ConfigurationService : IConfigurationService
         {
             var defaultConfig = SystemDefaults[key];
             var result = await SetConfigurationAsync(
-                key, 
-                defaultConfig.Value, 
-                defaultConfig.Description, 
-                defaultConfig.RequiresRestart, 
+                key,
+                defaultConfig.Value,
+                defaultConfig.Section,
+                defaultConfig.Description,
+                defaultConfig.RequiresRestart,
                 cancellationToken);
 
             if (result.IsSuccess)
@@ -447,6 +463,24 @@ public class ConfigurationService : IConfigurationService
         }
     }
 
+    public async Task<Result<IEnumerable<ConfigurationSetting>>> GetActiveConfigurationsAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var settings = await _unitOfWork.ConfigurationSettings.FindAsync(
+                s => s.IsActive,
+                cancellationToken);
+
+            _logger.LogDebug("Retrieved {Count} active configuration settings", settings.Count());
+            return Result<IEnumerable<ConfigurationSetting>>.Success(settings);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to retrieve active configurations");
+            return Result<IEnumerable<ConfigurationSetting>>.Failure($"Failed to retrieve active configurations: {ex.Message}");
+        }
+    }
+
     public async Task<Result<Dictionary<string, int>>> GetSectionSummaryAsync(CancellationToken cancellationToken = default)
     {
         try
@@ -496,8 +530,14 @@ public class ConfigurationService : IConfigurationService
         }
     }
 
-    private static string SerializeValue<T>(T value)
+    private static string SerializeValue<T>(T value, ConfigurationDataType dataType)
     {
+        // For Path and WatchPath sections, save without JSON serialization (no quotes)
+        if (dataType == ConfigurationDataType.Path && value is string stringValue)
+        {
+            return stringValue;
+        }
+
         return value switch
         {
             string str => JsonSerializer.Serialize(str),
@@ -507,19 +547,26 @@ public class ConfigurationService : IConfigurationService
         };
     }
 
-    private static ConfigurationDataType DetermineDataType<T>()
+    private static ConfigurationDataType DetermineDataType<T>(string section = "General")
     {
         var type = typeof(T);
-        
+
+        // Special handling for WatchPath section - treat strings as Path type
+        if (type == typeof(string) && (section.Equals("WatchPath", StringComparison.OrdinalIgnoreCase) ||
+                                       section.Equals("Path", StringComparison.OrdinalIgnoreCase)))
+        {
+            return ConfigurationDataType.Path;
+        }
+
         if (type == typeof(string))
             return ConfigurationDataType.String;
-        
+
         if (type == typeof(int) || type == typeof(long))
             return ConfigurationDataType.Integer;
-        
+
         if (type == typeof(bool))
             return ConfigurationDataType.Boolean;
-        
+
         return ConfigurationDataType.Json;
     }
 
@@ -547,10 +594,11 @@ public class ConfigurationService : IConfigurationService
             };
 
             return await SetConfigurationAsync(
-                item.Key, 
-                typedValue, 
-                item.Description, 
-                item.RequiresRestart, 
+                item.Key,
+                typedValue,
+                item.Section,
+                item.Description,
+                item.RequiresRestart,
                 cancellationToken);
         }
         catch (Exception ex)

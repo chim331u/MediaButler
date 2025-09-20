@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using MediaButler.Services.Interfaces;
+using MediaButler.Services.Background;
 using MediaButler.API.Models.Response;
 using MediaButler.Core.Enums;
 using System.ComponentModel.DataAnnotations;
@@ -17,14 +18,17 @@ namespace MediaButler.API.Controllers;
 public class ConfigController : ControllerBase
 {
     private readonly IConfigurationService _configurationService;
+    private readonly IFileDiscoveryService _fileDiscoveryService;
 
     /// <summary>
     /// Initializes a new instance of the ConfigController.
     /// </summary>
     /// <param name="configurationService">Service for configuration management</param>
-    public ConfigController(IConfigurationService configurationService)
+    /// <param name="fileDiscoveryService">Service for file discovery and watch folder management</param>
+    public ConfigController(IConfigurationService configurationService, IFileDiscoveryService fileDiscoveryService)
     {
         _configurationService = configurationService ?? throw new ArgumentNullException(nameof(configurationService));
+        _fileDiscoveryService = fileDiscoveryService ?? throw new ArgumentNullException(nameof(fileDiscoveryService));
     }
 
     /// <summary>
@@ -116,7 +120,7 @@ public class ConfigController : ControllerBase
         }
 
         var result = await _configurationService.SetConfigurationAsync(
-            key, request.Value, request.Description, request.RequiresRestart);
+            key, request.Value, request.Section ?? "General", request.Description, request.RequiresRestart);
         
         return result.IsSuccess 
             ? Ok(result.Value.ToResponse())
@@ -134,7 +138,6 @@ public class ConfigController : ControllerBase
     [HttpPost("settings")]
     [ProducesResponseType(typeof(ConfigurationResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> CreateConfigurationSetting([FromBody] CreateConfigurationRequest request)
     {
         if (!ModelState.IsValid)
@@ -142,20 +145,20 @@ public class ConfigController : ControllerBase
             return BadRequest(ModelState);
         }
 
-        // Check if setting already exists
-        var existsResult = await _configurationService.ConfigurationExistsAsync(request.Key);
-        if (existsResult.IsSuccess && existsResult.Value)
+        // Validate section is one of the allowed values
+        var allowedSections = new[] { "Path", "General", "Future", "WatchPath" };
+        if (!allowedSections.Contains(request.Section, StringComparer.OrdinalIgnoreCase))
         {
-            return Conflict(new { Error = $"Configuration setting '{request.Key}' already exists." });
+            return BadRequest(new { Error = $"Section must be one of: {string.Join(", ", allowedSections)}" });
         }
 
         var result = await _configurationService.SetConfigurationAsync(
-            request.Key, request.Value, request.Description, request.RequiresRestart);
-        
-        return result.IsSuccess 
+            request.Key, request.Value, request.Section, request.Description, request.RequiresRestart);
+
+        return result.IsSuccess
             ? CreatedAtAction(
-                nameof(GetConfigurationSetting), 
-                new { key = request.Key }, 
+                nameof(GetConfigurationSetting),
+                new { key = request.Key },
                 result.Value.ToResponse())
             : BadRequest(new { Error = result.Error });
     }
@@ -213,6 +216,28 @@ public class ConfigController : ControllerBase
     }
 
     /// <summary>
+    /// Gets all active configuration settings (isActive = true).
+    /// </summary>
+    /// <returns>All active configuration settings</returns>
+    /// <response code="200">Active configuration settings retrieved successfully</response>
+    /// <response code="500">Failed to retrieve settings</response>
+    [HttpGet("active")]
+    [ProducesResponseType(typeof(IEnumerable<ConfigurationResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> GetActiveConfigurationSettings()
+    {
+        var result = await _configurationService.GetActiveConfigurationsAsync();
+
+        if (!result.IsSuccess)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, new { Error = result.Error });
+        }
+
+        var responseSettings = result.Value.Select(s => s.ToResponse()).ToList();
+        return Ok(responseSettings);
+    }
+
+    /// <summary>
     /// Searches configuration settings by key pattern.
     /// </summary>
     /// <param name="pattern">Search pattern with wildcards (% for multiple chars, _ for single char)</param>
@@ -230,7 +255,7 @@ public class ConfigController : ControllerBase
         }
 
         var result = await _configurationService.SearchConfigurationAsync(pattern);
-        
+
         if (!result.IsSuccess)
         {
             return BadRequest(new { Error = result.Error });
@@ -303,9 +328,35 @@ public class ConfigController : ControllerBase
     {
         var result = await _configurationService.ExportConfigurationAsync();
         
-        return result.IsSuccess 
+        return result.IsSuccess
             ? Ok(new { Configuration = result.Value, ExportedAt = DateTime.UtcNow })
             : StatusCode(StatusCodes.Status500InternalServerError, new { Error = result.Error });
+    }
+
+    /// <summary>
+    /// Reloads watch folder configuration from database without restarting the service.
+    /// This allows dynamic reconfiguration of watch folders for WatchPath settings.
+    /// </summary>
+    /// <returns>Result of the configuration reload operation</returns>
+    /// <response code="200">Configuration reloaded successfully</response>
+    /// <response code="500">Failed to reload configuration</response>
+    [HttpPost("reload-watch-folders")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> ReloadWatchFoldersConfiguration()
+    {
+        var result = await _fileDiscoveryService.ReloadWatchFoldersConfigurationAsync();
+
+        if (result.IsSuccess)
+        {
+            return Ok(new {
+                Message = "Watch folders configuration reloaded successfully",
+                ReloadedAt = DateTime.UtcNow,
+                MonitoredPaths = _fileDiscoveryService.MonitoredPaths
+            });
+        }
+
+        return StatusCode(StatusCodes.Status500InternalServerError, new { Error = result.Error });
     }
 }
 
@@ -319,6 +370,12 @@ public class UpdateConfigurationRequest
     /// </summary>
     [Required(ErrorMessage = "Configuration value is required")]
     public required object Value { get; set; }
+
+    /// <summary>
+    /// Optional section for the setting.
+    /// </summary>
+    [StringLength(100, ErrorMessage = "Section must not exceed 100 characters")]
+    public string? Section { get; set; }
 
     /// <summary>
     /// Optional description of the setting.
@@ -338,11 +395,10 @@ public class UpdateConfigurationRequest
 public class CreateConfigurationRequest
 {
     /// <summary>
-    /// Configuration key (e.g., "Paths.WatchFolder").
+    /// Configuration key (can be any value, duplicates allowed).
     /// </summary>
     [Required(ErrorMessage = "Configuration key is required")]
-    [StringLength(100, MinimumLength = 3, ErrorMessage = "Configuration key must be between 3 and 100 characters")]
-    [RegularExpression(@"^[A-Za-z][A-Za-z0-9]*(\.[A-Za-z][A-Za-z0-9]*)*$", ErrorMessage = "Configuration key must be in format 'Section.Key' with alphanumeric characters")]
+    [StringLength(200, ErrorMessage = "Configuration key must not exceed 200 characters")]
     public required string Key { get; set; }
 
     /// <summary>
@@ -350,6 +406,13 @@ public class CreateConfigurationRequest
     /// </summary>
     [Required(ErrorMessage = "Configuration value is required")]
     public required object Value { get; set; }
+
+    /// <summary>
+    /// Configuration section (Path, General, or Future).
+    /// </summary>
+    [Required(ErrorMessage = "Configuration section is required")]
+    [StringLength(50, ErrorMessage = "Section must not exceed 50 characters")]
+    public required string Section { get; set; }
 
     /// <summary>
     /// Optional description of the setting.

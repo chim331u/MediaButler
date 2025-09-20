@@ -1,67 +1,47 @@
-using MediaButler.Web;
-using MediaButler.Web.Services;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
+using MediaButler.Web;
+using MediaButler.Web.Interfaces;
+using MediaButler.Web.Services;
+using Radzen;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
-
-// Register root components
 builder.RootComponents.Add<App>("#app");
 builder.RootComponents.Add<HeadOutlet>("head::after");
 
-// Configure HTTP client for API communication
-builder.Services.AddScoped(sp => 
+// Configure environment-specific settings for Blazor WebAssembly
+// Explicit environment detection and configuration loading
+var environment = builder.HostEnvironment.Environment;
+
+// Force development configuration for local development
+// In Blazor WASM, environment detection can be unreliable
+var isDevelopment = builder.HostEnvironment.IsDevelopment() ||
+                   builder.HostEnvironment.BaseAddress.Contains("localhost") ||
+                   builder.HostEnvironment.BaseAddress.Contains("127.0.0.1");
+
+// Simple HttpClient registration following "Simple Made Easy" principles
+// One named client per service boundary - no complex configurations braided together
+var apiBaseUrl = isDevelopment
+    ? "https://localhost:7103/"  // Development URL - updated to use HTTPS
+    : builder.Configuration["ApiSettings:BaseUrl"] ?? "http://192.168.1.5:30109/"; // Production URL
+
+Console.WriteLine($"Environment: {environment}, IsDevelopment: {isDevelopment}, API URL: {apiBaseUrl}");
+
+builder.Services.AddHttpClient<IHttpClientService, HttpClientService>(client =>
 {
-    var httpClient = new HttpClient();
-    
-    // Configure API base address based on environment
-    var baseAddress = builder.HostEnvironment.BaseAddress;
-    if (baseAddress.Contains("localhost") || baseAddress.Contains("127.0.0.1"))
-    {
-        // Development: API runs on port 5000
-        httpClient.BaseAddress = new Uri("http://localhost:5271/");
-    }
-    else
-    {
-        // Production: API and Web are served together
-        httpClient.BaseAddress = new Uri(baseAddress);
-    }
-    
-    // Configure JSON options for API compatibility
-    httpClient.DefaultRequestHeaders.Add("Accept", "application/json");
-    
-    return httpClient;
+    client.BaseAddress = new Uri(apiBaseUrl);
+    client.Timeout = TimeSpan.FromSeconds(30);
+    client.DefaultRequestHeaders.Add("Accept", "application/json");
 });
 
-// Register UI services
-builder.Services.AddScoped<IApiClient, ApiClient>();
-builder.Services.AddScoped<IFileManagementService, FileManagementService>();
+// MediaButler API services - following "Simple Made Easy" principles
+builder.Services.AddScoped<IHealthApiService, HealthApiService>();
+builder.Services.AddScoped<IConfigApiService, ConfigApiService>();
 
-// Register system services
-builder.Services.AddScoped<MediaButler.Web.Services.System.ISystemStatusService, MediaButler.Web.Services.System.SystemStatusService>();
-
-// Register component architecture services
-builder.Services.AddScoped<MediaButler.Web.Services.State.IStateService, MediaButler.Web.Services.State.StateService>();
-builder.Services.AddScoped<MediaButler.Web.Services.Events.IEventBus, MediaButler.Web.Services.Events.EventBus>();
-builder.Services.AddScoped<MediaButler.Web.Services.Lifecycle.IComponentLifecycleService, MediaButler.Web.Services.Lifecycle.ComponentLifecycleService>();
-
-// Register design system services
-builder.Services.AddScoped<MediaButler.Web.Services.Icons.IIconService, MediaButler.Web.Services.Icons.IconService>();
-builder.Services.AddScoped<MediaButler.Web.Services.Theme.IThemeService, MediaButler.Web.Services.Theme.ThemeService>();
-
-// Register real-time communication services
-builder.Services.AddScoped<MediaButler.Web.Services.RealTime.ISignalRService, MediaButler.Web.Services.RealTime.SignalRService>();
-builder.Services.AddScoped<MediaButler.Web.Services.RealTime.IConnectionManager, MediaButler.Web.Services.RealTime.ConnectionManager>();
-builder.Services.AddScoped<MediaButler.Web.Services.RealTime.IOfflineService, MediaButler.Web.Services.RealTime.OfflineService>();
-
-// Register notification services
-builder.Services.AddScoped<MediaButler.Web.Services.Notifications.INotificationService, MediaButler.Web.Services.Notifications.NotificationService>();
-
-// Register search services
-builder.Services.AddScoped<MediaButler.Web.Services.Search.ISavedSearchService, MediaButler.Web.Services.Search.SavedSearchService>();
-builder.Services.AddScoped<MediaButler.Web.Services.Search.ISearchExportService, MediaButler.Web.Services.Search.SearchExportService>();
-
-// Register configuration services
-builder.Services.AddScoped<MediaButler.Web.Services.Configuration.IConfigurationService, MediaButler.Web.Services.Configuration.ConfigurationService>();
+// Radzen services
+builder.Services.AddScoped<DialogService>();
+builder.Services.AddScoped<NotificationService>();
+builder.Services.AddScoped<TooltipService>();
+builder.Services.AddScoped<ContextMenuService>();
 
 await builder.Build().RunAsync();

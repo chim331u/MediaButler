@@ -28,6 +28,8 @@ public class FileDiscoveryService : IFileDiscoveryService, IDisposable
     
     private volatile bool _isMonitoring;
     private volatile bool _disposed;
+    private readonly object _watchersLock = new();
+    private List<string> _currentWatchFolders = new();
 
     public FileDiscoveryService(
         IOptions<FileDiscoveryConfiguration> config,
@@ -77,7 +79,16 @@ public class FileDiscoveryService : IFileDiscoveryService, IDisposable
     public bool IsMonitoring => _isMonitoring;
 
     /// <inheritdoc />
-    public IEnumerable<string> MonitoredPaths => _config.WatchFolders.AsReadOnly();
+    public IEnumerable<string> MonitoredPaths
+    {
+        get
+        {
+            lock (_watchersLock)
+            {
+                return _currentWatchFolders.AsReadOnly();
+            }
+        }
+    }
 
     /// <inheritdoc />
     public event EventHandler<FileDiscoveredEventArgs>? FileDiscovered;
@@ -96,7 +107,23 @@ public class FileDiscoveryService : IFileDiscoveryService, IDisposable
 
         try
         {
-            _logger.LogInformation("Starting file monitoring for {FolderCount} folders", _config.WatchFolders.Count);
+            // Initialize current watch folders from config, then check database
+            lock (_watchersLock)
+            {
+                _currentWatchFolders = _config.WatchFolders.ToList();
+            }
+
+            // Get latest watch folders from database to override config
+            var dbWatchFolders = await GetWatchFoldersFromDatabaseAsync(cancellationToken);
+            if (dbWatchFolders.Any())
+            {
+                lock (_watchersLock)
+                {
+                    _currentWatchFolders = dbWatchFolders.ToList();
+                }
+            }
+
+            _logger.LogInformation("Starting file monitoring for {FolderCount} folders", _currentWatchFolders.Count);
 
             // Setup FileSystemWatcher for each configured folder
             if (_config.EnableFileSystemWatcher)
@@ -167,6 +194,50 @@ public class FileDiscoveryService : IFileDiscoveryService, IDisposable
     }
 
     /// <inheritdoc />
+    /// <summary>
+    /// Gets watch folders from database configuration settings where Key = "Incoming".
+    /// </summary>
+    private async Task<List<string>> GetWatchFoldersFromDatabaseAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var scope = _serviceScopeFactory.CreateScope();
+            var configurationService = scope.ServiceProvider.GetRequiredService<IConfigurationService>();
+
+            // // Search for all configuration settings with Key = "Incoming"
+            // var result = await configurationService.SearchConfigurationAsync("Incoming", cancellationToken);
+            var result = await configurationService.GetSectionAsync("WatchPath", cancellationToken);
+
+            if (!result.IsSuccess)
+            {
+                _logger.LogWarning("Failed to retrieve watch folders from database: {Error}", result.Error);
+                return _config.WatchFolders; // Fallback to static configuration
+            }
+
+            var watchFolders = result.Value
+                .Select(setting => setting.Value)
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .ToList();
+
+            if (watchFolders.Any())
+            {
+                _logger.LogDebug("Retrieved {Count} watch folders from database: {Folders}",
+                    watchFolders.Count, string.Join(", ", watchFolders));
+                return watchFolders;
+            }
+            else
+            {
+                _logger.LogInformation("No 'Incoming' configuration settings found in database, using static configuration");
+                return _config.WatchFolders; // Fallback to static configuration
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving watch folders from database, using static configuration");
+            return _config.WatchFolders; // Fallback to static configuration
+        }
+    }
+
     public async Task<Result<int>> ScanFoldersAsync(CancellationToken cancellationToken = default)
     {
         if (_disposed)
@@ -175,11 +246,14 @@ public class FileDiscoveryService : IFileDiscoveryService, IDisposable
         var totalDiscovered = 0;
         var scannedFolders = 0;
 
-        _logger.LogDebug("Starting folder scan for {FolderCount} folders", _config.WatchFolders.Count);
+        // Get watch folders from database configuration settings
+        var watchFolders = await GetWatchFoldersFromDatabaseAsync(cancellationToken);
+
+        _logger.LogDebug("Starting folder scan for {FolderCount} folders", watchFolders.Count);
 
         try
         {
-            var scanTasks = _config.WatchFolders.Select(async folder =>
+            var scanTasks = watchFolders.Select(async folder =>
             {
                 await _scanSemaphore.WaitAsync(cancellationToken);
                 try
@@ -223,7 +297,7 @@ public class FileDiscoveryService : IFileDiscoveryService, IDisposable
     /// <summary>
     /// Scans a single folder for files matching the configured criteria.
     /// </summary>
-    private async Task<Result<int>> ScanSingleFolderAsync(string folderPath, CancellationToken cancellationToken)
+    public async Task<Result<int>> ScanSingleFolderAsync(string folderPath, CancellationToken cancellationToken)
     {
         if (!Directory.Exists(folderPath))
         {
@@ -272,7 +346,13 @@ public class FileDiscoveryService : IFileDiscoveryService, IDisposable
     /// </summary>
     private async Task SetupFileSystemWatchersAsync(CancellationToken cancellationToken)
     {
-        foreach (var folderPath in _config.WatchFolders)
+        List<string> foldersToWatch;
+        lock (_watchersLock)
+        {
+            foldersToWatch = _currentWatchFolders.ToList();
+        }
+
+        foreach (var folderPath in foldersToWatch)
         {
             if (!Directory.Exists(folderPath))
             {
@@ -521,6 +601,168 @@ public class FileDiscoveryService : IFileDiscoveryService, IDisposable
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error raising DiscoveryError event");
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<Result> ReloadWatchFoldersConfigurationAsync(CancellationToken cancellationToken = default)
+    {
+        if (_disposed)
+            return Result.Failure("Service has been disposed");
+
+        try
+        {
+            _logger.LogInformation("Reloading watch folders configuration from database");
+
+            // Get updated watch folders from database
+            var newWatchFolders = await GetWatchFoldersFromDatabaseAsync(cancellationToken);
+
+            List<string> currentFolders;
+            lock (_watchersLock)
+            {
+                currentFolders = _currentWatchFolders.ToList();
+            }
+
+            // Compare current vs new folders
+            var foldersToAdd = newWatchFolders.Except(currentFolders).ToList();
+            var foldersToRemove = currentFolders.Except(newWatchFolders).ToList();
+
+            _logger.LogInformation("Watch folders reload: {AddCount} to add, {RemoveCount} to remove",
+                foldersToAdd.Count, foldersToRemove.Count);
+
+            // Stop watchers for removed folders
+            if (foldersToRemove.Any() && _config.EnableFileSystemWatcher)
+            {
+                lock (_watchersLock)
+                {
+                    for (int i = _watchers.Count - 1; i >= 0; i--)
+                    {
+                        var watcher = _watchers[i];
+                        if (foldersToRemove.Contains(watcher.Path))
+                        {
+                            _logger.LogDebug("Stopping FileSystemWatcher for removed folder: {Folder}", watcher.Path);
+                            watcher.Dispose();
+                            _watchers.RemoveAt(i);
+                        }
+                    }
+                }
+            }
+
+            // Start watchers for new folders
+            if (foldersToAdd.Any() && _config.EnableFileSystemWatcher)
+            {
+                foreach (var folderPath in foldersToAdd)
+                {
+                    if (!Directory.Exists(folderPath))
+                    {
+                        _logger.LogWarning("New watch folder does not exist, attempting to create: {Folder}", folderPath);
+                        try
+                        {
+                            Directory.CreateDirectory(folderPath);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Failed to create watch folder: {Folder}", folderPath);
+                            continue;
+                        }
+                    }
+
+                    try
+                    {
+                        var watcher = new FileSystemWatcher(folderPath)
+                        {
+                            IncludeSubdirectories = true,
+                            NotifyFilter = NotifyFilters.FileName | NotifyFilters.CreationTime,
+                            EnableRaisingEvents = true
+                        };
+
+                        watcher.Created += OnFileSystemEvent;
+                        watcher.Renamed += OnFileSystemEvent;
+                        watcher.Error += OnFileSystemError;
+
+                        lock (_watchersLock)
+                        {
+                            _watchers.Add(watcher);
+                        }
+
+                        _logger.LogDebug("Started FileSystemWatcher for new folder: {Folder}", folderPath);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to setup FileSystemWatcher for new folder: {Folder}", folderPath);
+                    }
+                }
+            }
+
+            // Update the current watch folders list
+            lock (_watchersLock)
+            {
+                _currentWatchFolders = newWatchFolders.ToList();
+            }
+
+            // Update RequiresRestart to false for all WatchPath configuration settings
+            await UpdateWatchPathRequiresRestartAsync(cancellationToken);
+
+            _logger.LogInformation("Watch folders configuration reloaded successfully. Now monitoring {FolderCount} folders: {Folders}",
+                newWatchFolders.Count, string.Join(", ", newWatchFolders));
+
+            return Result.Success();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to reload watch folders configuration");
+            return Result.Failure($"Failed to reload configuration: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Updates all WatchPath configuration settings to set RequiresRestart = false.
+    /// This indicates that the dynamic reload was successful and no restart is needed.
+    /// </summary>
+    private async Task UpdateWatchPathRequiresRestartAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var scope = _serviceScopeFactory.CreateScope();
+            var configurationService = scope.ServiceProvider.GetRequiredService<IConfigurationService>();
+
+            // Get all WatchPath configuration settings that currently require restart
+            var watchPathSettings = await configurationService.GetSectionAsync("WatchPath");
+
+            if (!watchPathSettings.IsSuccess || !watchPathSettings.Value.Any())
+            {
+                _logger.LogDebug("No WatchPath configuration settings found to update");
+                return;
+            }
+
+            // Update each WatchPath setting to set RequiresRestart = false
+            var settingsToUpdate = watchPathSettings.Value.Where(s => s.RequiresRestart).ToList();
+
+            _logger.LogInformation("Updating {Count} WatchPath configuration settings to RequiresRestart = false",
+                settingsToUpdate.Count);
+
+            foreach (var setting in settingsToUpdate)
+            {
+                var updateResult = await configurationService.SetConfigurationAsync(
+                    setting.Key,
+                    setting.Value?.ToString() ?? "",
+                    setting.Section,
+                    setting.Description,
+                    requiresRestart: false);
+
+                if (updateResult.IsSuccess)
+                {
+                    _logger.LogDebug("Updated WatchPath setting {Key} to RequiresRestart = false", setting.Key);
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to update WatchPath setting {Key}: {Error}", setting.Key, updateResult.Error);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating WatchPath configuration settings RequiresRestart flags");
         }
     }
 
