@@ -1,0 +1,230 @@
+@page "/health"
+@using MediaButler.Web.Models
+@using MediaButler.Web.Services
+@inject IHealthApiService HealthApi
+@inject NotificationService NotificationService
+
+<PageTitle>System Health - MediaButler</PageTitle>
+
+<RadzenStack Gap="1rem">
+    <RadzenRow>
+        <RadzenColumn Size="12">
+            <RadzenCard>
+                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem">
+                    <RadzenIcon Icon="@GetStatusIcon()" Style="@GetStatusIconStyle()" />
+                    <RadzenStack Gap="0.25rem">
+                        <RadzenText TextStyle="TextStyle.H4" Text="System Health Status" />
+                        <RadzenText TextStyle="TextStyle.Body2"
+                                   Text="@($"Last checked: {(_healthStatus?.LastChecked.ToString("yyyy-MM-dd HH:mm:ss") ?? "Never")}")" />
+                    </RadzenStack>
+                    <div style="flex: 1;"></div>
+                    <RadzenButton Click="RefreshHealthStatus"
+                                 Icon="refresh"
+                                 Text="Refresh"
+                                 ButtonStyle="ButtonStyle.Primary"
+                                 Disabled="@_isLoading" />
+                </RadzenStack>
+            </RadzenCard>
+        </RadzenColumn>
+    </RadzenRow>
+
+    @if (_isLoading)
+    {
+        <RadzenRow>
+            <RadzenColumn Size="12" class="text-center">
+                <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+                <RadzenText TextStyle="TextStyle.Body1" Text="Checking system health..." class="mt-3" />
+            </RadzenColumn>
+        </RadzenRow>
+    }
+    else if (_healthStatus != null)
+    {
+        <!-- Overall Status Card -->
+        <RadzenRow>
+            <RadzenColumn Size="12">
+                <RadzenCard Style="@GetOverallStatusCardStyle()">
+                    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem">
+                        <RadzenIcon Icon="@GetOverallStatusIcon()" Style="font-size: 2rem;" />
+                        <RadzenStack Gap="0.25rem">
+                            <RadzenText TextStyle="TextStyle.H5" Text="@_healthStatus.OverallStatusText" />
+                            <RadzenText TextStyle="TextStyle.Body2"
+                                       Text="@($"Total check time: {_healthStatus.TotalDuration.TotalMilliseconds:F0}ms")" />
+                        </RadzenStack>
+                    </RadzenStack>
+                </RadzenCard>
+            </RadzenColumn>
+        </RadzenRow>
+
+        <!-- Components Status -->
+        <RadzenRow>
+            <RadzenColumn Size="12">
+                <RadzenText TextStyle="TextStyle.H5" Text="Component Status" class="mb-3" />
+            </RadzenColumn>
+        </RadzenRow>
+
+        <RadzenRow>
+            @foreach (var component in _healthStatus.Components)
+            {
+                <RadzenColumn SizeMD="6" SizeXL="4">
+                    <RadzenCard Style="@GetComponentCardStyle(component.Status)" class="h-100">
+                        <RadzenStack Gap="0.75rem">
+                            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                                <RadzenIcon Icon="@GetComponentIcon(component.Status)" Style="@GetComponentIconStyle(component.Status)" />
+                                <RadzenText TextStyle="TextStyle.H6" Text="@component.Name" />
+                            </RadzenStack>
+
+                            <RadzenStack Gap="0.25rem">
+                                <RadzenText TextStyle="TextStyle.Body2" Text="@($"Status: {component.StatusText}")" />
+                                <RadzenText TextStyle="TextStyle.Body2" Text="@($"Duration: {component.Duration.TotalMilliseconds:F0}ms")" />
+                                @if (!string.IsNullOrEmpty(component.Description))
+                                {
+                                    <RadzenText TextStyle="TextStyle.Body2" Text="@component.Description" />
+                                }
+                            </RadzenStack>
+
+                            @if (component.Details?.Any() == true)
+                            {
+                                <details>
+                                    <summary>Details</summary>
+                                    <RadzenStack Gap="0.25rem" class="mt-2">
+                                        @foreach (var detail in component.Details)
+                                        {
+                                            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                                                <RadzenText TextStyle="TextStyle.Caption" Text="@($"{detail.Key}:")" />
+                                                <RadzenText TextStyle="TextStyle.Caption" Text="@detail.Value" />
+                                            </RadzenStack>
+                                        }
+                                    </RadzenStack>
+                                </details>
+                            }
+                        </RadzenStack>
+                    </RadzenCard>
+                </RadzenColumn>
+            }
+        </RadzenRow>
+    }
+    else if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <RadzenRow>
+            <RadzenColumn Size="12">
+                <RadzenAlert AlertStyle="AlertStyle.Danger"
+                           Title="Health Check Failed"
+                           Text="@_errorMessage" />
+            </RadzenColumn>
+        </RadzenRow>
+    }
+</RadzenStack>
+
+@code {
+    private HealthCheckViewModel? _healthStatus;
+    private bool _isLoading = false;
+    private string? _errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshHealthStatus();
+    }
+
+    private async Task RefreshHealthStatus()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var result = await HealthApi.GetHealthStatusAsync();
+
+            if (result.IsSuccess)
+            {
+                _healthStatus = result.Value;
+                _errorMessage = null;
+            }
+            else
+            {
+                _errorMessage = $"Failed to get health status: {result.Error}";
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Error,
+                    Summary = "Health Check Failed",
+                    Detail = result.Error,
+                    Duration = 5000
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Unexpected error: {ex.Message}";
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Health Check Error",
+                Detail = ex.Message,
+                Duration = 5000
+            });
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    // UI Helper Methods - Pure functions following "Simple Made Easy"
+
+    private string GetStatusIcon() => _healthStatus?.OverallStatus switch
+    {
+        HealthStatus.Healthy => "check_circle",
+        HealthStatus.Degraded => "warning",
+        HealthStatus.Unhealthy => "error",
+        _ => "help"
+    };
+
+    private string GetStatusIconStyle() => _healthStatus?.OverallStatus switch
+    {
+        HealthStatus.Healthy => "color: var(--rz-success); font-size: 1.5rem;",
+        HealthStatus.Degraded => "color: var(--rz-warning); font-size: 1.5rem;",
+        HealthStatus.Unhealthy => "color: var(--rz-danger); font-size: 1.5rem;",
+        _ => "color: var(--rz-text-secondary-color); font-size: 1.5rem;"
+    };
+
+    private string GetOverallStatusIcon() => _healthStatus?.OverallStatus switch
+    {
+        HealthStatus.Healthy => "check_circle",
+        HealthStatus.Degraded => "warning",
+        HealthStatus.Unhealthy => "error",
+        _ => "help"
+    };
+
+    private string GetOverallStatusCardStyle() => _healthStatus?.OverallStatus switch
+    {
+        HealthStatus.Healthy => "border-left: 4px solid var(--rz-success);",
+        HealthStatus.Degraded => "border-left: 4px solid var(--rz-warning);",
+        HealthStatus.Unhealthy => "border-left: 4px solid var(--rz-danger);",
+        _ => "border-left: 4px solid var(--rz-text-secondary-color);"
+    };
+
+    private string GetComponentIcon(HealthStatus status) => status switch
+    {
+        HealthStatus.Healthy => "check_circle",
+        HealthStatus.Degraded => "warning",
+        HealthStatus.Unhealthy => "error",
+        _ => "help"
+    };
+
+    private string GetComponentIconStyle(HealthStatus status) => status switch
+    {
+        HealthStatus.Healthy => "color: var(--rz-success);",
+        HealthStatus.Degraded => "color: var(--rz-warning);",
+        HealthStatus.Unhealthy => "color: var(--rz-danger);",
+        _ => "color: var(--rz-text-secondary-color);"
+    };
+
+    private string GetComponentCardStyle(HealthStatus status) => status switch
+    {
+        HealthStatus.Healthy => "border-left: 3px solid var(--rz-success);",
+        HealthStatus.Degraded => "border-left: 3px solid var(--rz-warning);",
+        HealthStatus.Unhealthy => "border-left: 3px solid var(--rz-danger);",
+        _ => "border-left: 3px solid var(--rz-text-secondary-color);"
+    };
+}

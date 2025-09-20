@@ -19,11 +19,9 @@ namespace MediaButler.Data.Migrations
 
             modelBuilder.Entity("MediaButler.Core.Entities.ConfigurationSetting", b =>
                 {
-                    b.Property<string>("Key")
-                        .HasMaxLength(200)
-                        .HasColumnType("varchar(200)")
-                        .HasColumnName("Key")
-                        .HasComment("Unique configuration key identifier (e.g., 'ML.ConfidenceThreshold')");
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
 
                     b.Property<DateTime>("CreatedDate")
                         .HasColumnType("datetime")
@@ -49,6 +47,13 @@ namespace MediaButler.Data.Migrations
                         .HasDefaultValue(true)
                         .HasColumnName("IsActive")
                         .HasComment("Indicates if the entity is active (not soft-deleted)");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)")
+                        .HasColumnName("Key")
+                        .HasComment("Configuration key identifier (can have duplicates)");
 
                     b.Property<DateTime>("LastUpdateDate")
                         .HasColumnType("datetime")
@@ -80,7 +85,7 @@ namespace MediaButler.Data.Migrations
                         .HasColumnName("Value")
                         .HasComment("Configuration value serialized as JSON");
 
-                    b.HasKey("Key");
+                    b.HasKey("Id");
 
                     b.HasIndex("CreatedDate")
                         .HasDatabaseName("IX_ConfigurationSetting_CreatedDate");
@@ -115,9 +120,7 @@ namespace MediaButler.Data.Migrations
                         {
                             t.HasCheckConstraint("CK_ConfigurationSettings_DataType_Valid", "[DataType] BETWEEN 0 AND 4");
 
-                            t.HasCheckConstraint("CK_ConfigurationSettings_Key_Format", "[Key] LIKE '%.%'");
-
-                            t.HasCheckConstraint("CK_ConfigurationSettings_Section_Format", "[Section] NOT LIKE '%[^A-Za-z0-9_-]%'");
+                            t.HasCheckConstraint("CK_ConfigurationSettings_Section_Valid", "[Section] IN ('Path', 'General', 'Future', 'WatchPath')");
 
                             t.HasCheckConstraint("CK_ConfigurationSettings_Value_Length", "LENGTH([Value]) <= 10000");
                         });

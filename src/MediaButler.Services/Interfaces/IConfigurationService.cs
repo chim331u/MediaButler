@@ -52,10 +52,11 @@ public interface IConfigurationService
     /// <param name="cancellationToken">Cancellation token for async operation.</param>
     /// <returns>Result containing the updated configuration setting if successful.</returns>
     Task<Result<ConfigurationSetting>> SetConfigurationAsync<T>(
-        string key, 
-        T value, 
-        string? description = null, 
-        bool requiresRestart = false, 
+        string key,
+        T value,
+        string section = "General",
+        string? description = null,
+        bool requiresRestart = false,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -133,6 +134,13 @@ public interface IConfigurationService
     /// <param name="cancellationToken">Cancellation token for async operation.</param>
     /// <returns>Result containing matching configuration settings.</returns>
     Task<Result<IEnumerable<ConfigurationSetting>>> SearchConfigurationAsync(string keyPattern, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets all active configuration settings (IsActive = true).
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token for async operation.</param>
+    /// <returns>Result containing all active configuration settings.</returns>
+    Task<Result<IEnumerable<ConfigurationSetting>>> GetActiveConfigurationsAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Checks if a configuration key exists in the system.

@@ -28,15 +28,15 @@ public class ConfigurationSettingConfiguration : BaseEntityConfiguration<Configu
         // Table configuration
         builder.ToTable("ConfigurationSettings", schema: null);
 
-        // Primary key configuration - Key as primary key
-        builder.HasKey(c => c.Key);
-        
+        // Primary key configuration - Use Id as primary key to allow duplicate Keys
+        builder.HasKey(c => c.Id);
+
         builder.Property(c => c.Key)
             .HasColumnName("Key")
             .HasColumnType("varchar(200)")
             .HasMaxLength(200)
             .IsRequired()
-            .HasComment("Unique configuration key identifier (e.g., 'ML.ConfidenceThreshold')");
+            .HasComment("Configuration key identifier (can have duplicates)");
 
         // Configuration value stored as JSON
         builder.Property(c => c.Value)
@@ -134,22 +134,17 @@ public class ConfigurationSettingConfiguration : BaseEntityConfiguration<Configu
     private static void ConfigureConfigurationSettingConstraints(EntityTypeBuilder<ConfigurationSetting> builder)
     {
         // Use modern ToTable API for check constraints
-        builder.ToTable("ConfigurationSettings", t => 
+        builder.ToTable("ConfigurationSettings", t =>
         {
-            // Key format constraint - should contain at least one dot for section.key format
-            t.HasCheckConstraint(
-                "CK_ConfigurationSettings_Key_Format",
-                "[Key] LIKE '%.%'");
-
             // Value length constraint - prevent extremely large configuration values
             t.HasCheckConstraint(
                 "CK_ConfigurationSettings_Value_Length",
                 "LENGTH([Value]) <= 10000");
 
-            // Section naming constraint - alphanumeric with underscores/hyphens
+            // Section validation - only allow Path, General, Future, WatchPath
             t.HasCheckConstraint(
-                "CK_ConfigurationSettings_Section_Format",
-                "[Section] NOT LIKE '%[^A-Za-z0-9_-]%'");
+                "CK_ConfigurationSettings_Section_Valid",
+                "[Section] IN ('Path', 'General', 'Future', 'WatchPath')");
 
             // Data type validation - ensure valid enum values
             t.HasCheckConstraint(

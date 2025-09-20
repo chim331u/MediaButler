@@ -37,6 +37,7 @@ builder.Services.AddHttpClient<IHttpClientService, HttpClientService>(client =>
 // MediaButler API services - following "Simple Made Easy" principles
 builder.Services.AddScoped<IHealthApiService, HealthApiService>();
 builder.Services.AddScoped<IConfigApiService, ConfigApiService>();
+builder.Services.AddScoped<IFilesApiService, FilesApiService>();
 
 // Radzen services
 builder.Services.AddScoped<DialogService>();

@@ -18,10 +18,17 @@ namespace MediaButler.Core.Entities;
 public class ConfigurationSetting : BaseEntity
 {
     /// <summary>
-    /// Gets or sets the unique key identifier for this configuration setting.
-    /// Serves as the primary key and must be unique across all configuration settings.
+    /// Gets or sets the unique identifier for this configuration setting entity.
+    /// Serves as the primary key to allow duplicate configuration keys.
     /// </summary>
-    /// <value>A unique string key identifying this setting (e.g., "ML.ConfidenceThreshold").</value>
+    /// <value>A unique integer identifier for this configuration setting.</value>
+    public int Id { get; set; }
+
+    /// <summary>
+    /// Gets or sets the configuration key identifier.
+    /// Multiple settings can now have the same key, allowing for duplicates.
+    /// </summary>
+    /// <value>A string key identifying this setting (e.g., "ML.ConfidenceThreshold").</value>
     public required string Key { get; set; }
 
     /// <summary>

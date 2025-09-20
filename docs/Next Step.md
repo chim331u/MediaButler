@@ -308,3 +308,9 @@ This simplified Sprint 3 maintains all essential safety and functionality requir
 
 [] Documentation agent
 [] c# agent specialist
+
+
+# Next Steps
+records added or updated in configuration service with type Path or WatchPath has to be saved in db without "": not json serialize if setting is Path or WatchPath
+create a button un config page to reload the watch folders configuration without restarting the backend service in order to reload all the configurations WatchPath and update the configsetting changing the RequiresRestart records in false
+
