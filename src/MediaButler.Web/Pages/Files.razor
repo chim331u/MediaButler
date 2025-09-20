@@ -1,162 +1,575 @@
 @page "/files"
-@inject IFileManagementService FileService
+@using MediaButler.Web.Models
+@using MediaButler.Web.Services
+@using MediaButler.Core.Enums
+@using Microsoft.AspNetCore.SignalR.Client
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@inject IFilesApiService FilesApiService
+@implements IAsyncDisposable
 
-<PageTitle>Files - MediaButler</PageTitle>
+<PageTitle>File Management - MediaButler</PageTitle>
 
-<div class="files-page">
-    <div class="page-header">
-        <h2>File Management</h2>
-        <button class="btn btn-primary" @onclick="RefreshFiles">
-            🔄 Refresh
-        </button>
-    </div>
+<div class="p-2">
+    <RadzenRow JustifyContent="JustifyContent.SpaceBetween">
 
-    @if (isLoading)
+        <RadzenButton Click="RefreshFiles" Icon="autorenew" ButtonStyle="ButtonStyle.Dark" Size="ButtonSize.Large"
+            IsBusy="@busyRefresh" Text="Refresh"
+            BusyText="Wait ..." />
+
+        <RadzenSelectBar @bind-Value="@selectedFileStatus" TValue="int" Change="@(args => OnChangeStatusFilter(args))"
+                         Style="margin: 0 1rem;" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Medium">
+            <Items>
+                <RadzenSelectBarItem Text="ALL" Value="-1" Icon="list" />
+                <RadzenSelectBarItem Text="New" Value="@((int)FileStatus.New)" Icon="fiber_new" />
+                <RadzenSelectBarItem Text="Processing" Value="@((int)FileStatus.Processing)" Icon="autorenew" />
+                <RadzenSelectBarItem Text="Classified" Value="@((int)FileStatus.Classified)" Icon="label" />
+                <RadzenSelectBarItem Text="Ready To Move" Value="@((int)FileStatus.ReadyToMove)" Icon="check_circle" />
+                <RadzenSelectBarItem Text="Moving" Value="@((int)FileStatus.Moving)" Icon="sync" />
+                <RadzenSelectBarItem Text="Moved" Value="@((int)FileStatus.Moved)" Icon="done_all" />
+                <RadzenSelectBarItem Text="Error" Value="@((int)FileStatus.Error)" Icon="error" />
+                <RadzenSelectBarItem Text="Retry" Value="@((int)FileStatus.Retry)" Icon="refresh" />
+                <RadzenSelectBarItem Text="Ignored" Value="@((int)FileStatus.Ignored)" Icon="visibility_off" />
+            </Items>
+        </RadzenSelectBar>
+
+        <RadzenButton Text="Scan Folders" Icon="folder_open" Click="ScanFolders" ButtonStyle="ButtonStyle.Dark"
+            Size="ButtonSize.Large"
+            IsBusy="@busyScan"
+            BusyText="Scanning ..." />
+
+        <RadzenButton Text="Train Model" Icon="psychology" Click="TrainModel" ButtonStyle="ButtonStyle.Dark"
+            Size="ButtonSize.Large"
+            IsBusy="@busyTrain"
+            BusyText="Training ..." />
+
+        <RadzenButton Text="Force Categories" Icon="category" Click="ForceCategory" ButtonStyle="ButtonStyle.Dark"
+            Size="ButtonSize.Large" />
+
+        <RadzenButton ButtonStyle="ButtonStyle.Primary" Icon="drive_file_move" Variant="Variant.Flat" Text="Move"
+            Shade="Shade.Default" Size="ButtonSize.Medium" Class="my-1 ms-1" Click="MoveFiles">
+        </RadzenButton>
+    </RadzenRow>
+
+    @if (fileList == null)
     {
-        <div class="loading-container">
-            <div class="loading-spinner"></div>
-            <div class="loading-text">Loading files...</div>
-        </div>
-    }
-    else if (files?.Any() == true)
-    {
-        <div class="card">
-            <div class="card-body">
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>File Name</th>
-                            <th>Status</th>
-                            <th>Category</th>
-                            <th>Size</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var file in files)
-                        {
-                            <tr>
-                                <td>@file.FileName</td>
-                                <td>
-                                    <span class="status-badge status-@file.Status.ToString().ToLower()">
-                                        @file.Status
-                                    </span>
-                                </td>
-                                <td>@(file.Category ?? "Not classified")</td>
-                                <td>@FormatFileSize(file.FileSize)</td>
-                                <td>
-                                    <button class="btn btn-secondary btn-sm" @onclick="() => ViewFile(file)">
-                                        👁️ View
-                                    </button>
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
+        <div class="d-flex justify-content-center p-4">
+            <RadzenProgressBarCircular ShowValue="true" Value="100" Size="ProgressBarCircularSize.Large" Mode="ProgressBarMode.Indeterminate" />
+            <span class="ms-3">Loading files...</span>
         </div>
     }
     else
     {
-        <div class="card">
-            <div class="card-body">
-                <p class="text-muted">No files found. Files will appear here once they are discovered and processed.</p>
-            </div>
-        </div>
+        <RadzenRow class="row p-2">
+            <RadzenTextArea @bind-Value="@consoleText" ReadOnly="true" Rows="3" Placeholder="Console output will appear here..."></RadzenTextArea>
+        </RadzenRow>
+
+        <RadzenDataGrid AllowFiltering="true" AllowColumnResize="true" AllowAlternatingRows="true" Density="Density.Compact"
+            FilterMode="FilterMode.Advanced" AllowSorting="true" PageSize="10" AllowPaging="true"
+            PagerHorizontalAlign="HorizontalAlign.Left" ShowPagingSummary="true" ColumnWidth="250px"
+            Data="@fileList" TItem="FileManagementDto" LogicalFilterOperator="LogicalFilterOperator.Or">
+
+            <Columns>
+
+                <RadzenDataGridColumn TItem="FileManagementDto" Property="Name" Title="Name" Frozen="true" Width="50%">
+                    <Template Context="file">
+                        <div title="@file.OriginalPath">
+                            <RadzenIcon Icon="description" Style="margin-right: 8px;" />
+                            @file.Name
+                        </div>
+                    </Template>
+                </RadzenDataGridColumn>
+
+                <RadzenDataGridColumn TItem="FileManagementDto" Property="FileSize" Title="Size" Width="10%" Filterable="false">
+                    <Template Context="file">
+                        @FileSizeFormatted(file.FileSize)
+                    </Template>
+                </RadzenDataGridColumn>
+
+                <RadzenDataGridColumn TItem="FileManagementDto" Property="Status" Title="Status" Width="15%">
+                    <Template Context="file">
+                        @if (file.IsToCategorize)
+                        {
+                            <RadzenBadge BadgeStyle="BadgeStyle.Warning" Text="To Categorize" IsPill="true" />
+                        }
+                        else if (!string.IsNullOrEmpty(file.FileCategory))
+                        {
+                            <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="Categorized" IsPill="true" />
+                        }
+                        else
+                        {
+                            <RadzenBadge BadgeStyle="BadgeStyle.Secondary" Text="New" IsPill="true" />
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+
+                <RadzenDataGridColumn Context="category" TItem="FileManagementDto" Property="FileCategory" Title="Category" Width="25%">
+                    <Template Context="category">
+                        @if (!category.IsNotToMove && category.IsToCategorize)
+                        {
+                            @if (addCategory == category.Id)
+                            {
+                                <div class="d-flex align-items-center">
+                                    <RadzenButton ButtonStyle="ButtonStyle.Success" Icon="done"
+                                        Shade="Shade.Lighter" Size="ButtonSize.Small" Class="me-2"
+                                        Click="@(args => SaveNewCat(category))" @onclick:stopPropagation="true">
+                                    </RadzenButton>
+                                    <RadzenTextBox @bind-Value="newCategory" Placeholder="New Category" Class="me-2" />
+                                    <RadzenButton ButtonStyle="ButtonStyle.Danger" Icon="undo"
+                                        Shade="Shade.Lighter" Size="ButtonSize.Small"
+                                        Click="@(args => BackCat())" @onclick:stopPropagation="true">
+                                    </RadzenButton>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="d-flex align-items-center">
+                                    <RadzenButton ButtonStyle="ButtonStyle.Info" Icon="add" Variant="Variant.Flat"
+                                        Shade="Shade.Lighter" Size="ButtonSize.Small" Class="me-2"
+                                        Click="@(args => ShowAddCat(category.Id))" @onclick:stopPropagation="true">
+                                    </RadzenButton>
+                                    <RadzenDropDown AllowClear="true"
+                                        TValue="string" Class="flex-grow-1" Placeholder="Select a Category"
+                                        FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                        AllowFiltering="true"
+                                        Data="@categories" @bind-Value="@category.FileCategory" />
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <div class="d-flex align-items-center justify-content-between">
+                                <span>@category.FileCategory</span>
+                                @if (category.IsToCategorize)
+                                {
+                                    <RadzenBadge BadgeStyle="BadgeStyle.Warning" Text="To Move" IsPill="true" />
+                                }
+                            </div>
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+
+                <RadzenDataGridColumn TItem="FileManagementDto" Context="file" Title="Actions" Filterable="false" Sortable="false"
+                    TextAlign="TextAlign.Center" Width="15%">
+                    <Template Context="file">
+                        <div class="d-flex justify-content-center">
+                            @if (file.IsNotToMove)
+                            {
+                                <RadzenButton ButtonStyle="ButtonStyle.Secondary" Icon="settings_backup_restore" Variant="Variant.Flat"
+                                    Shade="Shade.Lighter" Size="ButtonSize.Small" Class="me-1"
+                                    Click="@(args => Revert(file))" @onclick:stopPropagation="true"
+                                    title="Revert to movable">
+                                </RadzenButton>
+                            }
+                            else
+                            {
+                                <RadzenButton ButtonStyle="ButtonStyle.Success" Icon="schedule" Variant="Variant.Flat"
+                                    Shade="Shade.Lighter" Size="ButtonSize.Small" Class="me-1"
+                                    Click="@(args => Schedule(file))" @onclick:stopPropagation="true"
+                                    title="Schedule for move">
+                                </RadzenButton>
+                            }
+
+                            @if (file.IsToCategorize && !file.IsNotToMove)
+                            {
+                                <RadzenButton ButtonStyle="ButtonStyle.Primary" Icon="visibility_off" Variant="Variant.Flat"
+                                    Shade="Shade.Lighter" Size="ButtonSize.Small"
+                                    Click="@(args => NotShowAgain(file))" @onclick:stopPropagation="true"
+                                    title="Don't show again">
+                                </RadzenButton>
+                            }
+                        </div>
+                    </Template>
+                </RadzenDataGridColumn>
+
+            </Columns>
+        </RadzenDataGrid>
     }
 </div>
 
 @code {
-    private IEnumerable<TrackedFile>? files;
-    private bool isLoading = true;
+
+    private bool busyRefresh = false;
+    private bool busyTrain = false;
+    private bool busyScan = false;
+    private IEnumerable<FileManagementDto>? fileList;
+    private IEnumerable<string>? categories = new List<string> { "TV SERIES", "MOVIES", "DOCUMENTARIES", "MUSIC" };
+    private string newCategory = string.Empty;
+    private string consoleText = string.Empty;
+    private int addCategory = 0;
+    private int selectedFileStatus = (int)FileStatus.Classified; // Default to "Classified" status
+
+    private HubConnection? hubConnection;
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadFiles();
+        await InitializeSignalRAsync();
+        await RefreshFilesAsync();
     }
 
-    private async Task LoadFiles()
+    private async Task InitializeSignalRAsync()
     {
-        isLoading = true;
         try
         {
-            files = await FileService.GetAllFilesAsync();
+            // Initialize SignalR connection for real-time updates
+            hubConnection = new HubConnectionBuilder()
+                .WithUrl(Navigation.ToAbsoluteUri("/notifications"))
+                .WithAutomaticReconnect()
+                .Build();
+
+            // Set up event handlers for file operations
+            hubConnection.On<int, string, MoveFilesResults>("moveFilesNotifications", (fileId, resultText, result) =>
+            {
+                WriteConsole($"File {resultText}: {result}");
+                if (result == MoveFilesResults.Completed && fileList != null)
+                {
+                    fileList = fileList.Where(f => f.Id != fileId).ToList();
+                }
+                InvokeAsync(StateHasChanged);
+            });
+
+            hubConnection.On<string, MoveFilesResults>("jobNotifications", (resultText, result) =>
+            {
+                WriteConsole(resultText);
+                InvokeAsync(StateHasChanged);
+            });
+
+            if (hubConnection.State == HubConnectionState.Disconnected)
+            {
+                await hubConnection.StartAsync();
+                WriteConsole($"Real-time connection established: {hubConnection.ConnectionId}");
+            }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error loading files: {ex.Message}");
-            files = new List<TrackedFile>();
+            WriteConsole($"SignalR connection error: {ex.Message}");
+        }
+    }
+
+    private void WriteConsole(string message)
+    {
+        var timestamp = DateTime.Now.ToString("HH:mm:ss");
+        consoleText = $"[{timestamp}] {message}" + Environment.NewLine + consoleText;
+
+        // Keep only last 20 lines
+        var lines = consoleText.Split(Environment.NewLine);
+        if (lines.Length > 20)
+        {
+            consoleText = string.Join(Environment.NewLine, lines.Take(20));
+        }
+    }
+
+    private async Task RefreshFilesAsync()
+    {
+        busyRefresh = true;
+        WriteConsole("Refreshing file list...");
+
+        try
+        {
+            await RefreshFileListAsync();
+            WriteConsole("File list updated successfully");
+        }
+        catch (Exception ex)
+        {
+            WriteConsole($"Error refreshing files: {ex.Message}");
         }
         finally
         {
-            isLoading = false;
-            StateHasChanged();
+            busyRefresh = false;
         }
     }
 
-    private async Task RefreshFiles()
+    private async Task RefreshFileListAsync()
     {
-        await LoadFiles();
+        try
+        {
+            // Determine the status parameter based on selected FileStatus
+            string? statusParam = null;
+            if (selectedFileStatus != -1) // -1 means "ALL"
+            {
+                var targetStatus = (FileStatus)selectedFileStatus;
+                statusParam = targetStatus switch
+                {
+                    FileStatus.Classified => "Classified",
+                    FileStatus.New => "New",
+                    FileStatus.Processing => "Processing",
+                    FileStatus.ReadyToMove => "ReadyToMove",
+                    FileStatus.Moving => "Moving",
+                    FileStatus.Moved => "Moved",
+                    FileStatus.Error => "Error",
+                    FileStatus.Retry => "Retry",
+                    FileStatus.Ignored => "Ignored",
+                    _ => null
+                };
+            }
+
+            var apiResult = await FilesApiService.GetFilesAsync(
+                skip: 0,
+                take: 100, // API maximum limit is 100 records per request
+                status: statusParam,
+                category: null
+            );
+
+            if (apiResult.IsSuccess && apiResult.Value != null)
+            {
+                fileList = ApplyFilter(apiResult.Value);
+            }
+            else
+            {
+                WriteConsole($"Failed to load files from API: {apiResult.Error}");
+                fileList = new List<FileManagementDto>();
+            }
+        }
+        catch (Exception ex)
+        {
+            WriteConsole($"Error loading files: {ex.Message}");
+            fileList = new List<FileManagementDto>();
+        }
+
+        StateHasChanged();
     }
 
-    private void ViewFile(TrackedFile file)
+    private IEnumerable<FileManagementDto> ApplyFilter(IEnumerable<FileManagementDto> files)
     {
-        // TODO: Implement file details view
-        Console.WriteLine($"Viewing file: {file.FileName}");
+        // If "ALL" is selected (value -1), return all files
+        if (selectedFileStatus == -1)
+            return files;
+
+        // Filter by specific FileStatus
+        var targetStatus = (FileStatus)selectedFileStatus;
+        return targetStatus switch
+        {
+            FileStatus.New => files.Where(f => f.IsNew),
+            FileStatus.Processing => files.Where(f => f.Status?.Contains("Processing") == true),
+            FileStatus.Classified => files.Where(f => f.IsToCategorize),
+            FileStatus.ReadyToMove => files.Where(f => f.Status?.Contains("Ready") == true),
+            FileStatus.Moving => files.Where(f => f.Status?.Contains("Moving") == true),
+            FileStatus.Moved => files.Where(f => f.IsNotToMove && f.Status?.Contains("Moved") == true),
+            FileStatus.Error => files.Where(f => f.Status?.Contains("Error") == true),
+            FileStatus.Retry => files.Where(f => f.Status?.Contains("Retry") == true),
+            FileStatus.Ignored => files.Where(f => f.Status?.Contains("Ignored") == true),
+            _ => files
+        };
     }
 
-    private string FormatFileSize(long bytes)
+    private async Task OnChangeStatusFilter(object value)
     {
-        string[] sizes = { "B", "KB", "MB", "GB" };
+        await RefreshFileListAsync();
+    }
+
+    private async Task ScanFolders()
+    {
+        busyScan = true;
+        WriteConsole("Starting folder scan...");
+
+        try
+        {
+            var result = await FilesApiService.ScanFoldersAsync();
+            if (result.IsSuccess)
+            {
+                WriteConsole($"Scan completed: {result.Value.FilesDiscovered} files discovered");
+                await RefreshFileListAsync();
+            }
+            else
+            {
+                WriteConsole($"Scan failed: {result.Error}");
+            }
+        }
+        catch (Exception ex)
+        {
+            WriteConsole($"Scan error: {ex.Message}");
+        }
+        finally
+        {
+            busyScan = false;
+        }
+    }
+
+    private async Task TrainModel()
+    {
+        busyTrain = true;
+        WriteConsole("Starting ML model training...");
+
+        try
+        {
+            // Note: ML training endpoint would need to be added to FilesApiService or created as MLApiService
+            WriteConsole("ML model training feature coming soon...");
+        }
+        catch (Exception ex)
+        {
+            WriteConsole($"Training error: {ex.Message}");
+        }
+        finally
+        {
+            busyTrain = false;
+        }
+    }
+
+    private async Task ForceCategory()
+    {
+        WriteConsole("Starting force categorization...");
+
+        try
+        {
+            // Note: Force categorization endpoint would need to be added to FilesApiService or created as MLApiService
+            WriteConsole("Force categorization feature coming soon...");
+            await RefreshFileListAsync();
+        }
+        catch (Exception ex)
+        {
+            WriteConsole($"Force categorization error: {ex.Message}");
+        }
+    }
+
+    private async Task MoveFiles()
+    {
+        var filesToMove = fileList?.Where(f => f.IsNotToMove).ToList() ?? new List<FileManagementDto>();
+
+        if (!filesToMove.Any())
+        {
+            WriteConsole("No files scheduled for moving");
+            return;
+        }
+
+        WriteConsole($"Moving {filesToMove.Count} file(s)...");
+
+        try
+        {
+            foreach (var file in filesToMove)
+            {
+                if (!string.IsNullOrEmpty(file.Hash) && !string.IsNullOrEmpty(file.TargetPath))
+                {
+                    var result = await FilesApiService.MarkFileAsMovedAsync(file.Hash, file.TargetPath!);
+
+                    if (result.IsSuccess)
+                    {
+                        WriteConsole($"Successfully moved: {file.Name}");
+                    }
+                    else
+                    {
+                        WriteConsole($"Failed to move {file.Name}: {result.Error}");
+                    }
+                }
+            }
+
+            await RefreshFileListAsync();
+        }
+        catch (Exception ex)
+        {
+            WriteConsole($"Move operation error: {ex.Message}");
+        }
+    }
+
+    private string FileSizeFormatted(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB", "TB" };
         double len = bytes;
         int order = 0;
+
         while (len >= 1024 && order < sizes.Length - 1)
         {
             order++;
             len = len / 1024;
         }
+
         return $"{len:0.##} {sizes[order]}";
     }
+
+    private void Schedule(FileManagementDto item)
+    {
+        item.IsNotToMove = true;
+        WriteConsole($"Scheduled for move: {item.Name}");
+    }
+
+    private void Revert(FileManagementDto item)
+    {
+        item.IsNotToMove = false;
+        WriteConsole($"Reverted from move queue: {item.Name}");
+    }
+
+    private async Task NotShowAgain(FileManagementDto item)
+    {
+        item.IsToCategorize = false;
+        item.IsNew = false;
+        item.IsNotToMove = true;
+
+        try
+        {
+            if (!string.IsNullOrEmpty(item.Hash))
+            {
+                var result = await FilesApiService.DeleteFileAsync(item.Hash, "User excluded");
+
+                if (result.IsSuccess)
+                {
+                    WriteConsole($"File excluded: {item.Name}");
+                    await RefreshFileListAsync();
+                }
+                else
+                {
+                    WriteConsole($"Failed to exclude file: {result.Error}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            WriteConsole($"Error excluding file: {ex.Message}");
+        }
+    }
+
+    private void ShowAddCat(int itemId)
+    {
+        addCategory = itemId;
+    }
+
+    private async Task SaveNewCat(FileManagementDto item)
+    {
+        if (string.IsNullOrWhiteSpace(newCategory))
+        {
+            WriteConsole("Category name cannot be empty");
+            return;
+        }
+
+        try
+        {
+            // Add to categories list
+            categories = categories.Append(newCategory.ToUpper());
+            item.FileCategory = newCategory.ToUpper();
+
+            WriteConsole($"Added new category: {newCategory}");
+
+            newCategory = string.Empty;
+            addCategory = 0;
+
+            // Update the file with new category
+            if (!string.IsNullOrEmpty(item.Hash))
+            {
+                var result = await FilesApiService.ConfirmFileCategoryAsync(item.Hash, item.FileCategory!);
+                if (!result.IsSuccess)
+                {
+                    WriteConsole($"Failed to update category: {result.Error}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            WriteConsole($"Error saving category: {ex.Message}");
+        }
+    }
+
+    private void BackCat()
+    {
+        newCategory = string.Empty;
+        addCategory = 0;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (hubConnection is not null)
+        {
+            await hubConnection.DisposeAsync();
+        }
+    }
+
+    // Alias method for compatibility
+    private async Task RefreshFiles() => await RefreshFilesAsync();
 }
-
-<style>
-    .page-header {
-        display: flex;
-        justify-content: between;
-        align-items: center;
-        margin-bottom: 1.5rem;
-    }
-
-    .page-header h2 {
-        margin: 0;
-        flex: 1;
-    }
-
-    .btn-sm {
-        padding: 0.25rem 0.5rem;
-        font-size: 0.75rem;
-    }
-
-    .files-page .loading-container {
-        padding: 3rem 0;
-    }
-
-    @@media (max-width: 768px) {
-        .page-header {
-            flex-direction: column;
-            gap: 1rem;
-            align-items: stretch;
-        }
-        
-        .table {
-            font-size: 0.875rem;
-        }
-        
-        .table th:nth-child(3),
-        .table td:nth-child(3),
-        .table th:nth-child(4),
-        .table td:nth-child(4) {
-            display: none;
-        }
-    }
-</style>
