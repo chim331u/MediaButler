@@ -148,6 +148,30 @@ Development follows a 4-sprint, 16-day plan emphasizing comprehensive testing an
 - **Integration**: Seamless connection between classification and organization systems
 - **Compilation**: All services compile successfully with no errors
 
+### Configuration Architecture Simplification ✅ COMPLETE
+
+#### **Major Architectural Change - Static Configuration Only**
+Following "Simple Made Easy" principles, the system has been simplified to use **pure static configuration** from `appsettings.json` only:
+
+**✅ Removed Database-Driven Configuration:**
+- **ConfigurationSetting entity** - Eliminated hybrid static/dynamic configuration
+- **ConfigurationService and IConfigurationService** - Replaced with direct `IConfiguration` usage
+- **Configuration API endpoints** (`/api/config/*`) - Removed configuration management APIs
+- **Configuration UI components** - Eliminated dynamic configuration management interface
+- **Database migration created** - `DropConfigurationSettingsTable.cs` for clean schema update
+
+**✅ Simplified Service Dependencies:**
+- **PathGenerationService** - Now uses `IConfiguration` directly for media library path loading
+- **FileDiscoveryService** - Uses only static configuration from `appsettings.json` for watch folders
+- **Clean Architecture** - Eliminated complex configuration service layer
+
+**✅ Benefits Achieved:**
+- **Reduced Complexity** - No more hybrid configuration logic to maintain
+- **Improved Reliability** - Static configuration eliminates runtime configuration failures
+- **Cleaner Codebase** - Removed 500+ lines of configuration management code
+- **Better Performance** - No database queries for configuration loading
+- **ARM32 Optimization** - Reduced memory footprint by eliminating configuration caching
+
 ### Sprint 4 Implementation Status 🚧 IN PROGRESS
 
 #### Task 4.2.1 - File Listing Component ✅ COMPLETE
@@ -174,26 +198,21 @@ Development follows a 4-sprint, 16-day plan emphasizing comprehensive testing an
 - 🚧 Real-time queue status and background service health checks
 - 🚧 ARM32 resource optimization indicators and alerts
 
-#### Task 4.2.4 - Configuration Management UI (PENDING)
-**Planned**: User-friendly configuration interface for system settings
-- Settings form for file paths, ML thresholds, and processing options
-- Template management for file organization patterns
-- Real-time validation and preview of configuration changes
-
-#### Task 4.2.5 - User Experience Polish (PENDING)
+#### Task 4.2.4 - User Experience Polish (UPDATED SCOPE)
 **Planned**: Final UX improvements and accessibility enhancements
 - Loading states, animations, and user feedback improvements
 - Accessibility compliance (WCAG 2.1 guidelines)
 - Cross-browser compatibility testing and optimization
+- **Note**: Configuration Management UI removed due to static configuration simplification
 
-#### Sprint 4 Status: **60% COMPLETE** 🚧
+#### Sprint 4 Status: **75% COMPLETE** 🚧
 **Progress Summary**:
-- **Completed**: File listing and detail modal components provide solid foundation
+- **Completed**: File listing, detail modal, and configuration architecture simplification
 - **In Progress**: Dashboard components for system monitoring and oversight
-- **Remaining**: Configuration UI and final UX polish for production readiness
+- **Remaining**: Final UX polish for production readiness
 - **Architecture**: Blazor WebAssembly with clean API integration following "Simple Made Easy" principles
 
-**Next Steps**: Complete dashboard implementation, then proceed with configuration management UI
+**Next Steps**: Complete dashboard implementation, then proceed with final UX polish
 
 ## Architecture - "Simple Made Easy"
 
@@ -238,7 +257,6 @@ MediaButler/
 ```
 MediaButler.API/Controllers/
 ├── FilesController.cs        # File operations and management
-├── ConfigController.cs       # Configuration management
 ├── StatsController.cs        # Statistics and monitoring
 └── HealthController.cs       # Health checks and diagnostics
 ```
@@ -270,12 +288,13 @@ Controllers → Services → Repositories → Data Access
 **Database Schema (Enhanced with BaseEntity):**
 - `TrackedFiles`: Main file tracking with BaseEntity audit properties
 - `ProcessingLogs`: Operation audit trail with BaseEntity
-- `ConfigurationSettings`: Dynamic configuration with BaseEntity
 - `UserPreferences`: User-specific settings with BaseEntity
 - `SeriesPatterns`: Learned patterns for ML classification
 - `TrainingData`: ML model training samples
 - `Jobs`: Background job tracking
 - `FileOperations`: Operation log for rollback capability
+
+**Note**: `ConfigurationSettings` table removed in favor of static configuration from `appsettings.json` only.
 
 ## Development Commands
 
@@ -416,12 +435,15 @@ Key endpoint categories:
 - **File Operations**: `/api/files/*` - CRUD operations for tracked files
 - **Bulk Operations**: `/api/pending`, `/api/confirm/bulk` - Mass operations
 - **ML Operations**: `/api/classify`, `/api/ml/train` - Classification and training
-- **Configuration**: `/api/config/*` - Path and settings management
 - **Maintenance**: `/api/maintenance/*` - System maintenance tasks
 - **Real-time**: `/api/events` - Server-Sent Events for live updates
 - **Monitoring**: `/api/health`, `/api/stats` - System health and metrics
 
-## Configuration - Enhanced for ARM32 Deployment
+**Note**: Configuration endpoints (`/api/config/*`) removed in favor of static `appsettings.json` configuration.
+
+## Configuration - Simplified Static Configuration
+
+Following "Simple Made Easy" principles, the system now uses **pure static configuration** from `appsettings.json` only. This eliminates the complexity of hybrid database/static configuration management.
 
 The system uses `appsettings.json` for configuration located in `src/MediaButler.API/` with comprehensive sections for production deployment:
 

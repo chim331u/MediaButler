@@ -45,12 +45,6 @@ public class MediaButlerDbContext : DbContext
     /// <value>A DbSet of ProcessingLog entities.</value>
     public DbSet<ProcessingLog> ProcessingLogs => Set<ProcessingLog>();
 
-    /// <summary>
-    /// Gets or sets the ConfigurationSettings entity set.
-    /// Represents dynamic configuration settings for the application.
-    /// </summary>
-    /// <value>A DbSet of ConfigurationSetting entities.</value>
-    public DbSet<ConfigurationSetting> ConfigurationSettings => Set<ConfigurationSetting>();
 
     /// <summary>
     /// Gets or sets the UserPreferences entity set.

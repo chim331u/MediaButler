@@ -39,14 +39,6 @@ public class UnitOfWorkTests : IntegrationTestBase
             Status = FileStatus.New
         };
 
-        var configSetting = new ConfigurationSetting
-        {
-            Key = "MediaButler.UnitOfWork.TestSetting",
-            Value = "test value",
-            Section = "UnitOfWork",
-            DataType = ConfigurationDataType.String
-        };
-
         var processingLog = ProcessingLog.Info(
             trackedFile.Hash,
             "UnitOfWork",
@@ -55,21 +47,18 @@ public class UnitOfWorkTests : IntegrationTestBase
 
         // Act
         unitOfWork.TrackedFiles.Add(trackedFile);
-        unitOfWork.ConfigurationSettings.Add(configSetting);
         unitOfWork.ProcessingLogs.Add(processingLog);
 
         var result = await unitOfWork.SaveChangesAsync();
 
         // Assert
-        result.Should().Be(3); // All three entities should be saved
+        result.Should().Be(2); // TrackedFile and ProcessingLog should be saved
 
-        // Verify all entities were persisted
+        // Verify entities were persisted
         var savedFile = await unitOfWork.TrackedFiles.GetByHashAsync(trackedFile.Hash);
-        var savedConfig = await unitOfWork.ConfigurationSettings.FirstOrDefaultAsync(c => c.Key == configSetting.Key);
         var savedLog = await unitOfWork.ProcessingLogs.FirstOrDefaultAsync(pl => pl.FileHash == trackedFile.Hash);
 
         savedFile.Should().NotBeNull();
-        savedConfig.Should().NotBeNull();
         savedLog.Should().NotBeNull();
     }
 
@@ -89,19 +78,10 @@ public class UnitOfWorkTests : IntegrationTestBase
             FileSize = 1000000
         };
 
-        var validConfig = new ConfigurationSetting
-        {
-            Key = "MediaButler.Transaction.ValidSetting",
-            Value = "valid value",
-            Section = "Transaction",
-            DataType = ConfigurationDataType.String
-        };
-
         try
         {
             // Act - Add valid entities
             unitOfWork.TrackedFiles.Add(validFile);
-            unitOfWork.ConfigurationSettings.Add(validConfig);
             await unitOfWork.SaveChangesAsync();
 
             // Try to add duplicate file (same hash) - should cause constraint violation
@@ -130,11 +110,9 @@ public class UnitOfWorkTests : IntegrationTestBase
         var newUnitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
 
         var fileAfterRollback = await newUnitOfWork.TrackedFiles.GetByHashAsync(validFile.Hash);
-        var configAfterRollback = await newUnitOfWork.ConfigurationSettings.FirstOrDefaultAsync(c => c.Key == validConfig.Key);
 
         // First transaction should have succeeded
         fileAfterRollback.Should().NotBeNull();
-        configAfterRollback.Should().NotBeNull();
 
         // But no duplicate files should exist
         var allFiles = await newUnitOfWork.TrackedFiles.FindAsync(f => f.Hash == validFile.Hash);
@@ -151,7 +129,6 @@ public class UnitOfWorkTests : IntegrationTestBase
 
         // Act & Assert - Verify repository properties return correct types
         unitOfWork.TrackedFiles.Should().NotBeNull();
-        unitOfWork.ConfigurationSettings.Should().NotBeNull();
         unitOfWork.ProcessingLogs.Should().NotBeNull();
         unitOfWork.UserPreferences.Should().NotBeNull();
 
@@ -267,17 +244,8 @@ public class UnitOfWorkTests : IntegrationTestBase
             Status = FileStatus.New
         };
 
-        var configSetting = new ConfigurationSetting
-        {
-            Key = "MediaButler.Workflow.ProcessingEnabled",
-            Value = "true",
-            Section = "Workflow",
-            DataType = ConfigurationDataType.Boolean
-        };
-
         // Act - Step 1: Initial setup
         unitOfWork.TrackedFiles.Add(trackedFile);
-        unitOfWork.ConfigurationSettings.Add(configSetting);
         await unitOfWork.SaveChangesAsync();
 
         // Step 2: File processing simulation
@@ -312,7 +280,6 @@ public class UnitOfWorkTests : IntegrationTestBase
         // Assert - Verify complete workflow integrity
         var finalFile = await unitOfWork.TrackedFiles.GetByHashAsync(trackedFile.Hash);
         var processingLogs = await unitOfWork.ProcessingLogs.FindAsync(pl => pl.FileHash == trackedFile.Hash);
-        var configuration = await unitOfWork.ConfigurationSettings.FirstOrDefaultAsync(c => c.Key == configSetting.Key);
 
         finalFile.Should().NotBeNull();
         finalFile!.Status.Should().Be(FileStatus.Moved);
@@ -326,10 +293,6 @@ public class UnitOfWorkTests : IntegrationTestBase
             log.Level.Should().Be(MediaButler.Core.Enums.LogLevel.Information);
             log.FileHash.Should().Be(trackedFile.Hash);
         });
-
-        configuration.Should().NotBeNull();
-        configuration!.Value.Should().Be("true");
-        configuration.DataType.Should().Be(ConfigurationDataType.Boolean);
     }
 
     [Fact]

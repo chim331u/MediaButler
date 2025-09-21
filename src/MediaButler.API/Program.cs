@@ -42,7 +42,6 @@ builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
 // Add application services
 builder.Services.AddScoped<IFileService, FileService>();
-builder.Services.AddScoped<IConfigurationService, ConfigurationService>();
 builder.Services.AddScoped<IStatsService, StatsService>();
 builder.Services.AddScoped<IRollbackService, RollbackService>();
 builder.Services.AddScoped<IErrorClassificationService, ErrorClassificationService>();

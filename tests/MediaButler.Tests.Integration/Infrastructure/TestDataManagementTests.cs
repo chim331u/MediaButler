@@ -34,9 +34,7 @@ public class TestDataManagementTests : IntegrationTestBase
         movedFiles.Should().HaveCount(1);
         errorFiles.Should().HaveCount(1);
 
-        // Verify configurations exist
-        var configs = await Context.ConfigurationSettings.ToListAsync();
-        configs.Should().HaveCount(3);
+        // Configuration settings removed - now using static appsettings.json only
 
         // Verify processing logs exist
         var logs = await Context.ProcessingLogs.ToListAsync();
@@ -71,10 +69,9 @@ public class TestDataManagementTests : IntegrationTestBase
 
         // Assert - Verify data was added
         var fileCount = await Context.TrackedFiles.CountAsync();
-        var configCount = await Context.ConfigurationSettings.CountAsync();
 
         fileCount.Should().Be(1);
-        configCount.Should().Be(1);
+        // Configuration settings removed - now using static appsettings.json only
 
         // Note: Cleanup happens automatically in next test due to IntegrationTestBase
     }

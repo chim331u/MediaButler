@@ -30,7 +30,6 @@ public class UnitOfWork : IUnitOfWork
     // Repository instances - lazy-loaded for efficiency
     private ITrackedFileRepository? _trackedFiles;
     private IRepository<ProcessingLog>? _processingLogs;
-    private IRepository<ConfigurationSetting>? _configurationSettings;
     private IRepository<UserPreference>? _userPreferences;
 
     /// <summary>
@@ -63,15 +62,6 @@ public class UnitOfWork : IUnitOfWork
         }
     }
 
-    /// <inheritdoc />
-    public IRepository<ConfigurationSetting> ConfigurationSettings
-    {
-        get
-        {
-            ThrowIfDisposed();
-            return _configurationSettings ??= new Repository<ConfigurationSetting>(_context);
-        }
-    }
 
     /// <inheritdoc />
     public IRepository<UserPreference> UserPreferences

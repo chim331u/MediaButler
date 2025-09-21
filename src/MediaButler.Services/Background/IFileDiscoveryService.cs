@@ -58,12 +58,6 @@ public interface IFileDiscoveryService
     /// </summary>
     event EventHandler<FileDiscoveryErrorEventArgs> DiscoveryError;
 
-    /// <summary>
-    /// Reloads watch folder configuration from database without restarting the service.
-    /// </summary>
-    /// <param name="cancellationToken">Cancellation token for the reload operation</param>
-    /// <returns>Result indicating success or failure of configuration reload</returns>
-    Task<Result> ReloadWatchFoldersConfigurationAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>
