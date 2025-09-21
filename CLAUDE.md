@@ -448,40 +448,99 @@ Following "Simple Made Easy" principles, the system now uses **pure static confi
 The system uses `appsettings.json` for configuration located in `src/MediaButler.API/` with comprehensive sections for production deployment:
 
 ### Core Configuration Sections
-- **`MediaButler.Paths`**: Watch folder, media library, pending review paths
-- **`MediaButler.FileDiscovery`**: File monitoring, scanning, and validation settings
-- **`MediaButler.ML`**: Model configuration, thresholds, training intervals, tokenization
-- **`Serilog.ARM32Optimization`**: Memory thresholds, performance limits, log retention
+The MediaButler configuration is organized into logical sections for different system components:
 
-### FileDiscovery Configuration (New)
-```json
-"FileDiscovery": {
-  "WatchFolders": ["/tmp/mediabutler/watch"],
-  "EnableFileSystemWatcher": true,
-  "ScanIntervalMinutes": 5,
-  "FileExtensions": [".mkv", ".mp4", ".avi", ".m4v", ".wmv"],
-  "ExcludePatterns": [".*tmp", ".*part", ".*incomplete"],
-  "MinFileSizeMB": 1,
-  "DebounceDelaySeconds": 3,
-  "MaxConcurrentScans": 2
-}
-```
+#### MediaButler.Paths Configuration
+File system path configuration for core system directories.
 
-### ARM32 Optimization Settings (New)
-```json
-"ARM32Optimization": {
-  "MemoryThresholdMB": 300,
-  "AutoGCTriggerMB": 250,
-  "PerformanceThresholdMs": 1000,
-  "MaxLogFileSizeMB": 50
-}
-```
+| Setting | Description | Usage | Example |
+|---------|-------------|-------|---------|
+| `MediaLibrary` | Target directory for organized media files | Used by PathGenerationService to generate target paths for file organization | `/tmp/mediabutler/library` |
+| `WatchFolder` | Primary directory monitored for new files | Used by FileDiscoveryService as the main watch folder for file detection | `../../temp/watch` |
+| `PendingReview` | Directory for files awaiting user confirmation | Used for staging files before final organization (future use) | `/tmp/mediabutler/pending` |
 
-### Enhanced ML Configuration
-- **Tokenization**: Character normalization, quality indicator removal, language code handling
-- **Training**: Configurable ratios, learning rates, early stopping, minimum accuracy
-- **Features**: Episode detection, quality features, file extension analysis
-- **CSV Import**: Training data management with validation and backup
+#### MediaButler.FileDiscovery Configuration
+File monitoring and discovery system settings optimized for ARM32 deployment.
+
+| Setting | Description | Usage | Example |
+|---------|-------------|-------|---------|
+| `WatchFolders` | Array of directories to monitor for new files | FileDiscoveryService monitors these paths using FileSystemWatcher | `["../../temp/watch"]` |
+| `EnableFileSystemWatcher` | Enable real-time file system monitoring | Controls whether FileSystemWatcher is used for immediate file detection | `true` |
+| `ScanIntervalMinutes` | Interval between periodic folder scans | Backup scanning mechanism when FileSystemWatcher misses files | `5` |
+| `FileExtensions` | Supported file extensions for processing | File filter in FileDiscoveryService to include only relevant files | `[".mkv", ".mp4", ".avi"]` |
+| `ExcludePatterns` | Regex patterns for files to ignore | Used to skip temporary, partial, or system files during scanning | `[".*tmp", ".*part"]` |
+| `MinFileSizeMB` | Minimum file size threshold in megabytes | Filters out small files that are likely not valid media content | `1` |
+| `DebounceDelaySeconds` | Delay before processing file changes | Prevents processing files that are still being written or copied | `3` |
+| `MaxConcurrentScans` | Maximum concurrent scanning operations | ARM32 optimization to prevent resource exhaustion | `2` |
+
+#### MediaButler.ML Configuration
+Machine learning pipeline configuration for classification and training.
+
+##### Core ML Settings
+| Setting | Description | Usage | Example |
+|---------|-------------|-------|---------|
+| `ModelPath` | Directory containing ML model files | Used by ModelTrainingService to load and save FastText models | `"models"` |
+| `ActiveModelVersion` | Current model version identifier | Tracks which model version is active for classification | `"1.0.0"` |
+| `AutoClassifyThreshold` | Confidence threshold for automatic classification | Files above this threshold are auto-classified without user confirmation | `0.85` |
+| `SuggestionThreshold` | Minimum confidence for showing suggestions | Files above this threshold show classification suggestions to user | `0.50` |
+| `MaxClassificationTimeMs` | Maximum time allowed for classification | Timeout protection to prevent classification from blocking ARM32 system | `500` |
+| `MaxAlternativePredictions` | Number of alternative suggestions to show | Limits suggestion list size for better user experience | `3` |
+| `EnableBatchProcessing` | Enable batch processing for multiple files | Performance optimization for processing multiple files together | `true` |
+| `MaxBatchSize` | Maximum files per batch operation | ARM32 memory constraint to prevent system overload | `50` |
+| `EnableAutoRetraining` | Enable automatic model retraining | Triggers retraining when sufficient new training data is available | `true` |
+| `RetrainingThreshold` | Number of new samples before retraining | Minimum samples needed to trigger automatic model retraining | `100` |
+
+##### Tokenization Settings
+| Setting | Description | Usage | Example |
+|---------|-------------|-------|---------|
+| `NormalizeSeparators` | Convert dots/underscores to spaces | TokenizerService preprocessing for consistent token extraction | `true` |
+| `RemoveQualityIndicators` | Strip quality tags (1080p, 720p, etc.) | Removes non-series identifying tokens during tokenization | `true` |
+| `RemoveLanguageCodes` | Remove language codes (ITA, ENG, etc.) | Focuses tokenization on series name rather than language variants | `true` |
+| `RemoveReleaseTags` | Strip release tags (FINAL, REPACK, etc.) | Removes release-specific tokens that don't identify series | `true` |
+| `ConvertToLowercase` | Normalize all tokens to lowercase | Ensures consistent token matching regardless of filename case | `true` |
+| `MinTokenLength` | Minimum character length for tokens | Filters out very short tokens that are unlikely to be meaningful | `2` |
+| `CustomRemovalPatterns` | Additional regex patterns to remove | Allows custom filtering of specific patterns in filenames | `[]` |
+
+##### Training Settings
+| Setting | Description | Usage | Example |
+|---------|-------------|-------|---------|
+| `TrainingRatio` | Fraction of data used for training | ModelTrainingService splits data for training vs validation | `0.7` |
+| `ValidationRatio` | Fraction of data used for validation | Used to evaluate model performance during training | `0.2` |
+| `NumberOfIterations` | Training iterations for FastText model | Controls training duration and model complexity | `100` |
+| `LearningRate` | Learning rate for model training | FastText training parameter affecting convergence speed | `0.1` |
+| `UseEarlyStopping` | Stop training if validation accuracy plateaus | Prevents overfitting and reduces training time | `true` |
+| `MinimumAccuracy` | Minimum acceptable model accuracy | Quality gate for accepting newly trained models | `0.75` |
+
+##### Feature Engineering Settings
+| Setting | Description | Usage | Example |
+|---------|-------------|-------|---------|
+| `UseEpisodeFeatures` | Extract episode number features | FeatureEngineeringService identifies S##E## patterns for context | `true` |
+| `UseQualityFeatures` | Include video quality indicators | Helps distinguish between different releases of same content | `true` |
+| `UseFileExtensionFeature` | Include file extension in features | Different extensions may indicate different content types | `true` |
+| `EnableDetailedLogging` | Log detailed feature extraction info | Debug option for troubleshooting feature engineering | `false` |
+| `EnablePredictionCaching` | Cache prediction results | Performance optimization to avoid re-classifying same files | `true` |
+
+##### CSV Import Settings
+| Setting | Description | Usage | Example |
+|---------|-------------|-------|---------|
+| `DefaultCsvPath` | Default path for training data CSV | Used by CSV import functionality for batch training data | `"data/training_data.csv"` |
+| `Separator` | CSV column separator character | Defines CSV parsing format for training data import | `";"` |
+| `NormalizeCategoryNames` | Normalize category names to uppercase | Ensures consistent category naming in training data | `true` |
+| `SkipDuplicates` | Skip duplicate entries during import | Prevents duplicate training samples from affecting model | `true` |
+| `ValidateFileExtensions` | Validate file extensions in training data | Ensures training data matches supported file types | `true` |
+| `MaxSamples` | Maximum samples to import (0 = unlimited) | Limits training data size for memory management | `0` |
+| `AutoImportOnStartup` | Automatically import CSV on system start | Enables automatic training data loading | `false` |
+| `BackupPath` | Path for backing up training data | Creates backup copies before importing new data | `"data/backups/training_data_backup.csv"` |
+
+### ARM32 Optimization Settings
+Performance and memory optimization settings for ARM32 NAS deployment.
+
+| Setting | Description | Usage | Example |
+|---------|-------------|-------|---------|
+| `MemoryThresholdMB` | Maximum memory usage threshold | System monitoring triggers cleanup when exceeded | `300` |
+| `AutoGCTriggerMB` | Memory level to trigger garbage collection | Proactive memory management for ARM32 constraints | `250` |
+| `PerformanceThresholdMs` | Maximum acceptable operation time | Performance monitoring and alerting threshold | `1000` |
+| `MaxLogFileSizeMB` | Maximum log file size before rotation | Prevents log files from consuming excessive disk space | `50` |
 
 **Configuration Files:**
 - `src/MediaButler.API/appsettings.json` - Base configuration with ARM32 optimization

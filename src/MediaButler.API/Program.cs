@@ -7,6 +7,8 @@ using MediaButler.Services.Interfaces;
 using MediaButler.Core.Services;
 using MediaButler.API.Middleware;
 using MediaButler.API.Filters;
+using MediaButler.API.Hubs;
+using MediaButler.API.Services;
 using MediaButler.ML.Extensions;
 using MediaButler.Services.Background;
 using MediaButler.Services.FileOperations;
@@ -19,14 +21,18 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseSerilog((context, configuration) => 
     configuration.ReadFrom.Configuration(context.Configuration));
 
-// Add CORS
+// Add CORS with SignalR support
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", builder =>
     {
-        builder.AllowAnyOrigin()
+        builder.WithOrigins(
+                "http://localhost:5109",   // Default Web app port
+                "http://localhost:5110",   // Alternative Web app port
+                "https://localhost:5111")  // HTTPS Web app port
             .AllowAnyMethod()
-            .AllowAnyHeader();
+            .AllowAnyHeader()
+            .AllowCredentials(); // Required for SignalR
     });
 });
 
@@ -47,6 +53,13 @@ builder.Services.AddScoped<IRollbackService, RollbackService>();
 builder.Services.AddScoped<IErrorClassificationService, ErrorClassificationService>();
 builder.Services.AddScoped<IFileOrganizationService, FileOrganizationService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
+
+// Add SignalR services
+builder.Services.AddSignalR();
+builder.Services.AddSingleton<ISignalRNotificationService, SignalRNotificationService>();
+
+// Add SignalR integration for file discovery notifications
+builder.Services.AddHostedService<FileDiscoverySignalRService>();
 
 // Add file operation services
 builder.Services.AddScoped<IFileOperationService, FileOperationService>();
@@ -155,6 +168,9 @@ app.UseCors("AllowAll");
 
 // Map controllers
 app.MapControllers();
+
+// Map SignalR hub
+app.MapHub<NotificationHub>("/notifications");
 
 // Enhanced root endpoint with API information
 app.MapGet("/", () => new

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using MediaButler.Web;
 using MediaButler.Web.Interfaces;
 using MediaButler.Web.Services;
+using MediaButler.Web.Models;
 using Radzen;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
@@ -19,11 +20,12 @@ var isDevelopment = builder.HostEnvironment.IsDevelopment() ||
                    builder.HostEnvironment.BaseAddress.Contains("localhost") ||
                    builder.HostEnvironment.BaseAddress.Contains("127.0.0.1");
 
+// Register ApiSettings configuration
+builder.Services.Configure<ApiSettings>(builder.Configuration.GetSection("ApiSettings"));
+
 // Simple HttpClient registration following "Simple Made Easy" principles
 // One named client per service boundary - no complex configurations braided together
-var apiBaseUrl = isDevelopment
-    ? "https://localhost:7103/"  // Development URL - updated to use HTTPS
-    : builder.Configuration["ApiSettings:BaseUrl"] ?? "http://192.168.1.5:30109/"; // Production URL
+var apiBaseUrl = builder.Configuration["ApiSettings:BaseUrl"] ?? "http://localhost:5000/";
 
 Console.WriteLine($"Environment: {environment}, IsDevelopment: {isDevelopment}, API URL: {apiBaseUrl}");
 
