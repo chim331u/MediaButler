@@ -40,6 +40,9 @@ builder.Services.AddHttpClient<IHttpClientService, HttpClientService>(client =>
 builder.Services.AddScoped<IHealthApiService, HealthApiService>();
 builder.Services.AddScoped<IFilesApiService, FilesApiService>();
 
+// SignalR notification service - centralized real-time communication
+builder.Services.AddSingleton<ISignalRNotificationService, SignalRNotificationService>();
+
 // Radzen services
 builder.Services.AddScoped<DialogService>();
 builder.Services.AddScoped<NotificationService>();

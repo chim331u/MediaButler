@@ -7,7 +7,7 @@
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @inject IFilesApiService FilesApiService
-@inject IOptions<ApiSettings> ApiSettingsOptions
+@inject ISignalRNotificationService SignalRService
 @implements IAsyncDisposable
 
 <style>
@@ -535,86 +535,97 @@
     private int _addCategory = 0;
     private int _selectedFileStatus = (int)FileStatus.Classified;
 
-    // SignalR connection
-    private HubConnection? _hubConnection;
+    // Centralized SignalR notification subscriptions
+    private readonly List<IDisposable> _notificationSubscriptions = new();
 
     protected override async Task OnInitializedAsync()
     {
-        await InitializeSignalRAsync();
+        await InitializeNotificationSubscriptionsAsync();
         await RefreshFilesAsync();
     }
 
-    private async Task InitializeSignalRAsync()
+    private async Task InitializeNotificationSubscriptionsAsync()
     {
         try
         {
-            // Initialize SignalR connection to MediaButler.API
-            var apiBaseUrl = ApiSettingsOptions.Value.BaseUrl.TrimEnd('/'); // Load from configuration
-
-            _hubConnection = new HubConnectionBuilder()
-                .WithUrl($"{apiBaseUrl}/notifications")
-                .WithAutomaticReconnect()
-                .Build();
-
-            // Set up event handlers for file operations using new API interface
-            _hubConnection.On<int, string, string>("MoveFileNotification", (fileId, fileName, status) =>
+            // Subscribe to file discovery notifications
+            var fileDiscoverySubscription = SignalRService.SubscribeToFileDiscovery((fileName, filePath, discoveredAt) =>
             {
-                WriteConsole($"File move update: {fileName} - {status}");
+                WriteConsole($"New file discovered: {fileName}");
+                InvokeAsync(RefreshFilesAsync);
+                InvokeAsync(StateHasChanged);
+            });
+            _notificationSubscriptions.Add(fileDiscoverySubscription);
+
+            // Subscribe to file processing status notifications
+            var fileProcessingSubscription = SignalRService.SubscribeToFileProcessing((fileHash, status, details) =>
+            {
+                WriteConsole($"File processing update: {status} - {details}");
                 if (status == "Completed" && _fileList != null)
                 {
-                    _fileList = _fileList.Where(f => f.Id != fileId).ToList();
+                    // Remove completed files from the list or update their status
+                    InvokeAsync(RefreshFilesAsync);
                 }
                 InvokeAsync(StateHasChanged);
             });
+            _notificationSubscriptions.Add(fileProcessingSubscription);
 
-            _hubConnection.On<string, string, int>("JobProgressNotification", (jobType, message, progress) =>
-            {
-                WriteConsole($"[{jobType}] {message} ({progress}%)");
-                InvokeAsync(StateHasChanged);
-            });
-
-            _hubConnection.On<int, string, string, decimal>("ClassificationNotification", (fileId, fileName, category, confidence) =>
-            {
-                WriteConsole($"File classified: {fileName} -> {category} (confidence: {confidence:P})");
-                InvokeAsync(StateHasChanged);
-            });
-
-            _hubConnection.On<string, string, string>("ErrorNotification", (errorType, message, details) =>
-            {
-                WriteConsole($"Error [{errorType}]: {message}");
-                if (!string.IsNullOrEmpty(details))
-                {
-                    WriteConsole($"Details: {details}");
-                }
-                InvokeAsync(StateHasChanged);
-            });
-
-            _hubConnection.On<string, string, string>("SystemStatusNotification", (component, status, message) =>
+            // Subscribe to system status notifications
+            var systemStatusSubscription = SignalRService.SubscribeToSystemStatus((component, status, message) =>
             {
                 WriteConsole($"System [{component}]: {status} - {message}");
                 InvokeAsync(StateHasChanged);
             });
+            _notificationSubscriptions.Add(systemStatusSubscription);
 
-            _hubConnection.On<string, string, DateTime>("FileDiscoveryNotification", (fileName, filePath, discoveredAt) =>
+            // Subscribe to error notifications
+            var errorSubscription = SignalRService.SubscribeToErrors((source, errorType, message) =>
             {
-                WriteConsole($"New file discovered: {fileName}");
-
-                // Refresh the files grid to show the new file
-                InvokeAsync(RefreshFilesAsync);
+                WriteConsole($"Error [{errorType}] from {source}: {message}");
                 InvokeAsync(StateHasChanged);
             });
+            _notificationSubscriptions.Add(errorSubscription);
 
-            if (_hubConnection.State == HubConnectionState.Disconnected)
-            {
-                await _hubConnection.StartAsync();
-                WriteConsole($"Real-time connection established: {_hubConnection.ConnectionId}");
-            }
+            // Subscribe to connection state changes
+            SignalRService.ConnectionStateChanged += OnConnectionStateChanged;
+            SignalRService.Connected += OnSignalRConnected;
+            SignalRService.Disconnected += OnSignalRDisconnected;
+            SignalRService.ConnectionError += OnSignalRError;
+
+            // Start the SignalR connection
+            await SignalRService.StartAsync();
+
+            WriteConsole($"Real-time notifications initialized. Connection: {SignalRService.ConnectionState}");
         }
         catch (Exception ex)
         {
-            WriteConsole($"SignalR connection error: {ex.Message}");
+            WriteConsole($"SignalR notification setup error: {ex.Message}");
             WriteConsole("Falling back to manual refresh for updates");
         }
+    }
+
+    private void OnConnectionStateChanged(object? sender, HubConnectionState newState)
+    {
+        WriteConsole($"Connection state changed: {newState}");
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnSignalRConnected(object? sender, EventArgs e)
+    {
+        WriteConsole("Real-time connection established successfully");
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnSignalRDisconnected(object? sender, EventArgs e)
+    {
+        WriteConsole("Real-time connection lost - attempting to reconnect...");
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnSignalRError(object? sender, Exception ex)
+    {
+        WriteConsole($"Connection error: {ex.Message}");
+        InvokeAsync(StateHasChanged);
     }
 
     private void WriteConsole(string message)
@@ -997,10 +1008,19 @@
 
     public async ValueTask DisposeAsync()
     {
-        if (_hubConnection is not null)
+        // Unsubscribe from all notification events
+        foreach (var subscription in _notificationSubscriptions)
         {
-            await _hubConnection.DisposeAsync();
+            subscription?.Dispose();
         }
+        _notificationSubscriptions.Clear();
+
+        // Unsubscribe from SignalR service events
+        SignalRService.ConnectionStateChanged -= OnConnectionStateChanged;
+        SignalRService.Connected -= OnSignalRConnected;
+        SignalRService.Disconnected -= OnSignalRDisconnected;
+        SignalRService.ConnectionError -= OnSignalRError;
+
         await Task.CompletedTask;
     }
 
