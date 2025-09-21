@@ -16,9 +16,8 @@ public class SignalRNotificationService : ISignalRNotificationService, IAsyncDis
     private readonly ApiSettings _apiSettings;
     private HubConnection? _hubConnection;
     private readonly ConcurrentDictionary<string, List<IDisposable>> _subscriptions = new();
-    private readonly object _connectionLock = new();
-    private bool _disposed = false;
-    private bool _autoReconnectEnabled = true;
+    private volatile bool _disposed = false;
+    private volatile bool _autoReconnectEnabled = true;
 
     // Connection statistics
     private DateTime? _connectedAt;
@@ -52,13 +51,11 @@ public class SignalRNotificationService : ISignalRNotificationService, IAsyncDis
         if (_disposed)
             throw new ObjectDisposedException(nameof(SignalRNotificationService));
 
-        lock (_connectionLock)
+        // Check connection state without locking - race conditions are handled by SignalR
+        if (_hubConnection?.State == HubConnectionState.Connected)
         {
-            if (_hubConnection?.State == HubConnectionState.Connected)
-            {
-                _logger.LogDebug("SignalR connection already established");
-                return;
-            }
+            _logger.LogDebug("SignalR connection already established");
+            return;
         }
 
         try
@@ -100,10 +97,8 @@ public class SignalRNotificationService : ISignalRNotificationService, IAsyncDis
         {
             _logger.LogInformation("Stopping SignalR connection");
 
-            lock (_connectionLock)
-            {
-                _autoReconnectEnabled = false;
-            }
+            // Disable auto-reconnect before stopping
+            _autoReconnectEnabled = false;
 
             await _hubConnection.StopAsync(cancellationToken);
 
@@ -151,11 +146,8 @@ public class SignalRNotificationService : ISignalRNotificationService, IAsyncDis
 
     public void SetAutoReconnect(bool enabled)
     {
-        lock (_connectionLock)
-        {
-            _autoReconnectEnabled = enabled;
-            _logger.LogDebug("Auto-reconnect {Status}", enabled ? "enabled" : "disabled");
-        }
+        _autoReconnectEnabled = enabled;
+        _logger.LogDebug("Auto-reconnect {Status}", enabled ? "enabled" : "disabled");
     }
 
     public SignalRConnectionStats GetConnectionStats()
@@ -277,25 +269,13 @@ public class SignalRNotificationService : ISignalRNotificationService, IAsyncDis
         _logger.LogError("All manual reconnection attempts failed");
     }
 
-    private IDisposable SubscribeToNotification<T>(string methodName, Action<T> handler, string category)
-        where T : class
+    private IDisposable SubscribeToNotification(string methodName, Delegate handler, string category)
     {
         if (_hubConnection == null)
             throw new InvalidOperationException("SignalR connection not initialized");
 
-        var subscription = _hubConnection.On(methodName, (T data) =>
-        {
-            try
-            {
-                _lastMessageAt = DateTime.UtcNow;
-                _logger.LogDebug("Received {Category} notification: {Method}", category, methodName);
-                handler(data);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error handling {Category} notification", category);
-            }
-        });
+        // Create subscription wrapper with common error handling and logging
+        var subscription = CreateNotificationSubscription(methodName, handler, category);
 
         // Track subscription for cleanup
         _subscriptions.AddOrUpdate(category,
@@ -308,7 +288,6 @@ public class SignalRNotificationService : ISignalRNotificationService, IAsyncDis
 
         _logger.LogDebug("Subscribed to {Category} notifications", category);
 
-        // Return disposable that removes from tracking
         return new SubscriptionWrapper(subscription, () =>
         {
             if (_subscriptions.TryGetValue(category, out var list))
@@ -323,48 +302,39 @@ public class SignalRNotificationService : ISignalRNotificationService, IAsyncDis
         });
     }
 
-    private IDisposable SubscribeToNotification<T1, T2, T3>(string methodName, Action<T1, T2, T3> handler, string category)
+    private IDisposable CreateNotificationSubscription(string methodName, Delegate handler, string category)
     {
-        if (_hubConnection == null)
-            throw new InvalidOperationException("SignalR connection not initialized");
-
-        var subscription = _hubConnection.On(methodName, (T1 arg1, T2 arg2, T3 arg3) =>
+        // Use SignalR's built-in On method with error handling wrapper
+        return handler switch
         {
-            try
+            Action<string, string, DateTime> h => _hubConnection!.On(methodName, (string a1, string a2, DateTime a3) =>
             {
-                _lastMessageAt = DateTime.UtcNow;
-                _logger.LogDebug("Received {Category} notification: {Method}", category, methodName);
-                handler(arg1, arg2, arg3);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error handling {Category} notification", category);
-            }
-        });
-
-        // Track subscription for cleanup
-        _subscriptions.AddOrUpdate(category,
-            new List<IDisposable> { subscription },
-            (key, existingList) =>
-            {
-                existingList.Add(subscription);
-                return existingList;
-            });
-
-        _logger.LogDebug("Subscribed to {Category} notifications", category);
-
-        return new SubscriptionWrapper(subscription, () =>
-        {
-            if (_subscriptions.TryGetValue(category, out var list))
-            {
-                list.Remove(subscription);
-                if (list.Count == 0)
+                try
                 {
-                    _subscriptions.TryRemove(category, out _);
+                    _lastMessageAt = DateTime.UtcNow;
+                    _logger.LogDebug("Received {Category} notification: {Method}", category, methodName);
+                    h(a1, a2, a3);
                 }
-            }
-            _logger.LogDebug("Unsubscribed from {Category} notifications", category);
-        });
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error handling {Category} notification", category);
+                }
+            }),
+            Action<string, string, string> h => _hubConnection!.On(methodName, (string a1, string a2, string a3) =>
+            {
+                try
+                {
+                    _lastMessageAt = DateTime.UtcNow;
+                    _logger.LogDebug("Received {Category} notification: {Method}", category, methodName);
+                    h(a1, a2, a3);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error handling {Category} notification", category);
+                }
+            }),
+            _ => throw new ArgumentException($"Unsupported handler type: {handler.GetType()}")
+        };
     }
 
     private void OnConnectionStateChanged(HubConnectionState newState)
