@@ -77,6 +77,22 @@ public interface IFilesApiService
     Task<Result<ScanResultDto>> ScanSpecificFolderAsync(
         string folderPath,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Organizes multiple files in a batch operation.
+    /// Submits files for background processing via batch organize API.
+    /// </summary>
+    Task<Result<BatchJobResponseDto>> OrganizeBatchAsync(
+        BatchOrganizeRequestDto request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the status of a batch job.
+    /// </summary>
+    Task<Result<BatchJobResponseDto>> GetBatchStatusAsync(
+        string jobId,
+        bool includeDetails = false,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -316,6 +332,52 @@ public class FilesApiService : IFilesApiService
         }
     }
 
+    public async Task<Result<BatchJobResponseDto>> OrganizeBatchAsync(
+        BatchOrganizeRequestDto request,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var result = await _httpClient.PostAsync<BatchJobResponse>("/api/v1/file-actions/organize-batch", request, cancellationToken);
+
+            if (!result.IsSuccess)
+            {
+                return Result<BatchJobResponseDto>.Failure(result.Error, result.StatusCode);
+            }
+
+            var batchJob = MapToBatchJobResponseDto(result.Value!);
+            return Result<BatchJobResponseDto>.Success(batchJob);
+        }
+        catch (Exception ex)
+        {
+            return Result<BatchJobResponseDto>.Failure($"Failed to organize batch: {ex.Message}");
+        }
+    }
+
+    public async Task<Result<BatchJobResponseDto>> GetBatchStatusAsync(
+        string jobId,
+        bool includeDetails = false,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var queryParam = includeDetails ? "?includeDetails=true" : "";
+            var result = await _httpClient.GetAsync<BatchJobResponse>($"/api/v1/file-actions/batch-status/{jobId}{queryParam}", cancellationToken);
+
+            if (!result.IsSuccess)
+            {
+                return Result<BatchJobResponseDto>.Failure(result.Error, result.StatusCode);
+            }
+
+            var batchJob = MapToBatchJobResponseDto(result.Value!);
+            return Result<BatchJobResponseDto>.Success(batchJob);
+        }
+        catch (Exception ex)
+        {
+            return Result<BatchJobResponseDto>.Failure($"Failed to get batch status: {ex.Message}");
+        }
+    }
+
     /// <summary>
     /// Maps API response to FileManagementDto.
     /// Pure function - deterministic mapping logic.
@@ -358,6 +420,52 @@ public class FilesApiService : IFilesApiService
             ScanDurationMs = scanResult.ScanDurationMs
         };
     }
+
+    /// <summary>
+    /// Maps API response to BatchJobResponseDto.
+    /// Pure function - deterministic mapping logic.
+    /// </summary>
+    private static BatchJobResponseDto MapToBatchJobResponseDto(BatchJobResponse batchJob)
+    {
+        return new BatchJobResponseDto
+        {
+            JobId = batchJob.JobId,
+            Status = batchJob.Status,
+            QueuedAt = batchJob.QueuedAt,
+            StartedAt = batchJob.StartedAt,
+            CompletedAt = batchJob.CompletedAt,
+            TotalFiles = batchJob.TotalFiles,
+            ProcessedFiles = batchJob.ProcessedFiles,
+            SuccessfulFiles = batchJob.SuccessfulFiles,
+            FailedFiles = batchJob.FailedFiles,
+            Metadata = batchJob.Metadata,
+            Errors = batchJob.Errors,
+            EstimatedTimeRemaining = batchJob.EstimatedTimeRemaining,
+            AverageProcessingTime = batchJob.AverageProcessingTime,
+            DetailedResults = batchJob.DetailedResults?.Select(MapToFileProcessingResultDto).ToList()
+        };
+    }
+
+    /// <summary>
+    /// Maps API response to FileProcessingResultDto.
+    /// Pure function - deterministic mapping logic.
+    /// </summary>
+    private static FileProcessingResultDto MapToFileProcessingResultDto(FileProcessingResult result)
+    {
+        return new FileProcessingResultDto
+        {
+            FileHash = result.FileHash,
+            FileName = result.FileName,
+            Success = result.Success,
+            TargetPath = result.TargetPath,
+            ActualPath = result.ActualPath,
+            Error = result.Error,
+            ProcessingTime = result.ProcessingTime,
+            IsDryRun = result.IsDryRun,
+            ProcessedAt = result.ProcessedAt,
+            Metadata = result.Metadata
+        };
+    }
 }
 
 /// <summary>
@@ -385,7 +493,7 @@ public class TrackedFileResponse
     public DateTime? LastErrorAt { get; set; }
     public int RetryCount { get; set; }
     public bool RequiresAttention { get; set; }
-    public double ProcessingDurationMs { get; set; }
+    public double? ProcessingDurationMs { get; set; }
 }
 
 /// <summary>
@@ -414,4 +522,106 @@ public class ScanResultDto
     public List<string> MonitoredPaths { get; set; } = new();
     public string? ScannedPath { get; set; }
     public double ScanDurationMs { get; set; }
+}
+
+/// <summary>
+/// DTO for batch organize request in the web layer
+/// </summary>
+public class BatchOrganizeRequestDto
+{
+    public required List<FileActionDto> Files { get; set; }
+    public bool ContinueOnError { get; set; } = false;
+    public bool ValidateTargetPaths { get; set; } = true;
+    public bool CreateDirectories { get; set; } = true;
+    public bool DryRun { get; set; } = false;
+    public string? BatchName { get; set; }
+    public int? MaxConcurrency { get; set; }
+}
+
+/// <summary>
+/// DTO for file action in the web layer
+/// </summary>
+public class FileActionDto
+{
+    public required string Hash { get; set; }
+    public required string ConfirmedCategory { get; set; }
+    public string? CustomTargetPath { get; set; }
+    public Dictionary<string, object>? Metadata { get; set; }
+}
+
+/// <summary>
+/// DTO for batch job response in the web layer
+/// </summary>
+public class BatchJobResponseDto
+{
+    public required string JobId { get; set; }
+    public required string Status { get; set; } = "Queued";
+    public DateTime QueuedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? StartedAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
+    public int TotalFiles { get; set; }
+    public int ProcessedFiles { get; set; }
+    public int SuccessfulFiles { get; set; }
+    public int FailedFiles { get; set; }
+    public int ProgressPercentage => TotalFiles > 0 ? (ProcessedFiles * 100) / TotalFiles : 0;
+    public Dictionary<string, object> Metadata { get; set; } = new();
+    public List<string> Errors { get; set; } = new();
+    public TimeSpan? EstimatedTimeRemaining { get; set; }
+    public TimeSpan? AverageProcessingTime { get; set; }
+    public List<FileProcessingResultDto>? DetailedResults { get; set; }
+}
+
+/// <summary>
+/// DTO for file processing result in the web layer
+/// </summary>
+public class FileProcessingResultDto
+{
+    public required string FileHash { get; set; }
+    public required string FileName { get; set; }
+    public required bool Success { get; set; }
+    public required string TargetPath { get; set; }
+    public string? ActualPath { get; set; }
+    public string? Error { get; set; }
+    public TimeSpan? ProcessingTime { get; set; }
+    public bool IsDryRun { get; set; }
+    public DateTime ProcessedAt { get; set; } = DateTime.UtcNow;
+    public Dictionary<string, object>? Metadata { get; set; }
+}
+
+/// <summary>
+/// DTO for API response mapping (reusing the API models for simplicity)
+/// </summary>
+public class BatchJobResponse
+{
+    public required string JobId { get; set; }
+    public required string Status { get; set; } = "Queued";
+    public DateTime QueuedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? StartedAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
+    public int TotalFiles { get; set; }
+    public int ProcessedFiles { get; set; }
+    public int SuccessfulFiles { get; set; }
+    public int FailedFiles { get; set; }
+    public Dictionary<string, object> Metadata { get; set; } = new();
+    public List<string> Errors { get; set; } = new();
+    public TimeSpan? EstimatedTimeRemaining { get; set; }
+    public TimeSpan? AverageProcessingTime { get; set; }
+    public List<FileProcessingResult>? DetailedResults { get; set; }
+}
+
+/// <summary>
+/// DTO for file processing result from API
+/// </summary>
+public class FileProcessingResult
+{
+    public required string FileHash { get; set; }
+    public required string FileName { get; set; }
+    public required bool Success { get; set; }
+    public required string TargetPath { get; set; }
+    public string? ActualPath { get; set; }
+    public string? Error { get; set; }
+    public TimeSpan? ProcessingTime { get; set; }
+    public bool IsDryRun { get; set; }
+    public DateTime ProcessedAt { get; set; } = DateTime.UtcNow;
+    public Dictionary<string, object>? Metadata { get; set; }
 }

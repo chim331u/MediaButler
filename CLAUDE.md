@@ -697,3 +697,54 @@ dotnet test --collect:"XPlat Code Coverage" --logger:trx
 - **Web UI Testing**: Component rendering and user interaction validation
 
 This testing strategy ensures MediaButler maintains high quality while following "Simple Made Easy" principles - tests serve as reasoning tools about system behavior rather than complex safety nets that mask underlying complexity.
+
+## Current Issues and Investigation Results
+
+### Batch File Organization Issue (September 2025)
+
+**Problem**: Files remain in watch folder after calling `api/v1/file-actions/organize-batch` endpoint. User expected files to be physically moved from watch folder to target locations.
+
+**Investigation Results**:
+
+1. **Web UI Implementation**: ✅ **WORKING CORRECTLY**
+   - Blazor WebAssembly Files.razor correctly implements batch move functionality
+   - Move button properly enabled only when files are in move queue
+   - SignalR notifications properly handled with console logging
+   - API service calls implemented correctly with proper DTOs
+   - Fixed JSON deserialization issue with `ProcessingDurationMs` field (changed from `double` to `double?`)
+
+2. **FileActionsController**: ✅ **EXISTS AND IMPLEMENTED**
+   - Controller properly implemented at `/Users/luca/GitHub/mediabutler/MediaButler/src/MediaButler.API/Controllers/FileActionsController.cs`
+   - All required endpoints implemented: `organize-batch`, `batch-status`, `validate-batch`, `batch-cancel`, `batch-jobs`
+   - Route configuration correct: `[Route("api/v1/file-actions")]`
+   - Dependency injection properly configured in Program.cs line 61: `AddScoped<IFileActionsService, FileActionsService>()`
+
+3. **Background Processing Architecture**: ✅ **IMPLEMENTED BUT NOT RUNNING**
+   - FileActionsService.cs (460 lines) - Batch orchestration service with proper error handling
+   - BackgroundTaskQueue.cs (276 lines) - Lightweight task queue for ARM32 optimization
+   - QueuedHostedService.cs (197 lines) - Background service processor
+   - CustomBatchFileProcessor.cs (394 lines) - Actual file processing logic
+   - BackgroundTaskQueueExtensions.cs - Service registration extensions
+
+4. **Root Cause**: 🚨 **QueuedHostedService NOT STARTING**
+   - **Symptom**: API endpoints return 404 Not Found for all `/api/v1/file-actions/*` routes
+   - **Analysis**: Request logs show "Request reached the end of the middleware pipeline without being handled by application code"
+   - **Evidence**: Startup logs show all other background services starting EXCEPT QueuedHostedService:
+     - ✅ FileDiscoveryService, ProcessingCoordinator, FileProcessingService all start
+     - ❌ QueuedHostedService startup log missing
+   - **Impact**: IBackgroundTaskQueue dependency cannot be resolved → FileActionsController not registered → 404 errors
+
+5. **Background Service Registration**: 🔍 **NEEDS INVESTIGATION**
+   - Extension method `AddCustomBackgroundTaskQueue()` called in Program.cs line 64
+   - Should register QueuedHostedService via `services.AddHostedService<QueuedHostedService>()`
+   - Registration appears correct but service not starting - possible dependency issue
+
+**Current Status**: The web UI is fully functional and the complete batch processing architecture is implemented. The issue is isolated to the QueuedHostedService not starting properly, which prevents the entire file-actions API from being available.
+
+**Next Steps**:
+1. Debug QueuedHostedService startup failure
+2. Verify all dependencies can be resolved
+3. Ensure CustomBatchFileProcessor can be instantiated
+4. Test complete file move pipeline once background service is running
+
+**Expected Resolution**: Once QueuedHostedService starts correctly, the organize-batch endpoint will be available and files will be physically moved from watch folders to target locations as expected.
