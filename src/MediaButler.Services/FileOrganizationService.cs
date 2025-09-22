@@ -114,7 +114,7 @@ public class FileOrganizationService : IFileOrganizationService
 
             // 5. Execute file operation
             var moveResult = await _fileOperationService.MoveFileAsync(
-                trackedFile.OriginalPath, targetPath);
+                fileHash, targetPath);
 
             if (moveResult.IsFailure)
             {
@@ -336,6 +336,9 @@ public class FileOrganizationService : IFileOrganizationService
                     {
                         warnings.Add($"Target directory will be created: {targetDirectory}");
                         validationDetails["TargetDirectoryExists"] = false;
+
+                        // Create the directory to test write permissions
+                        Directory.CreateDirectory(targetDirectory);
                     }
                     else
                     {

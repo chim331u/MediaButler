@@ -14,220 +14,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - File identification via SHA256 hashing
 - Handles related files (subtitles, metadata) automatically
 
-## Discussion Summary & Key Decisions
-
-### BaseEntity Implementation
-All domain entities now inherit from `BaseEntity` abstract class providing:
-- **Audit Trail**: `CreatedDate` and `LastUpdateDate` for tracking changes
-- **Soft Delete**: `IsActive` boolean for logical deletion without data loss
-- **Notes**: Optional `Note` field for additional context
-- **Helper Methods**: `MarkAsModified()`, `SoftDelete()`, `Restore()`
-
-This foundation provides complete audit capabilities and data safety through soft deletes while maintaining high performance with strategic database indexing.
-
-### Sprint-Based Development Plan
-Development follows a 4-sprint, 16-day plan emphasizing comprehensive testing and "Simple Made Easy" principles:
-- **Sprint 1 (Days 1-4)**: Foundation with BaseEntity, repositories, API core ✅ **COMPLETE (243 tests)**
-- **Sprint 2 (Days 5-8)**: ML Classification Engine with ML pipeline ✅ **COMPLETE**
-- **Sprint 3 (Days 9-12)**: File Operations & Automation - SIMPLIFIED ✅ **COMPLETE - All 3.2 Tasks Implemented**
-- **Sprint 4 (Days 13-16)**: Web Interface & User Experience 🚧 **IN PROGRESS - 3/5 Tasks Complete**
-- **Total Target**: 270+ comprehensive tests across all layers
-
-### Quality Metrics & Validation
-- **Test Coverage**: 82% line coverage maintained across all sprints
-- **Performance**: <300MB memory usage, <100ms API response times
-- **Architecture**: Zero circular dependencies, clear separation of concerns
-- **ARM32 Compatibility**: Explicit validation for Raspberry Pi deployment
-
-### Sprint 3 Implementation Status ✅ COMPLETE
-
-#### Task 3.1.1 - File Discovery Service (IN PROGRESS)
-**Interface**: `IFileDiscoveryService` with 6 methods and event handling
-- `StartMonitoringAsync()` / `StopMonitoringAsync()` - Service lifecycle
-- `ScanFoldersAsync()` - One-time folder scanning
-- `FileDiscovered` / `DiscoveryError` events - Real-time notifications
-- `IsMonitoring` / `MonitoredPaths` properties - Status monitoring
-
-**Implementation**: `FileDiscoveryService` (541 lines) with ARM32 optimization
-- ✅ FileSystemWatcher with proper disposal and debouncing
-- ✅ Periodic scanning as backup for missed files
-- ✅ File validation with size limits and exclusion patterns
-- ✅ Resource management with semaphores for ARM32 constraints
-- ✅ Event-driven architecture with clean separation of concerns
-
-#### Task 3.1.2 - File Operation Service (IMPLEMENTED WITH CONCERNS)
-**Interface**: `IFileOperationService` with 5 atomic operation methods
-- `MoveFileAsync()` - Atomic file movement with cross-drive support
-- `CreateDirectoryStructureAsync()` - Safe directory creation  
-- `ValidateOperationAsync()` - Pre-flight validation
-- `RecordOperationAsync()` - Audit trail integration
-- `GetOperationStatsAsync()` - Performance monitoring
-
-**Implementation**: `FileOperationService` (602 lines) with ARM32 constraints
-- ✅ OS-level atomic operations (no custom transactions)
-- ✅ ARM32 optimization (2 concurrent ops, 64KB buffers)
-- ✅ Result pattern integration and comprehensive error handling
-- ✅ ProcessingLog integration for audit trail and rollback capability
-
-#### Task 3.1.3 - Path Generation Service (COMPLETE)
-**Interface**: `IPathGenerationService` with 6 comprehensive methods
-- `GenerateTargetPathAsync()` - Template-based path generation with variable substitution
-- `ValidateTargetPath()` - Cross-platform validation with detailed feedback
-- `SanitizePathComponent()` - Character sanitization for all file systems
-- `ResolvePathConflictsAsync()` - Intelligent conflict resolution with retry logic
-- `GetDefaultTemplateAsync()` - Template management and configuration integration
-- `PreviewPathGenerationAsync()` - User confirmation workflow support
-
-**Implementation**: `PathGenerationService` (462 lines) with cross-platform design
-- ✅ Simple string templates: `"{MediaLibraryPath}/{Category}/{Filename}"`
-- ✅ Cross-platform character handling for Windows/Linux/macOS compatibility
-- ✅ Comprehensive validation with `PathValidationResult` feedback
-- ✅ Conflict resolution with intelligent retry logic (max 10 attempts)
-- ✅ Preview capability with `PathPreviewResult` for user workflows
-- ✅ Values over state: Pure functions for path generation from inputs
-
-#### Sprint 3.1 Status: NEARLY COMPLETE ✅
-
-**🎉 MAJOR MILESTONE**: All Sprint 3.1 tasks (File Discovery, File Operations, Path Generation) successfully implemented
-
-**Test Status MAJOR IMPROVEMENT**:
-- **Previous**: 26/60 integration tests failing (57% pass rate)
-- **Current**: 9/52 integration tests failing (83% pass rate) - **65% reduction in failures**
-- **Quality Gate**: 83% vs required 95% - **ONLY 3 MORE TESTS NEEDED**
-- **Remaining**: Primarily ML pipeline edge cases and invalid filename handling
-
-**Foundation Status**: **STABLE** - Comprehensive service implementation provides solid architecture for Sprint 3.2
-
-#### Task 3.2.1 - Organization Coordinator (IMPLEMENTED ✅)
-**Interface**: `IFileOrganizationService` with 5 comprehensive workflow orchestration methods
-- `OrganizeFileAsync()` - Complete file organization with rollback integration
-- `PreviewOrganizationAsync()` - Safe preview with validation before operations  
-- `ValidateOrganizationSafetyAsync()` - Pre-flight safety checks and conflict detection
-- `HandleOrganizationErrorAsync()` - Integrated error recovery with ErrorClassificationService
-- `GetOrganizationStatusAsync()` - Real-time operation status tracking
-
-**Implementation**: `FileOrganizationService` (741 lines) as central workflow coordinator
-- ✅ Orchestrates PathGenerationService, FileOperationService, and RollbackService
-- ✅ Comprehensive error handling with automatic rollback on failures
-- ✅ ProcessingLog integration for complete audit trail
-- ✅ ARM32 optimized with proper resource management
-- ✅ Follows "Simple Made Easy" principles with clear service composition
-- ✅ Complete integration tests (516 lines, 11 test methods) with DatabaseFixture support
-
-#### Sprint 3.2 Status: **TASK 3.2.1 COMPLETE** ✅
-
-**🎉 MILESTONE**: FileOrganizationService successfully implemented as central orchestrator
-
-**Implementation Quality**:
-- **Code Complete**: All interfaces and implementations finished with comprehensive error handling
-- **Compilation**: All services compile successfully with no errors (only warnings)
-- **Architecture**: Clean service composition following "Simple Made Easy" principles
-- **Test Infrastructure**: Integration tests created (some infrastructure debugging needed)
-
-#### Task 3.2.3 - ML Pipeline Integration (IMPLEMENTED ✅)
-**Focus**: Connect classification results to file organization following Task 3.2.3 requirements
-- ✅ Extended existing FileProcessingService from Sprint 2 with organization step after ML classification
-- ✅ Intelligent organization logic based on confidence scores and classification decisions
-- ✅ AutoClassify (≥0.85 confidence): Auto-organize immediately with rollback on failure  
-- ✅ SuggestWithAlternatives (≥0.50 confidence): Create preview for user confirmation
-- ✅ Other decisions: Leave for manual categorization with clear reasoning
-- ✅ Complete workflow: File dequeue → ML classification → automatic organization or staging
-- ✅ Comprehensive error handling ensuring organization failures don't block ML processing
-- ✅ No new services created - enhanced existing workflow as specified
-
-#### Sprint 3.2 Status: **ALL TASKS COMPLETE** ✅
-
-**🎉 MAJOR MILESTONE**: Complete file operations & automation pipeline implemented
-- **Task 3.2.1**: ✅ FileOrganizationService (741 lines) - Central workflow coordinator  
-- **Task 3.2.2**: ✅ RollbackService (443 lines) - Comprehensive rollback capabilities
-- **Task 3.2.3**: ✅ ML Pipeline Integration - Intelligent auto-organization based on ML confidence
-
-**Implementation Quality**:
-- **Architecture**: Clean service composition maintaining "Simple Made Easy" principles
-- **Workflow**: Complete ML → Organization → Rollback pipeline with proper error handling
-- **Integration**: Seamless connection between classification and organization systems
-- **Compilation**: All services compile successfully with no errors
-
-### Configuration Architecture Simplification ✅ COMPLETE
-
-#### **Major Architectural Change - Static Configuration Only**
-Following "Simple Made Easy" principles, the system has been simplified to use **pure static configuration** from `appsettings.json` only:
-
-**✅ Removed Database-Driven Configuration:**
-- **ConfigurationSetting entity** - Eliminated hybrid static/dynamic configuration
-- **ConfigurationService and IConfigurationService** - Replaced with direct `IConfiguration` usage
-- **Configuration API endpoints** (`/api/config/*`) - Removed configuration management APIs
-- **Configuration UI components** - Eliminated dynamic configuration management interface
-- **Database migration created** - `DropConfigurationSettingsTable.cs` for clean schema update
-
-**✅ Simplified Service Dependencies:**
-- **PathGenerationService** - Now uses `IConfiguration` directly for media library path loading
-- **FileDiscoveryService** - Uses only static configuration from `appsettings.json` for watch folders
-- **Clean Architecture** - Eliminated complex configuration service layer
-
-**✅ Benefits Achieved:**
-- **Reduced Complexity** - No more hybrid configuration logic to maintain
-- **Improved Reliability** - Static configuration eliminates runtime configuration failures
-- **Cleaner Codebase** - Removed 500+ lines of configuration management code
-- **Better Performance** - No database queries for configuration loading
-- **ARM32 Optimization** - Reduced memory footprint by eliminating configuration caching
-
-### Sprint 4 Implementation Status 🚧 IN PROGRESS
-
-#### Task 4.2.1 - File Listing Component ✅ COMPLETE
-**Implementation**: Interactive file listing with real-time updates and responsive design
-- ✅ File grid/list view with status filtering capabilities
-- ✅ Search and sorting functionality for large file collections
-- ✅ Real-time status updates via SignalR integration
-- ✅ Responsive design optimized for desktop and mobile devices
-- ✅ Integration with existing API endpoints for seamless data flow
-
-#### Task 4.2.2 - File Details and Review Modal ✅ COMPLETE
-**Implementation**: Comprehensive modal for file preview and user confirmation workflows
-- ✅ Detailed file metadata display with thumbnail previews
-- ✅ User confirmation workflow with category selection
-- ✅ Integration with ML classification suggestions and confidence scores
-- ✅ Batch operations support for multiple file processing
-- ✅ Error handling and user feedback mechanisms
-
-#### Task 4.2.3 - Centralized SignalR Notification Management ✅ COMPLETE
-**Implementation**: Complete real-time notification system with centralized management
-- ✅ ISignalRNotificationService interface with subscription-based event handling
-- ✅ SignalRNotificationService implementation with automatic reconnection and error handling
-- ✅ Strongly-typed notification models (FileDiscovery, FileProcessing, SystemStatus, Error)
-- ✅ Files.razor refactored to use centralized service (replaced 70+ lines with 4 subscriptions)
-- ✅ Connection state management with statistics and health monitoring
-- ✅ Proper resource cleanup and subscription management
-
-#### Task 4.2.4 - Dashboard Components 🚧 NEXT
-**Focus**: System overview with real-time metrics and health monitoring
-- 🚧 System performance metrics dashboard with memory and CPU usage
-- 🚧 File processing statistics and throughput monitoring
-- 🚧 ML model accuracy tracking and confidence score distributions
-- 🚧 Real-time queue status and background service health checks
-- 🚧 ARM32 resource optimization indicators and alerts
-
-#### Task 4.2.5 - User Experience Polish (UPDATED SCOPE)
-**Planned**: Final UX improvements and accessibility enhancements
-- Loading states, animations, and user feedback improvements
-- Accessibility compliance (WCAG 2.1 guidelines)
-- Cross-browser compatibility testing and optimization
-- **Note**: Configuration Management UI removed due to static configuration simplification
-
-#### Sprint 4 Status: **80% COMPLETE** 🚧
-**Progress Summary**:
-- **Completed**: File listing, detail modal, and centralized SignalR notification management
-- **In Progress**: Dashboard components for system monitoring and oversight
-- **Remaining**: Final UX polish for production readiness
-- **Architecture**: Blazor WebAssembly with clean API integration and centralized real-time communication
-
-**Next Steps**: Complete dashboard implementation with real-time metrics, then proceed with final UX polish
-
 ## Architecture - "Simple Made Easy"
 
 **Vertical Slice Architecture** over traditional layered architecture, following Rich Hickey's "Simple Made Easy" principles:
 - **Compose, Don't Complect**: Independent components rather than braided layers
-- **Values Over State**: Immutable data structures and explicit result patterns  
+- **Values Over State**: Immutable data structures and explicit result patterns
 - **Declarative Over Imperative**: Clear, intention-revealing code
 - **Single Responsibility**: Each component has one role/task/objective
 
@@ -275,7 +66,7 @@ MediaButler.API/Controllers/
 - **Repository Pattern**: Data access abstraction with UnitOfWork
 - **Dependency Injection**: Service layer composition via built-in DI
 - **Global Filters**: Model validation and exception handling
-- **Background Services**: Separate processing from HTTP requests  
+- **Background Services**: Separate processing from HTTP requests
 - **Options Pattern**: Strongly-typed configuration
 - **BaseEntity Pattern**: Consistent audit trail and soft delete across all entities
 
@@ -287,7 +78,7 @@ Controllers → Services → Repositories → Data Access
 
 **Technology Stack:**
 - .NET 8 with C# 12
-- SQLite with Entity Framework Core  
+- SQLite with Entity Framework Core
 - ASP.NET Core Web API with Controllers
 - Serilog for logging
 - Swagger for API documentation
@@ -581,11 +372,11 @@ This project strictly adheres to Rich Hickey's "Simple Made Easy" principles:
 
 ### Avoid These Complexity Sources
 - **State** (complects value and time)
-- **Objects** (complect state, identity, and behavior) 
+- **Objects** (complect state, identity, and behavior)
 - **Inheritance** (complects types and implementations)
 - **Loops/Fold** (complect what, how, and order)
 - **Conditionals/Case** (complect decisions and actions)
-- **Syntax** (complect meaning and structure)
+- **Syntax** (complects meaning and structure)
 
 ### Prefer These Simple Alternatives
 - **Functions** (inputs → outputs, no hidden state)
@@ -669,7 +460,7 @@ CREATE TABLE SeriesPatterns (
 - **Architecture**: Lightweight UI shell consuming REST API
 
 ### **MAUI Android (.NET 9)**
-**Suggested Project**: `src/MediaButler.Mobile`  
+**Suggested Project**: `src/MediaButler.Mobile`
 - **Why .NET 9**: Latest performance improvements for mobile
 - **Why Android Only**: Aligns with NAS/home server use case
 - **Dependencies**: `MediaButler.API.Contracts` for API communication
@@ -749,10 +540,10 @@ public class TokenizerServiceTests
     {
         // Given - Arrange
         var tokenizer = new TokenizerService();
-        
+
         // When - Act
         var result = tokenizer.ExtractSeriesName(filename);
-        
+
         // Then - Assert
         result.Should().Be(expected);
     }
@@ -782,16 +573,16 @@ public class FileClassificationIntegrationTests : IClassFixture<DatabaseFixture>
         using var scope = _serviceProvider.CreateScope();
         var classifier = scope.ServiceProvider.GetRequiredService<IClassificationService>();
         var repository = scope.ServiceProvider.GetRequiredService<IFileRepository>();
-        
+
         var testFile = new TrackedFile { /* ... */ };
-        
+
         // When
         var result = await classifier.ClassifyAsync(testFile);
-        
+
         // Then
         result.Category.Should().NotBeNull();
         result.Confidence.Should().BeGreaterThan(0.5);
-        
+
         var savedFile = await repository.GetByHashAsync(testFile.Hash);
         savedFile.Category.Should().Be(result.Category);
     }
@@ -820,22 +611,22 @@ public class FileProcessingAcceptanceTests : IClassFixture<ApiFixture>
         // Given - API client and test file
         var client = _factory.CreateClient();
         var testFile = CreateTestVideoFile("The.Office.S01E01.mkv");
-        
+
         // When - Complete workflow
         await client.PostAsync("/api/scan/folder", new { path = testFile.Directory });
-        
+
         var pendingFiles = await client.GetFromJsonAsync<TrackedFile[]>("/api/pending");
         var fileToConfirm = pendingFiles.Should().ContainSingle().Subject;
-        
-        await client.PostAsync($"/api/files/{fileToConfirm.Hash}/confirm", 
+
+        await client.PostAsync($"/api/files/{fileToConfirm.Hash}/confirm",
             new { category = "THE OFFICE" });
-        
+
         await client.PostAsync($"/api/files/{fileToConfirm.Hash}/move");
-        
+
         // Then - Verify final state
         var processedFile = await client.GetFromJsonAsync<TrackedFile>(
             $"/api/files/{fileToConfirm.Hash}");
-        
+
         processedFile.Status.Should().Be(FileStatus.Moved);
         processedFile.MovedToPath.Should().Contain("THE OFFICE");
         File.Exists(processedFile.MovedToPath).Should().BeTrue();
@@ -888,7 +679,7 @@ public class FileProcessingAcceptanceTests : IClassFixture<ApiFixture>
 # Fast feedback loop (unit tests only)
 dotnet test tests/MediaButler.Tests.Unit
 
-# Full confidence (all tests)  
+# Full confidence (all tests)
 dotnet test
 
 # CI/CD pipeline (with coverage and reporting)
@@ -906,96 +697,3 @@ dotnet test --collect:"XPlat Code Coverage" --logger:trx
 - **Web UI Testing**: Component rendering and user interaction validation
 
 This testing strategy ensures MediaButler maintains high quality while following "Simple Made Easy" principles - tests serve as reasoning tools about system behavior rather than complex safety nets that mask underlying complexity.
-
-## Development Workflow Pattern
-
-### **Safe Development with Git Checkpoints**
-
-Follow this pattern for all significant code changes to ensure safe, reversible development:
-
-#### **1. Start Task Commit**
-Before beginning any substantial update or feature implementation:
-```bash
-git add .
-git commit -m "start task: [brief description of what you're about to implement]"
-```
-
-**Examples:**
-```bash
-git commit -m "start task: implement BaseEntity with audit trail support"
-git commit -m "start task: add comprehensive test suite with 120+ tests"
-git commit -m "start task: implement file tokenization service"
-git commit -m "start task: add ML classification pipeline"  
-git commit -m "start task: create file movement background service"
-git commit -m "start task: refactor API endpoints to vertical slices"
-```
-
-#### **2. Implementation Phase**
-- Make incremental changes following "Simple Made Easy" principles
-- Test frequently during development
-- Keep changes focused on the stated task
-- Maintain BaseEntity audit trail across all entities
-
-#### **3. Completion Review**
-After completing all updates, always ask the user:
-```
-Task "[description]" implementation complete.
-
-Would you like to:
-1. **Save the updates** - Commit the changes permanently
-2. **Revert the changes** - Return to the "start task" checkpoint
-
-Please choose your preferred action.
-```
-
-#### **4. User Decision**
-- **Save**: Create a descriptive commit with the completed work
-- **Revert**: Use `git reset --hard HEAD~[number_of_commits]` to return to the start checkpoint
-
-### **Benefits of This Pattern**
-
-#### **Risk Mitigation**
-- **Safe Experimentation**: Try different approaches without fear
-- **Easy Rollback**: Return to known-good state instantly
-- **Clear Boundaries**: Each task has defined start and end points
-
-#### **Development Confidence**
-- **Checkpoint Security**: Always have a safe point to return to
-- **User Control**: Final decision on keeping or discarding changes
-- **Incremental Progress**: Small, manageable chunks of work
-
-#### **Code Quality**
-- **Focused Changes**: Each task addresses one specific area
-- **Review Opportunity**: User can evaluate each completed task
-- **Clean History**: Clear commit messages describing work progression
-
-### **Example Workflow**
-```bash
-# 1. Start new task
-git commit -m "start task: implement BaseEntity with soft delete support"
-
-# 2. Make changes (implementation phase)
-# ... develop BaseEntity abstract class
-# ... update all domain entities to inherit from BaseEntity
-# ... add unit tests for BaseEntity behavior
-# ... update repository pattern with soft delete support
-
-# 3. Completion review
-# Ask user: Save updates or revert?
-
-# 4a. If save:
-git add .
-git commit -m "implement BaseEntity with comprehensive audit support
-
-- Add BaseEntity abstract class with CreatedDate, LastUpdateDate, Note, IsActive
-- Update all domain entities to inherit from BaseEntity
-- Implement soft delete functionality with helper methods
-- Add repository support for soft delete queries  
-- Include comprehensive unit tests for BaseEntity behavior
-- Follow Simple Made Easy principles with clear separation of concerns"
-
-# 4b. If revert:
-git reset --hard HEAD~1  # Back to "start task" commit
-```
-
-This pattern ensures all development work is safe, reversible, and under user control, maintaining confidence while following the "Simple Made Easy" philosophy of clear, reasoned decision-making.

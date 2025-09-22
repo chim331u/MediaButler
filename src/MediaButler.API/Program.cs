@@ -12,8 +12,11 @@ using MediaButler.API.Services;
 using MediaButler.ML.Extensions;
 using MediaButler.Services.Background;
 using MediaButler.Services.FileOperations;
+using MediaButler.Services.Extensions;
 using Serilog;
 using Serilog.Events;
+using FluentValidation;
+using FluentValidation.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -54,6 +57,12 @@ builder.Services.AddScoped<IErrorClassificationService, ErrorClassificationServi
 builder.Services.AddScoped<IFileOrganizationService, FileOrganizationService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 
+// Add batch file processing services
+builder.Services.AddScoped<IFileActionsService, FileActionsService>();
+
+// Add custom background task queue (lightweight alternative to Hangfire)
+builder.Services.AddCustomBackgroundTaskQueue(100); // ARM32 optimized queue
+
 // Add SignalR services
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<ISignalRNotificationService, SignalRNotificationService>();
@@ -71,12 +80,19 @@ builder.Services.AddMediaButlerML(builder.Configuration);
 // Add background processing services with configuration
 builder.Services.AddBackgroundServices(builder.Configuration);
 
+// Add FluentValidation
+builder.Services.AddFluentValidationAutoValidation()
+    .AddFluentValidationClientsideAdapters();
+
+// Register validators
+builder.Services.AddValidatorsFromAssemblyContaining<Program>();
+
 // Add API services with validation
 builder.Services.AddControllers(options =>
 {
     // Add global model validation filter
     options.Filters.Add<ModelValidationFilter>();
-    
+
     // Configure JSON options for consistent formatting
     options.RespectBrowserAcceptHeader = true;
     options.ReturnHttpNotAcceptable = true;
@@ -142,6 +158,10 @@ if (app.Environment.IsDevelopment())
         c.DisplayRequestDuration();
         c.EnableValidator();
     });
+
+    // Background task queue monitoring available via API endpoints
+    // GET /api/v1/file-actions/batch-status/{id} for job status
+    // GET /api/v1/file-actions/batch-jobs for job list
 }
 
 // Add request/response logging first for complete request tracking
@@ -169,8 +189,9 @@ app.UseCors("AllowAll");
 // Map controllers
 app.MapControllers();
 
-// Map SignalR hub
+// Map SignalR hubs
 app.MapHub<NotificationHub>("/notifications");
+app.MapHub<FileProcessingHub>("/file-processing");
 
 // Enhanced root endpoint with API information
 app.MapGet("/", () => new
