@@ -189,9 +189,9 @@
             <Items>
                 <RadzenSelectBarItem Text="ALL" Value="@("ALL")" Icon="list" />
                 <RadzenSelectBarItem Text="To Classify" Value="@("TO_CLASSIFY")" Icon="psychology" />
-                <RadzenSelectBarItem Text="Ready To Move" Value="@("READY_TO_MOVE")" Icon="check_circle" />
-                <RadzenSelectBarItem Text="Error" Value="@("ERROR")" Icon="error" />
-                <RadzenSelectBarItem Text="Ignored" Value="@("IGNORED")" Icon="visibility_off" />
+                <RadzenSelectBarItem Text="Ready To Move" Value="@("ReadyToMove")" Icon="check_circle" />
+                <RadzenSelectBarItem Text="Error" Value="@("Error")" Icon="error" />
+                <RadzenSelectBarItem Text="Ignored" Value="@("Ignored")" Icon="visibility_off" />
             </Items>
         </RadzenSelectBar>
 
@@ -209,7 +209,11 @@
             Size="ButtonSize.Large" />
 
         <RadzenButton ButtonStyle="ButtonStyle.Primary" Icon="drive_file_move" Variant="Variant.Flat" Text="Move"
-            Shade="Shade.Default" Size="ButtonSize.Medium" Class="my-1 ms-1" Click="MoveFiles">
+            Shade="Shade.Default" Size="ButtonSize.Medium" Class="my-1 ms-1" Click="MoveFiles"
+            Disabled="@(!HasFilesToMove)"
+            title="@GetMoveButtonTooltip()"
+            IsBusy="@_busyMove"
+            BusyText="Moving files...">
         </RadzenButton>
     </RadzenRow>
 
@@ -504,15 +508,32 @@
     private bool _busyRefresh = false;
     private bool _busyTrain = false;
     private bool _busyScan = false;
+    private bool _busyMove = false;
     private IEnumerable<FileManagementDto>? _fileList;
     private IEnumerable<string> _categories = new List<string>();
     private string _newCategory = string.Empty;
     private string _consoleText = string.Empty;
     private int _addCategory = 0;
-    private string _selectedStatusGroup = "TO_CLASSIFY";
+    private string _selectedStatusGroup = "TO_CLASSIFY"; // Default to "To Classify"
 
     // Centralized SignalR notification subscriptions
     private readonly List<IDisposable> _notificationSubscriptions = new();
+
+    // Batch job tracking
+    private string? _currentBatchJobId;
+
+    // Helper properties for move button state
+    private bool HasFilesToMove => _fileList?.Any(f => f.IsNotToMove && !string.IsNullOrEmpty(f.FileCategory)) == true;
+
+    private string GetMoveButtonTooltip()
+    {
+        if (_fileList == null) return "Loading files...";
+
+        var filesToMove = _fileList.Where(f => f.IsNotToMove && !string.IsNullOrEmpty(f.FileCategory)).ToList();
+        if (!filesToMove.Any()) return "No files ready to move. Schedule files first.";
+
+        return $"Move {filesToMove.Count} file(s) to their target locations";
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -538,7 +559,25 @@
             var fileProcessingSubscription = SignalRService.SubscribeToFileProcessing((fileHash, status, details) =>
             {
                 WriteConsole($"File processing update: {status} - {details}");
-                if (status == "Completed" && _fileList != null)
+
+                // Handle batch operation notifications
+                if (status.Contains("Batch") && !string.IsNullOrEmpty(_currentBatchJobId))
+                {
+                    if (status == "BatchCompleted")
+                    {
+                        WriteConsole($"Batch operation completed: {details}");
+                        InvokeAsync(RefreshFilesAsync);
+                    }
+                    else if (status == "BatchProgress")
+                    {
+                        WriteConsole($"Batch progress: {details}");
+                    }
+                    else if (status == "BatchFailed")
+                    {
+                        WriteConsole($"Batch operation failed: {details}");
+                    }
+                }
+                else if (status == "Completed" && _fileList != null)
                 {
                     // Refresh the current view to show updated file statuses
                     InvokeAsync(RefreshFileListAsync);
@@ -865,40 +904,143 @@
 
     private async Task MoveFiles()
     {
-        var filesToMove = _fileList?.Where(f => f.IsNotToMove).ToList() ?? new List<FileManagementDto>();
+        var filesToMove = _fileList?.Where(f => f.IsNotToMove && !string.IsNullOrEmpty(f.FileCategory)).ToList() ?? new List<FileManagementDto>();
 
         if (!filesToMove.Any())
         {
-            WriteConsole("No files scheduled for moving");
+            WriteConsole("No files scheduled for moving or missing categories");
             return;
         }
 
-        WriteConsole($"Moving {filesToMove.Count} file(s)...");
+        _busyMove = true;
+        WriteConsole($"Starting batch move operation for {filesToMove.Count} file(s)...");
 
         try
         {
-            foreach (var file in filesToMove)
+            // Create the batch organize request
+            var batchRequest = new MediaButler.Web.Services.BatchOrganizeRequestDto
             {
-                if (!string.IsNullOrEmpty(file.Hash) && !string.IsNullOrEmpty(file.TargetPath))
+                Files = filesToMove.Select(f => new MediaButler.Web.Services.FileActionDto
                 {
-                    var result = await FilesApiService.MarkFileAsMovedAsync(file.Hash, file.TargetPath!);
+                    Hash = f.Hash!,
+                    ConfirmedCategory = f.FileCategory!,
+                    CustomTargetPath = f.TargetPath
+                }).ToList(),
+                BatchName = $"Web UI Batch Move - {DateTime.Now:yyyy-MM-dd HH:mm:ss}",
+                ContinueOnError = true,
+                ValidateTargetPaths = true,
+                CreateDirectories = true,
+                DryRun = false,
+                MaxConcurrency = 2 // ARM32 friendly
+            };
 
-                    if (result.IsSuccess)
-                    {
-                        WriteConsole($"Successfully moved: {file.Name}");
-                    }
-                    else
-                    {
-                        WriteConsole($"Failed to move {file.Name}: {result.Error}");
-                    }
-                }
+            // Submit the batch job
+            var result = await FilesApiService.OrganizeBatchAsync(batchRequest);
+
+            if (result.IsSuccess)
+            {
+                _currentBatchJobId = result.Value.JobId;
+                WriteConsole($"Batch job started successfully. Job ID: {_currentBatchJobId}");
+                WriteConsole($"Processing {result.Value.TotalFiles} files in background...");
+
+                // Start monitoring the job progress
+                _ = Task.Run(async () => await MonitorBatchJobAsync(_currentBatchJobId));
             }
-
-            await RefreshFileListAsync();
+            else
+            {
+                WriteConsole($"Failed to start batch move: {result.Error}");
+            }
         }
         catch (Exception ex)
         {
-            WriteConsole($"Move operation error: {ex.Message}");
+            WriteConsole($"Batch move operation error: {ex.Message}");
+        }
+        finally
+        {
+            _busyMove = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task MonitorBatchJobAsync(string jobId)
+    {
+        const int maxAttempts = 60; // 5 minutes max (5 second intervals)
+        var attempts = 0;
+
+        try
+        {
+            while (attempts < maxAttempts)
+            {
+                await Task.Delay(5000); // Check every 5 seconds
+                attempts++;
+
+                var statusResult = await FilesApiService.GetBatchStatusAsync(jobId, includeDetails: true);
+
+                if (statusResult.IsSuccess)
+                {
+                    var status = statusResult.Value;
+
+                    await InvokeAsync(() =>
+                    {
+                        WriteConsole($"Batch job progress: {status.ProcessedFiles}/{status.TotalFiles} files processed ({status.ProgressPercentage}%)");
+
+                        if (status.Status == "Completed")
+                        {
+                            WriteConsole($"Batch job completed! {status.SuccessfulFiles} successful, {status.FailedFiles} failed");
+                            if (status.Errors.Any())
+                            {
+                                foreach (var error in status.Errors)
+                                {
+                                    WriteConsole($"Error: {error}");
+                                }
+                            }
+
+                            // Refresh the file list to show updated statuses
+                            _ = Task.Run(async () => await RefreshFileListAsync());
+                            return;
+                        }
+                        else if (status.Status == "Failed" || status.Status == "Cancelled")
+                        {
+                            WriteConsole($"Batch job {status.Status.ToLower()}: {string.Join(", ", status.Errors)}");
+                            return;
+                        }
+
+                        StateHasChanged();
+                    });
+
+                    // If job is still running, continue monitoring
+                    if (status.Status == "Completed" || status.Status == "Failed" || status.Status == "Cancelled")
+                    {
+                        break;
+                    }
+                }
+                else
+                {
+                    await InvokeAsync(() =>
+                    {
+                        WriteConsole($"Failed to get batch job status: {statusResult.Error}");
+                        StateHasChanged();
+                    });
+                    break;
+                }
+            }
+
+            if (attempts >= maxAttempts)
+            {
+                await InvokeAsync(() =>
+                {
+                    WriteConsole("Batch job monitoring timeout. Check job status manually.");
+                    StateHasChanged();
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            await InvokeAsync(() =>
+            {
+                WriteConsole($"Batch job monitoring error: {ex.Message}");
+                StateHasChanged();
+            });
         }
     }
 
