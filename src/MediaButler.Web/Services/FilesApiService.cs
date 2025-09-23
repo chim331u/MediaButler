@@ -22,6 +22,17 @@ public interface IFilesApiService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Gets tracked files with pagination and filtering by multiple status values.
+    /// Enables efficient querying across multiple processing states.
+    /// </summary>
+    Task<Result<IReadOnlyList<FileManagementDto>>> GetFilesByStatusesAsync(
+        int skip = 0,
+        int take = 20,
+        string[] statuses = null!,
+        string? category = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Gets a specific tracked file by its hash.
     /// </summary>
     Task<Result<FileManagementDto>> GetFileAsync(
@@ -144,6 +155,50 @@ public class FilesApiService : IFilesApiService
         catch (Exception ex)
         {
             return Result<IReadOnlyList<FileManagementDto>>.Failure($"Failed to get files: {ex.Message}");
+        }
+    }
+
+    public async Task<Result<IReadOnlyList<FileManagementDto>>> GetFilesByStatusesAsync(
+        int skip = 0,
+        int take = 20,
+        string[] statuses = null!,
+        string? category = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var queryParams = new List<string>
+            {
+                $"skip={skip}",
+                $"take={take}"
+            };
+
+            if (statuses != null && statuses.Length > 0)
+            {
+                foreach (var status in statuses)
+                {
+                    if (!string.IsNullOrWhiteSpace(status))
+                        queryParams.Add($"statuses={Uri.EscapeDataString(status)}");
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(category))
+                queryParams.Add($"category={Uri.EscapeDataString(category)}");
+
+            var query = string.Join("&", queryParams);
+            var result = await _httpClient.GetAsync<TrackedFileResponse[]>($"/api/files/by-statuses?{query}", cancellationToken);
+
+            if (!result.IsSuccess)
+            {
+                return Result<IReadOnlyList<FileManagementDto>>.Failure(result.Error, result.StatusCode);
+            }
+
+            var files = result.Value?.Select(MapToFileManagementDto).ToList() ?? new List<FileManagementDto>();
+            return Result<IReadOnlyList<FileManagementDto>>.Success(files);
+        }
+        catch (Exception ex)
+        {
+            return Result<IReadOnlyList<FileManagementDto>>.Failure($"Failed to get files by statuses: {ex.Message}");
         }
     }
 

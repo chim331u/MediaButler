@@ -184,19 +184,14 @@
         @*     IsBusy="@busyRefresh" Text="Refresh" *@
         @*     BusyText="Wait ..." /> *@
 
-        <RadzenSelectBar @bind-Value="@_selectedFileStatus" TValue="int" Change="@(args => OnChangeStatusFilter(args))"
+        <RadzenSelectBar @bind-Value="@_selectedStatusGroup" TValue="string" Change="@(args => OnChangeStatusFilter(args))"
                          Style="margin: 0 1rem;" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Medium">
             <Items>
-                <RadzenSelectBarItem Text="ALL" Value="-1" Icon="list" />
-                <RadzenSelectBarItem Text="New" Value="@((int)FileStatus.New)" Icon="fiber_new" />
-                <RadzenSelectBarItem Text="Processing" Value="@((int)FileStatus.Processing)" Icon="autorenew" />
-                <RadzenSelectBarItem Text="Classified" Value="@((int)FileStatus.Classified)" Icon="label" />
-                <RadzenSelectBarItem Text="Ready To Move" Value="@((int)FileStatus.ReadyToMove)" Icon="check_circle" />
-                <RadzenSelectBarItem Text="Moving" Value="@((int)FileStatus.Moving)" Icon="sync" />
-                <RadzenSelectBarItem Text="Moved" Value="@((int)FileStatus.Moved)" Icon="done_all" />
-                <RadzenSelectBarItem Text="Error" Value="@((int)FileStatus.Error)" Icon="error" />
-                <RadzenSelectBarItem Text="Retry" Value="@((int)FileStatus.Retry)" Icon="refresh" />
-                <RadzenSelectBarItem Text="Ignored" Value="@((int)FileStatus.Ignored)" Icon="visibility_off" />
+                <RadzenSelectBarItem Text="ALL" Value="@("ALL")" Icon="list" />
+                <RadzenSelectBarItem Text="To Classify" Value="@("TO_CLASSIFY")" Icon="psychology" />
+                <RadzenSelectBarItem Text="Ready To Move" Value="@("READY_TO_MOVE")" Icon="check_circle" />
+                <RadzenSelectBarItem Text="Error" Value="@("ERROR")" Icon="error" />
+                <RadzenSelectBarItem Text="Ignored" Value="@("IGNORED")" Icon="visibility_off" />
             </Items>
         </RadzenSelectBar>
 
@@ -533,7 +528,7 @@
     private string _newCategory = string.Empty;
     private string _consoleText = string.Empty;
     private int _addCategory = 0;
-    private int _selectedFileStatus = (int)FileStatus.Classified;
+    private string _selectedStatusGroup = "ALL";
 
     // Centralized SignalR notification subscriptions
     private readonly List<IDisposable> _notificationSubscriptions = new();
@@ -541,7 +536,7 @@
     protected override async Task OnInitializedAsync()
     {
         await InitializeNotificationSubscriptionsAsync();
-        await RefreshFilesAsync();
+        await RefreshFileListAsync();
     }
 
     private async Task InitializeNotificationSubscriptionsAsync()
@@ -552,7 +547,7 @@
             var fileDiscoverySubscription = SignalRService.SubscribeToFileDiscovery((fileName, filePath, discoveredAt) =>
             {
                 WriteConsole($"New file discovered: {fileName}");
-                InvokeAsync(RefreshFilesAsync);
+                InvokeAsync(RefreshWithAllStatusAsync); // Auto-switch to ALL status and refresh
                 InvokeAsync(StateHasChanged);
             });
             _notificationSubscriptions.Add(fileDiscoverySubscription);
@@ -563,8 +558,8 @@
                 WriteConsole($"File processing update: {status} - {details}");
                 if (status == "Completed" && _fileList != null)
                 {
-                    // Remove completed files from the list or update their status
-                    InvokeAsync(RefreshFilesAsync);
+                    // Refresh the current view to show updated file statuses
+                    InvokeAsync(RefreshFileListAsync);
                 }
                 InvokeAsync(StateHasChanged);
             });
@@ -719,44 +714,26 @@
         {
             _busyRefresh = false;
         }
-        
-        
     }
 
     private async Task RefreshFileListAsync()
     {
         try
         {
-            // Determine the status parameter based on selected FileStatus
-            string? statusParam = null;
-            if (_selectedFileStatus != -1) // -1 means "ALL"
-            {
-                var targetStatus = (FileStatus)_selectedFileStatus;
-                statusParam = targetStatus switch
-                {
-                    FileStatus.Classified => "Classified",
-                    FileStatus.New => "New",
-                    FileStatus.Processing => "Processing",
-                    FileStatus.ReadyToMove => "ReadyToMove",
-                    FileStatus.Moving => "Moving",
-                    FileStatus.Moved => "Moved",
-                    FileStatus.Error => "Error",
-                    FileStatus.Retry => "Retry",
-                    FileStatus.Ignored => "Ignored",
-                    _ => null
-                };
-            }
+            // Define status groups for the new API approach
+            var statusGroups = GetStatusesForGroup(_selectedStatusGroup);
 
-            var apiResult = await FilesApiService.GetFilesAsync(
+            var apiResult = await FilesApiService.GetFilesByStatusesAsync(
                 skip: 0,
                 take: 100, // API maximum limit is 100 records per request
-                status: statusParam,
-                category: null
+                statuses: statusGroups,
+                category: null // No category filter - get all categories
             );
 
             if (apiResult.IsSuccess && apiResult.Value != null)
             {
-                _fileList = ApplyFilter(apiResult.Value);
+                _fileList = apiResult.Value;
+                WriteConsole($"Loaded {apiResult.Value.Count} files for '{_selectedStatusGroup}' group");
             }
             else
             {
@@ -773,32 +750,34 @@
         StateHasChanged();
     }
 
-    private IEnumerable<FileManagementDto> ApplyFilter(IEnumerable<FileManagementDto> files)
+    private string[] GetStatusesForGroup(string statusGroup)
     {
-        // If "ALL" is selected (value -1), return all files
-        if (_selectedFileStatus == -1)
-            return files;
-
-        // Filter by specific FileStatus
-        var targetStatus = (FileStatus)_selectedFileStatus;
-        return targetStatus switch
+        return statusGroup switch
         {
-            FileStatus.New => files.Where(f => f.IsNew),
-            FileStatus.Processing => files.Where(f => f.Status?.Contains("Processing") == true),
-            FileStatus.Classified => files.Where(f => f.IsToCategorize),
-            FileStatus.ReadyToMove => files.Where(f => f.Status?.Contains("Ready") == true),
-            FileStatus.Moving => files.Where(f => f.Status?.Contains("Moving") == true),
-            FileStatus.Moved => files.Where(f => f.IsNotToMove && f.Status?.Contains("Moved") == true),
-            FileStatus.Error => files.Where(f => f.Status?.Contains("Error") == true),
-            FileStatus.Retry => files.Where(f => f.Status?.Contains("Retry") == true),
-            FileStatus.Ignored => files.Where(f => f.Status?.Contains("Ignored") == true),
-            _ => files
+            "ALL" => new[] { "New", "Processing", "Classified", "ReadyToMove", "Moving", "Moved", "Error", "Retry", "Ignored" },
+            "TO_CLASSIFY" => new[] { "New", "Processing", "Classified" },
+            "READY_TO_MOVE" => new[] { "ReadyToMove" },
+            "ERROR" => new[] { "Retry", "Error" },
+            "IGNORED" => new[] { "Ignored" },
+            _ => new[] { "New", "Processing", "Classified", "ReadyToMove", "Moving", "Moved", "Error", "Retry", "Ignored" } // Default to ALL
         };
     }
 
     private async Task OnChangeStatusFilter(object value)
     {
+        WriteConsole($"Status filter changed to: {_selectedStatusGroup}");
         await RefreshFileListAsync();
+    }
+
+    // Helper method to refresh files with ALL status (for SignalR notifications)
+    private async Task RefreshWithAllStatusAsync()
+    {
+        var previousSelection = _selectedStatusGroup;
+        _selectedStatusGroup = "ALL";
+        WriteConsole("Auto-refreshing with ALL status due to new file detection");
+        await RefreshFileListAsync();
+        // Optionally restore previous selection or keep ALL
+        // _selectedStatusGroup = previousSelection;
     }
 
     private async Task ScanFolders()
@@ -812,7 +791,15 @@
             if (result.IsSuccess)
             {
                 WriteConsole($"Scan completed: {result.Value.FilesDiscovered} files discovered");
-                await RefreshFileListAsync();
+                if (result.Value.FilesDiscovered > 0)
+                {
+                    // Auto-switch to ALL status when new files are discovered
+                    await RefreshWithAllStatusAsync();
+                }
+                else
+                {
+                    await RefreshFileListAsync();
+                }
             }
             else
             {
@@ -1025,5 +1012,5 @@
     }
 
     // Alias method for compatibility
-    private async Task RefreshFiles() => await RefreshFilesAsync();
+    private async Task RefreshFiles() => await RefreshFileListAsync();
 }

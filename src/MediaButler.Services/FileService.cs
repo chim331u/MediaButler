@@ -511,6 +511,48 @@ public class FileService : IFileService
         }
     }
 
+    /// <summary>
+    /// Gets paginated list of tracked files filtered by multiple statuses.
+    /// </summary>
+    public async Task<Result<IEnumerable<TrackedFile>>> GetFilesPagedByStatusesAsync(
+        int skip,
+        int take,
+        IEnumerable<FileStatus> statuses,
+        string? category = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (skip < 0)
+            return Result<IEnumerable<TrackedFile>>.Failure("Skip must be non-negative");
+
+        if (take <= 0 || take > 1000)
+            return Result<IEnumerable<TrackedFile>>.Failure("Take must be between 1 and 1000");
+
+        if (statuses == null)
+            return Result<IEnumerable<TrackedFile>>.Failure("Statuses collection cannot be null");
+
+        var statusList = statuses.ToList();
+        if (!statusList.Any())
+            return Result<IEnumerable<TrackedFile>>.Failure("At least one status must be provided");
+
+        try
+        {
+            var files = await _trackedFileRepository.GetPagedAsync(
+                skip,
+                take,
+                predicate: f => statusList.Contains(f.Status) &&
+                              (category == null || f.Category == category),
+                orderBy: f => f.CreatedDate,
+                cancellationToken: cancellationToken);
+
+            return Result<IEnumerable<TrackedFile>>.Success(files);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get paged files by statuses");
+            return Result<IEnumerable<TrackedFile>>.Failure($"Failed to retrieve paged files by statuses: {ex.Message}");
+        }
+    }
+
     #region Private Helper Methods
 
     /// <summary>

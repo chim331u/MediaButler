@@ -56,9 +56,15 @@ MediaButler/
 #### Controller-Based Organization
 ```
 MediaButler.API/Controllers/
-├── FilesController.cs        # File operations and management
-├── StatsController.cs        # Statistics and monitoring
-└── HealthController.cs       # Health checks and diagnostics
+├── FilesController.cs           # File operations and management
+├── FileActionsController.cs     # Batch file processing operations
+├── StatsController.cs           # Statistics and monitoring
+├── HealthController.cs          # Health checks and diagnostics
+├── ProcessingController.cs      # Processing workflow management
+├── SystemController.cs          # System maintenance operations
+├── MetricsController.cs         # Performance metrics and monitoring
+├── NotificationTestController.cs # SignalR testing endpoints
+└── ExamplesController.cs        # API usage examples
 ```
 
 #### Key Patterns Used
@@ -66,7 +72,7 @@ MediaButler.API/Controllers/
 - **Repository Pattern**: Data access abstraction with UnitOfWork
 - **Dependency Injection**: Service layer composition via built-in DI
 - **Global Filters**: Model validation and exception handling
-- **Background Services**: Separate processing from HTTP requests
+- **Background Services**: Custom lightweight task queue system for ARM32 optimization
 - **Options Pattern**: Strongly-typed configuration
 - **BaseEntity Pattern**: Consistent audit trail and soft delete across all entities
 
@@ -131,6 +137,27 @@ dotnet run --project src/MediaButler.Web
 dotnet watch --project src/MediaButler.Web
 ```
 
+#### Web UI Status Filtering (Updated)
+
+The Web UI now features simplified status filtering with intelligent auto-refresh capabilities:
+
+**Status Groups**:
+- **ALL**: Displays files across all statuses and categories
+- **To Classify**: Shows files in New, Processing, or Classified states
+- **Ready To Move**: Shows files ready for organization (ReadyToMove status)
+- **Error**: Shows files in Retry or Error states requiring attention
+- **Ignored**: Shows files marked as ignored
+
+**Smart Auto-Refresh Features**:
+- **New File Detection**: When SignalR detects a new file, automatically switches to "ALL" view
+- **File Processing Updates**: Refreshes current view when file processing completes
+- **Scan Results**: Auto-switches to "ALL" when folder scan discovers new files
+
+**Technical Implementation**:
+- Uses new `GET /api/files/by-statuses` endpoint for efficient multi-status filtering
+- SignalR integration for real-time updates without manual refresh
+- Respects API pagination limits (max 100 records per request)
+
 ### Testing
 ```bash
 # Run all tests (target: 270+ tests)
@@ -156,11 +183,14 @@ dotnet test --filter "Category=Performance"
 # Add Entity Framework migration (with BaseEntity support)
 dotnet ef migrations add <MigrationName> --project src/MediaButler.Data --startup-project src/MediaButler.API
 
-# Update database
+# Update database (migrations are auto-applied on startup)
 dotnet ef database update --project src/MediaButler.Data --startup-project src/MediaButler.API
 
-# Drop database
+# Drop database (caution: destroys all data)
 dotnet ef database drop --project src/MediaButler.Data --startup-project src/MediaButler.API
+
+# View migration history
+dotnet ef migrations list --project src/MediaButler.Data --startup-project src/MediaButler.API
 ```
 
 ### Package Management
@@ -233,13 +263,61 @@ Additional states: ERROR, RETRY (max 3 attempts)
 
 Key endpoint categories:
 - **File Operations**: `/api/files/*` - CRUD operations for tracked files
-- **Bulk Operations**: `/api/pending`, `/api/confirm/bulk` - Mass operations
-- **ML Operations**: `/api/classify`, `/api/ml/train` - Classification and training
-- **Maintenance**: `/api/maintenance/*` - System maintenance tasks
-- **Real-time**: `/api/events` - Server-Sent Events for live updates
-- **Monitoring**: `/api/health`, `/api/stats` - System health and metrics
+  - `GET /api/files` - Get files with single status filter
+  - `GET /api/files/by-statuses` - **NEW**: Get files with multiple status filters
+- **Batch Operations**: `/api/v1/file-actions/*` - Batch file processing and organization
+- **Processing**: `/api/processing/*` - File processing workflows and ML operations
+- **System Operations**: `/api/system/*` - System maintenance and configuration
+- **Monitoring**: `/api/health`, `/api/stats`, `/api/metrics/*` - System health and metrics
+- **Real-time**: SignalR hubs at `/notifications` and `/file-processing` - Live updates
+
+### New Multi-Status File Endpoint
+
+**Endpoint**: `GET /api/files/by-statuses`
+
+**Purpose**: Retrieve tracked files filtered by multiple status values, enabling efficient querying across multiple processing states.
+
+**Parameters**:
+- `skip` (int, default: 0) - Number of files to skip for pagination
+- `take` (int, default: 20, max: 100) - Number of files to return
+- `statuses` (string array, required) - Array of status values to filter by
+- `category` (string, optional) - Category filter
+
+**Example Usage**:
+```http
+GET /api/files/by-statuses?statuses=ReadyToMove&statuses=Moving&statuses=Moved&skip=0&take=50
+GET /api/files/by-statuses?statuses=New&statuses=Processing&statuses=Classified&category=TV%20SERIES
+```
+
+**Response**: Array of TrackedFileResponse objects matching any of the specified statuses.
 
 **Note**: Configuration endpoints (`/api/config/*`) removed in favor of static `appsettings.json` configuration.
+
+## Background Processing Architecture
+
+The system uses a custom lightweight background task queue as an ARM32-optimized alternative to Hangfire:
+
+### Key Components
+- **BackgroundTaskQueue**: Thread-safe queue with configurable capacity (default: 100)
+- **QueuedHostedService**: Background service that processes queued tasks
+- **CustomBatchFileProcessor**: Handles batch file operations with progress tracking
+- **FileActionsService**: Orchestrates batch operations and provides status monitoring
+
+### Queue Usage Pattern
+```csharp
+// Queue a batch processing job
+var jobId = taskQueue.QueueBatchFileProcessing(operations, request);
+
+// Monitor job status via API
+GET /api/v1/file-actions/batch-status/{jobId}
+GET /api/v1/file-actions/batch-jobs  // List all jobs
+```
+
+### ARM32 Optimizations
+- Configurable concurrency limits to prevent resource exhaustion
+- Memory-efficient task serialization
+- Graceful degradation under memory pressure
+- Progress reporting via SignalR for real-time updates
 
 ## Configuration - Simplified Static Configuration
 

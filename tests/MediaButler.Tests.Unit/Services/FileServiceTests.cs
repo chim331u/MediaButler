@@ -12,6 +12,7 @@ using MediaButler.Data.UnitOfWork;
 using MediaButler.Services;
 using MediaButler.Tests.Unit.Infrastructure;
 using MediaButler.Tests.Unit.ObjectMothers;
+using MediaButler.Tests.Unit.Builders;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;
@@ -371,4 +372,172 @@ public class FileServiceTests : TestBase
         result.Value.LastErrorAt.Should().BeNull();
         result.Value.Status.Should().Be(FileStatus.New); // Reset to initial state
     }
+
+    #region GetFilesPagedByStatusesAsync Tests
+
+    [Fact]
+    public async Task GetFilesPagedByStatusesAsync_WithValidParameters_ShouldReturnFilteredFiles()
+    {
+        // Arrange
+        var testFiles = new List<TrackedFile>
+        {
+            new TrackedFileBuilder().WithFileName("file1.mkv").WithStatus(FileStatus.ReadyToMove).Build(),
+            new TrackedFileBuilder().WithFileName("file2.mkv").WithStatus(FileStatus.Moving).Build(),
+            new TrackedFileBuilder().WithFileName("file3.mkv").WithStatus(FileStatus.Moved).Build(),
+            new TrackedFileBuilder().WithFileName("file4.mkv").WithStatus(FileStatus.New).Build(),
+            new TrackedFileBuilder().WithFileName("file5.mkv").WithStatus(FileStatus.Error).Build()
+        };
+
+        var expectedStatuses = new[] { FileStatus.ReadyToMove, FileStatus.Moving, FileStatus.Moved };
+        var expectedFiles = testFiles.Where(f => expectedStatuses.Contains(f.Status)).ToList();
+
+        _mockFileRepository
+            .Setup(repo => repo.GetPagedAsync(
+                0, 20,
+                It.IsAny<System.Linq.Expressions.Expression<Func<TrackedFile, bool>>>(),
+                It.IsAny<System.Linq.Expressions.Expression<Func<TrackedFile, object>>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expectedFiles);
+
+        // Act
+        var result = await _fileService.GetFilesPagedByStatusesAsync(0, 20, expectedStatuses);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().NotBeNull();
+        result.Value.Should().HaveCount(3);
+        result.Value.Should().AllSatisfy(file => expectedStatuses.Should().Contain(file.Status));
+    }
+
+    [Fact]
+    public async Task GetFilesPagedByStatusesAsync_WithNegativeSkip_ShouldReturnFailure()
+    {
+        // Arrange
+        var statuses = new[] { FileStatus.ReadyToMove };
+
+        // Act
+        var result = await _fileService.GetFilesPagedByStatusesAsync(-1, 20, statuses);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Be("Skip must be non-negative");
+    }
+
+    [Fact]
+    public async Task GetFilesPagedByStatusesAsync_WithInvalidTake_ShouldReturnFailure()
+    {
+        // Arrange
+        var statuses = new[] { FileStatus.ReadyToMove };
+
+        // Act
+        var result = await _fileService.GetFilesPagedByStatusesAsync(0, 0, statuses);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Be("Take must be between 1 and 1000");
+    }
+
+    [Fact]
+    public async Task GetFilesPagedByStatusesAsync_WithTakeExceedingLimit_ShouldReturnFailure()
+    {
+        // Arrange
+        var statuses = new[] { FileStatus.ReadyToMove };
+
+        // Act
+        var result = await _fileService.GetFilesPagedByStatusesAsync(0, 1001, statuses);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Be("Take must be between 1 and 1000");
+    }
+
+    [Fact]
+    public async Task GetFilesPagedByStatusesAsync_WithNullStatuses_ShouldReturnFailure()
+    {
+        // Act
+        var result = await _fileService.GetFilesPagedByStatusesAsync(0, 20, null!);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Be("Statuses collection cannot be null");
+    }
+
+    [Fact]
+    public async Task GetFilesPagedByStatusesAsync_WithEmptyStatuses_ShouldReturnFailure()
+    {
+        // Arrange
+        var emptyStatuses = Array.Empty<FileStatus>();
+
+        // Act
+        var result = await _fileService.GetFilesPagedByStatusesAsync(0, 20, emptyStatuses);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Be("At least one status must be provided");
+    }
+
+    [Fact]
+    public async Task GetFilesPagedByStatusesAsync_WithCategoryFilter_ShouldReturnFilteredFiles()
+    {
+        // Arrange
+        var testFiles = new List<TrackedFile>
+        {
+            new TrackedFileBuilder().WithFileName("file1.mkv").WithStatus(FileStatus.ReadyToMove).WithCategory("BREAKING BAD").Build(),
+            new TrackedFileBuilder().WithFileName("file2.mkv").WithStatus(FileStatus.Moving).WithCategory("THE OFFICE").Build(),
+            new TrackedFileBuilder().WithFileName("file3.mkv").WithStatus(FileStatus.Moved).WithCategory("BREAKING BAD").Build()
+        };
+
+        var statuses = new[] { FileStatus.ReadyToMove, FileStatus.Moving, FileStatus.Moved };
+        var category = "BREAKING BAD";
+        var expectedFiles = testFiles.Where(f => f.Category == category).ToList();
+
+        _mockFileRepository
+            .Setup(repo => repo.GetPagedAsync(
+                0, 20,
+                It.IsAny<System.Linq.Expressions.Expression<Func<TrackedFile, bool>>>(),
+                It.IsAny<System.Linq.Expressions.Expression<Func<TrackedFile, object>>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expectedFiles);
+
+        // Act
+        var result = await _fileService.GetFilesPagedByStatusesAsync(0, 20, statuses, category);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().NotBeNull();
+        result.Value.Should().HaveCount(2);
+        result.Value.Should().AllSatisfy(file => file.Category.Should().Be(category));
+    }
+
+    [Fact]
+    public async Task GetFilesPagedByStatusesAsync_WithSingleStatus_ShouldReturnFilteredFiles()
+    {
+        // Arrange
+        var testFiles = new List<TrackedFile>
+        {
+            new TrackedFileBuilder().WithFileName("file1.mkv").WithStatus(FileStatus.ReadyToMove).Build(),
+            new TrackedFileBuilder().WithFileName("file2.mkv").WithStatus(FileStatus.ReadyToMove).Build()
+        };
+
+        var statuses = new[] { FileStatus.ReadyToMove };
+
+        _mockFileRepository
+            .Setup(repo => repo.GetPagedAsync(
+                0, 20,
+                It.IsAny<System.Linq.Expressions.Expression<Func<TrackedFile, bool>>>(),
+                It.IsAny<System.Linq.Expressions.Expression<Func<TrackedFile, object>>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(testFiles);
+
+        // Act
+        var result = await _fileService.GetFilesPagedByStatusesAsync(0, 20, statuses);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().NotBeNull();
+        result.Value.Should().HaveCount(2);
+        result.Value.Should().AllSatisfy(file => file.Status.Should().Be(FileStatus.ReadyToMove));
+    }
+
+    #endregion
 }
