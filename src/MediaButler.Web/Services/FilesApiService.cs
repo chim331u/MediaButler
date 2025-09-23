@@ -1,3 +1,4 @@
+using MediaButler.Core.Enums;
 using MediaButler.Web.Interfaces;
 using MediaButler.Web.Models;
 
@@ -28,7 +29,7 @@ public interface IFilesApiService
     Task<Result<IReadOnlyList<FileManagementDto>>> GetFilesByStatusesAsync(
         int skip = 0,
         int take = 20,
-        string[] statuses = null!,
+        FileStatus[] statuses = null!,
         string? category = null,
         CancellationToken cancellationToken = default);
 
@@ -168,7 +169,7 @@ public class FilesApiService : IFilesApiService
     public async Task<Result<IReadOnlyList<FileManagementDto>>> GetFilesByStatusesAsync(
         int skip = 0,
         int take = 20,
-        string[] statuses = null!,
+        FileStatus[] statuses = null!,
         string? category = null,
         CancellationToken cancellationToken = default)
     {
@@ -184,8 +185,7 @@ public class FilesApiService : IFilesApiService
             {
                 foreach (var status in statuses)
                 {
-                    if (!string.IsNullOrWhiteSpace(status))
-                        queryParams.Add($"statuses={Uri.EscapeDataString(status)}");
+                    queryParams.Add($"statuses={Uri.EscapeDataString(status.ToString())}");
                 }
             }
 

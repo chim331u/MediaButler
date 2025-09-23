@@ -515,6 +515,7 @@
     private string _consoleText = string.Empty;
     private int _addCategory = 0;
     private string _selectedStatusGroup = "TO_CLASSIFY"; // Default to "To Classify"
+    private FileStatus[] _selectedStatuses = { FileStatus.New, FileStatus.Processing, FileStatus.Classified }; // Default to TO_CLASSIFY statuses
 
     // Centralized SignalR notification subscriptions
     private readonly List<IDisposable> _notificationSubscriptions = new();
@@ -800,17 +801,20 @@
         StateHasChanged();
     }
 
-    private string[] GetStatusesForGroup(string statusGroup)
+    private FileStatus[] GetStatusesForGroup(string statusGroup)
     {
-        return statusGroup switch
+        var statuses = statusGroup switch
         {
-            "ALL" => new[] { "New", "Processing", "Classified", "ReadyToMove", "Moving", "Moved", "Error", "Retry", "Ignored" },
-            "TO_CLASSIFY" => new[] { "New", "Processing", "Classified" },
-            "READY_TO_MOVE" => new[] { "ReadyToMove" },
-            "ERROR" => new[] { "Retry", "Error" },
-            "IGNORED" => new[] { "Ignored" },
-            _ => new[] { "New", "Processing", "Classified", "ReadyToMove", "Moving", "Moved", "Error", "Retry", "Ignored" } // Default to ALL
+            "ALL" => new[] { FileStatus.New, FileStatus.Processing, FileStatus.Classified, FileStatus.ReadyToMove, FileStatus.Moving, FileStatus.Moved, FileStatus.Error, FileStatus.Retry, FileStatus.Ignored },
+            "TO_CLASSIFY" => new[] { FileStatus.New, FileStatus.Processing, FileStatus.Classified },
+            "READY_TO_MOVE" => new[] { FileStatus.ReadyToMove },
+            "ERROR" => new[] { FileStatus.Retry, FileStatus.Error },
+            "IGNORED" => new[] { FileStatus.Ignored },
+            _ => new[] { FileStatus.New, FileStatus.Processing, FileStatus.Classified, FileStatus.ReadyToMove, FileStatus.Moving, FileStatus.Moved, FileStatus.Error, FileStatus.Retry, FileStatus.Ignored } // Default to ALL
         };
+
+        _selectedStatuses = statuses; // Update the selected statuses
+        return statuses;
     }
 
     private async Task OnChangeStatusFilter(object value)
