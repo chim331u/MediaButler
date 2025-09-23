@@ -197,4 +197,13 @@ public interface IFileService
         IEnumerable<FileStatus> statuses,
         string? category = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets distinct categories from tracked files.
+    /// Retrieves all unique category values that have been assigned to files in the system.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token for async operation.</param>
+    /// <returns>Result containing alphabetically sorted list of distinct categories.</returns>
+    Task<Result<IEnumerable<string>>> GetDistinctCategoriesAsync(
+        CancellationToken cancellationToken = default);
 }

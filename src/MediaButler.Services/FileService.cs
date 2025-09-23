@@ -585,5 +585,32 @@ public class FileService : IFileService
         return string.IsNullOrEmpty(sanitized) ? "UNKNOWN" : sanitized.ToUpperInvariant();
     }
 
+    /// <summary>
+    /// Gets distinct categories from tracked files.
+    /// </summary>
+    public async Task<Result<IEnumerable<string>>> GetDistinctCategoriesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var categories = await _trackedFileRepository.GetDistinctCategoriesAsync(cancellationToken);
+
+            // Filter out null/empty categories and sort alphabetically
+            var validCategories = categories
+                .Where(c => !string.IsNullOrWhiteSpace(c))
+                .OrderBy(c => c)
+                .ToList();
+
+            _logger.LogDebug("Retrieved {Count} distinct categories from tracked files", validCategories.Count);
+
+            return Result<IEnumerable<string>>.Success(validCategories);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get distinct categories from tracked files");
+            return Result<IEnumerable<string>>.Failure($"Failed to retrieve categories: {ex.Message}");
+        }
+    }
+
     #endregion
 }

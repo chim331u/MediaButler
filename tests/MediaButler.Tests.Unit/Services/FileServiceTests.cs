@@ -540,4 +540,85 @@ public class FileServiceTests : TestBase
     }
 
     #endregion
+
+    #region GetDistinctCategoriesAsync Tests
+
+    [Fact]
+    public async Task GetDistinctCategoriesAsync_WithValidCategories_ShouldReturnSuccess()
+    {
+        // Arrange
+        var expectedCategories = new List<string> { "BREAKING BAD", "THE OFFICE", "STRANGER THINGS" };
+
+        _mockFileRepository
+            .Setup(repo => repo.GetDistinctCategoriesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expectedCategories);
+
+        // Act
+        var result = await _fileService.GetDistinctCategoriesAsync();
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().NotBeNull();
+        result.Value.Should().BeEquivalentTo(expectedCategories);
+        result.Value.Should().HaveCount(3);
+    }
+
+    [Fact]
+    public async Task GetDistinctCategoriesAsync_WithEmptyResult_ShouldReturnEmptyList()
+    {
+        // Arrange
+        var emptyCategories = new List<string>();
+
+        _mockFileRepository
+            .Setup(repo => repo.GetDistinctCategoriesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(emptyCategories);
+
+        // Act
+        var result = await _fileService.GetDistinctCategoriesAsync();
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().NotBeNull();
+        result.Value.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetDistinctCategoriesAsync_WithRepositoryException_ShouldReturnFailure()
+    {
+        // Arrange
+        var exceptionMessage = "Database connection failed";
+        _mockFileRepository
+            .Setup(repo => repo.GetDistinctCategoriesAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception(exceptionMessage));
+
+        // Act
+        var result = await _fileService.GetDistinctCategoriesAsync();
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Contain("Failed to retrieve distinct categories");
+        result.Error.Should().Contain(exceptionMessage);
+    }
+
+    [Fact]
+    public async Task GetDistinctCategoriesAsync_WithSortedCategories_ShouldReturnInCorrectOrder()
+    {
+        // Arrange
+        var expectedCategories = new List<string> { "ANIME", "DOCUMENTARIES", "MOVIES", "TV SERIES" };
+
+        _mockFileRepository
+            .Setup(repo => repo.GetDistinctCategoriesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expectedCategories);
+
+        // Act
+        var result = await _fileService.GetDistinctCategoriesAsync();
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().NotBeNull();
+        result.Value.Should().BeInAscendingOrder(); // Categories should be sorted alphabetically
+        result.Value.Should().ContainInOrder(expectedCategories);
+    }
+
+    #endregion
 }

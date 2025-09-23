@@ -104,6 +104,13 @@ public interface IFilesApiService
         string jobId,
         bool includeDetails = false,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets distinct categories from tracked files.
+    /// Returns all unique category values that have been assigned to files in the system.
+    /// </summary>
+    Task<Result<IReadOnlyList<string>>> GetDistinctCategoriesAsync(
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -430,6 +437,27 @@ public class FilesApiService : IFilesApiService
         catch (Exception ex)
         {
             return Result<BatchJobResponseDto>.Failure($"Failed to get batch status: {ex.Message}");
+        }
+    }
+
+    public async Task<Result<IReadOnlyList<string>>> GetDistinctCategoriesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var result = await _httpClient.GetAsync<string[]>("/api/files/categories", cancellationToken);
+
+            if (!result.IsSuccess)
+            {
+                return Result<IReadOnlyList<string>>.Failure(result.Error, result.StatusCode);
+            }
+
+            var categories = result.Value?.ToList() ?? new List<string>();
+            return Result<IReadOnlyList<string>>.Success(categories);
+        }
+        catch (Exception ex)
+        {
+            return Result<IReadOnlyList<string>>.Failure($"Failed to get distinct categories: {ex.Message}");
         }
     }
 

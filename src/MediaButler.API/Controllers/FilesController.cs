@@ -349,6 +349,29 @@ public class FilesController : ControllerBase
     }
 
     /// <summary>
+    /// Gets distinct categories from tracked files.
+    /// Returns all unique category values that have been assigned to files in the system,
+    /// sorted alphabetically for UI dropdown population.
+    /// </summary>
+    /// <returns>List of distinct category names</returns>
+    /// <response code="200">Categories retrieved successfully</response>
+    /// <response code="500">Failed to retrieve categories</response>
+    [HttpGet("categories")]
+    [ProducesResponseType(typeof(IEnumerable<string>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> GetDistinctCategories()
+    {
+        var result = await _fileService.GetDistinctCategoriesAsync();
+
+        if (!result.IsSuccess)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, new { Error = result.Error });
+        }
+
+        return Ok(result.Value);
+    }
+
+    /// <summary>
     /// Manually triggers a scan of configured watch folders to discover new files.
     /// Files found will be automatically processed through ML classification and organization.
     /// </summary>

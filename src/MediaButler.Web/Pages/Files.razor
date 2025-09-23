@@ -324,30 +324,11 @@
                     </HeaderTemplate>
                     <Template Context="file">
                         <div class="status-cell text-center" role="gridcell">
-                            @if (file.IsToCategorize)
-                            {
-                                <RadzenBadge BadgeStyle="BadgeStyle.Warning"
-                                    Text="To Categorize"
-                                    IsPill="true"
-                                    Variant="Variant.Outlined"
-                                    title="File needs category assignment" />
-                            }
-                            else if (!string.IsNullOrEmpty(file.FileCategory))
-                            {
-                                <RadzenBadge BadgeStyle="BadgeStyle.Success"
-                                    Text="Categorized"
-                                    IsPill="true"
-                                    Variant="Variant.Filled"
-                                    title="@($"Categorized as {file.FileCategory}")" />
-                            }
-                            else
-                            {
-                                <RadzenBadge BadgeStyle="BadgeStyle.Info"
-                                    Text="New"
-                                    IsPill="true"
-                                    Variant="Variant.Outlined"
-                                    title="New file discovered" />
-                            }
+                            <RadzenBadge BadgeStyle="@GetBadgeStyleForStatus(file.Status ?? "Unknown")"
+                                Text="@(file.Status ?? "Unknown")"
+                                IsPill="true"
+                                Variant="Variant.Filled"
+                                title="@($"Current status: {file.Status ?? "Unknown"}")" />
                         </div>
                     </Template>
                 </RadzenDataGridColumn>
@@ -524,11 +505,11 @@
     private bool _busyTrain = false;
     private bool _busyScan = false;
     private IEnumerable<FileManagementDto>? _fileList;
-    private IEnumerable<string> _categories = new List<string> { "TV SERIES", "MOVIES", "DOCUMENTARIES", "MUSIC" };
+    private IEnumerable<string> _categories = new List<string>();
     private string _newCategory = string.Empty;
     private string _consoleText = string.Empty;
     private int _addCategory = 0;
-    private string _selectedStatusGroup = "ALL";
+    private string _selectedStatusGroup = "TO_CLASSIFY";
 
     // Centralized SignalR notification subscriptions
     private readonly List<IDisposable> _notificationSubscriptions = new();
@@ -536,6 +517,7 @@
     protected override async Task OnInitializedAsync()
     {
         await InitializeNotificationSubscriptionsAsync();
+        await LoadCategoriesAsync();
         await RefreshFileListAsync();
     }
 
@@ -713,6 +695,35 @@
         finally
         {
             _busyRefresh = false;
+        }
+    }
+
+    /// <summary>
+    /// Loads distinct categories from the server.
+    /// </summary>
+    private async Task LoadCategoriesAsync()
+    {
+        try
+        {
+            var result = await FilesApiService.GetDistinctCategoriesAsync();
+
+            if (result.IsSuccess && result.Value != null)
+            {
+                _categories = result.Value;
+                WriteConsole($"Loaded {_categories.Count()} categories from server");
+            }
+            else
+            {
+                // Fallback to default categories if API call fails
+                _categories = new List<string> { "OTHER", "TEST" };
+                WriteConsole($"Failed to load categories from server: {result.Error}. Using default categories.");
+            }
+        }
+        catch (Exception ex)
+        {
+            // Fallback to default categories if exception occurs
+            _categories = new List<string> { "TV SERIES", "MOVIES", "DOCUMENTARIES", "MUSIC" };
+            WriteConsole($"Exception loading categories: {ex.Message}. Using default categories.");
         }
     }
 
@@ -991,6 +1002,27 @@
     {
         _newCategory = string.Empty;
         _addCategory = 0;
+    }
+
+    /// <summary>
+    /// Gets the appropriate badge style based on the file status from the database.
+    /// </summary>
+    private BadgeStyle GetBadgeStyleForStatus(string status)
+    {
+        if (string.IsNullOrEmpty(status))
+            return BadgeStyle.Dark;
+
+        return status.ToLowerInvariant() switch
+        {
+            "new" or "detected" => BadgeStyle.Primary,
+            "processing" or "classifying" => BadgeStyle.Info,
+            "ready for review" or "classified" => BadgeStyle.Warning,
+            "confirmed" or "ready to move" => BadgeStyle.Secondary,
+            "moving" or "in progress" => BadgeStyle.Light,
+            "successfully organized" or "moved" => BadgeStyle.Success,
+            "error" or "failed" or "retry" => BadgeStyle.Danger,
+            _ => BadgeStyle.Dark
+        };
     }
 
     public async ValueTask DisposeAsync()
