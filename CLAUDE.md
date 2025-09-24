@@ -251,8 +251,13 @@ The system uses a 6-stage classification process:
 
 ```
 NEW → CLASSIFIED → CONFIRMED → MOVED
-Additional states: ERROR, RETRY (max 3 attempts)
+Additional states: ERROR, RETRY (max 3 attempts), IGNORED (terminal state)
 ```
+
+**File State Transitions:**
+- **IGNORED**: Terminal state that can be reached from any non-MOVED status
+- Files marked as IGNORED are excluded from processing workflows
+- IGNORED files cannot be moved (business rule enforcement)
 
 **Processing Pipeline:**
 1. File discovery via FileSystemWatcher
@@ -269,6 +274,7 @@ Key endpoint categories:
   - `GET /api/files` - Get files with single status filter
   - `GET /api/files/by-statuses` - **NEW**: Get files with multiple status filters
 - **Batch Operations**: `/api/v1/file-actions/*` - Batch file processing and organization
+  - `POST /api/v1/file-actions/ignore/{hash}` - **NEW**: Mark individual file as ignored
 - **Processing**: `/api/processing/*` - File processing workflows and ML operations
 - **System Operations**: `/api/system/*` - System maintenance and configuration
 - **Monitoring**: `/api/health`, `/api/stats`, `/api/metrics/*` - System health and metrics
@@ -293,6 +299,43 @@ GET /api/files/by-statuses?statuses=New&statuses=Processing&statuses=Classified&
 ```
 
 **Response**: Array of TrackedFileResponse objects matching any of the specified statuses.
+
+### New File Ignore Endpoint
+
+**Endpoint**: `POST /api/v1/file-actions/ignore/{hash}`
+
+**Purpose**: Marks a tracked file as ignored, preventing it from being processed further. This is a terminal state operation that transitions the file to `FileStatus.Ignored`.
+
+**Parameters**:
+- `hash` (string, required) - The SHA256 hash of the file to ignore (URL parameter)
+
+**Behavior**:
+- Changes file status to `Ignored`
+- Updates `LastUpdateDate` timestamp
+- Prevents ignoring files that are already moved (`FileStatus.Moved`)
+- Idempotent operation (ignoring already ignored files succeeds)
+
+**Response Codes**:
+- `200 OK` - File successfully marked as ignored
+- `400 Bad Request` - Invalid hash or cannot ignore file (e.g., already moved)
+- `404 Not Found` - File with specified hash not found
+- `500 Internal Server Error` - Unexpected error occurred
+
+**Example Usage**:
+```http
+POST /api/v1/file-actions/ignore/abc123def456789...
+```
+
+**Response**:
+```json
+{
+  "message": "File successfully marked as ignored",
+  "hash": "abc123def456789...",
+  "fileName": "Some.Series.S01E01.mkv",
+  "status": "Ignored",
+  "updatedAt": "2024-01-15T10:30:00.000Z"
+}
+```
 
 **Note**: Configuration endpoints (`/api/config/*`) removed in favor of static `appsettings.json` configuration.
 

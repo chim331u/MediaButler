@@ -16,18 +16,22 @@ namespace MediaButler.API.Controllers;
 public class FileActionsController : ControllerBase
 {
     private readonly IFileActionsService _fileActionsService;
+    private readonly IFileService _fileService;
     private readonly ILogger<FileActionsController> _logger;
 
     /// <summary>
     /// Initializes a new instance of the FileActionsController.
     /// </summary>
     /// <param name="fileActionsService">Service for handling file actions</param>
+    /// <param name="fileService">Service for handling individual file operations</param>
     /// <param name="logger">Logger instance</param>
     public FileActionsController(
         IFileActionsService fileActionsService,
+        IFileService fileService,
         ILogger<FileActionsController> logger)
     {
         _fileActionsService = fileActionsService;
+        _fileService = fileService;
         _logger = logger;
     }
 
@@ -250,6 +254,65 @@ public class FileActionsController : ControllerBase
         {
             _logger.LogError(ex, "Unexpected error validating batch request");
             return StatusCode(500, "An unexpected error occurred while validating the request");
+        }
+    }
+
+    /// <summary>
+    /// Marks a file as ignored, preventing it from being processed further.
+    /// This is a terminal state operation that cannot be undone through the API.
+    /// </summary>
+    /// <param name="hash">The SHA256 hash of the file to ignore</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>The updated file information</returns>
+    /// <response code="200">File successfully marked as ignored</response>
+    /// <response code="400">Invalid hash or file cannot be ignored</response>
+    /// <response code="404">File not found</response>
+    /// <response code="500">Internal server error</response>
+    [HttpPost("ignore/{hash}")]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> IgnoreFileAsync(
+        string hash,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(hash))
+            {
+                return BadRequest("Hash parameter cannot be empty");
+            }
+
+            _logger.LogInformation("Received request to ignore file with hash: {Hash}", hash);
+
+            var result = await _fileService.IgnoreFileAsync(hash, cancellationToken);
+
+            if (result.IsSuccess)
+            {
+                _logger.LogInformation("Successfully marked file {Hash} as ignored", hash);
+                return Ok(new
+                {
+                    message = "File successfully marked as ignored",
+                    hash = result.Value.Hash,
+                    fileName = result.Value.FileName,
+                    status = result.Value.Status.ToString(),
+                    updatedAt = result.Value.LastUpdateDate
+                });
+            }
+
+            _logger.LogWarning("Failed to ignore file {Hash}: {Error}", hash, result.Error);
+
+            // Determine appropriate HTTP status based on error type
+            if (result.Error!.Contains("not found", StringComparison.OrdinalIgnoreCase))
+                return NotFound(result.Error);
+
+            return BadRequest(result.Error);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error ignoring file with hash {Hash}", hash);
+            return StatusCode(500, "An unexpected error occurred while ignoring the file");
         }
     }
 }

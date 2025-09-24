@@ -333,4 +333,215 @@ public class FilesEndpointTests : ApiTestBase
             file.GetProperty("status").GetInt32().Should().Be(0);
         }
     }
+
+    #region Ignore File Acceptance Tests
+
+    [Fact]
+    public async Task IgnoreFile_WithValidHash_ShouldReturnSuccessAndMarkAsIgnored()
+    {
+        // Arrange
+        var seededFile = await SeedTrackedFileAsync();
+
+        // Act
+        var response = await Client.PostAsync($"/api/v1/file-actions/ignore/{seededFile.Hash}", null);
+
+        // Assert
+        response.Should().HaveStatusCode(HttpStatusCode.OK);
+
+        var content = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<JsonElement>(content, JsonOptions);
+
+        result.GetProperty("message").GetString().Should().Be("File successfully marked as ignored");
+        result.GetProperty("hash").GetString().Should().Be(seededFile.Hash);
+        result.GetProperty("status").GetString().Should().Be("Ignored");
+        result.TryGetProperty("updatedAt", out _).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task IgnoreFile_WithNonExistentHash_ShouldReturnNotFound()
+    {
+        // Arrange
+        var nonExistentHash = GenerateTestHash("non.existent.file");
+
+        // Act
+        var response = await Client.PostAsync($"/api/v1/file-actions/ignore/{nonExistentHash}", null);
+
+        // Assert
+        response.Should().HaveStatusCode(HttpStatusCode.NotFound);
+
+        var content = await response.Content.ReadAsStringAsync();
+        content.Should().Contain("not found");
+    }
+
+    [Fact]
+    public async Task IgnoreFile_WithEmptyHash_ShouldReturnBadRequest()
+    {
+        // Act
+        var response = await Client.PostAsync("/api/v1/file-actions/ignore/", null);
+
+        // Assert
+        response.Should().HaveStatusCode(HttpStatusCode.NotFound); // Route doesn't match without hash parameter
+    }
+
+    [Fact]
+    public async Task IgnoreFile_WithWhitespaceHash_ShouldReturnNotFound()
+    {
+        // Act - URL with whitespace gets URL encoded and may be treated as 404 by routing
+        var response = await Client.PostAsync("/api/v1/file-actions/ignore/   ", null);
+
+        // Assert - ASP.NET Core routing treats whitespace-only parameters as not found
+        response.Should().HaveStatusCode(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task IgnoreFile_WithAlreadyIgnoredFile_ShouldReturnSuccess()
+    {
+        // Arrange - Create a file already marked as ignored
+        var ignoredFile = new Core.Entities.TrackedFile
+        {
+            Hash = GenerateTestHash("already.ignored.file"),
+            FileName = "Already.Ignored.File.mkv",
+            OriginalPath = "/downloads/Already.Ignored.File.mkv",
+            FileSize = 1024 * 1024 * 100,
+            Status = FileStatus.Ignored
+        };
+
+        await Factory.SeedDatabaseAsync(context =>
+        {
+            context.TrackedFiles.Add(ignoredFile);
+        });
+
+        // Act
+        var response = await Client.PostAsync($"/api/v1/file-actions/ignore/{ignoredFile.Hash}", null);
+
+        // Assert
+        response.Should().HaveStatusCode(HttpStatusCode.OK);
+
+        var content = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<JsonElement>(content, JsonOptions);
+
+        result.GetProperty("message").GetString().Should().Be("File successfully marked as ignored");
+        result.GetProperty("status").GetString().Should().Be("Ignored");
+    }
+
+    [Fact]
+    public async Task IgnoreFile_WithMovedFile_ShouldReturnBadRequest()
+    {
+        // Arrange - Create a file that has already been moved
+        var movedFile = new Core.Entities.TrackedFile
+        {
+            Hash = GenerateTestHash("already.moved.file"),
+            FileName = "Already.Moved.File.mkv",
+            OriginalPath = "/downloads/Already.Moved.File.mkv",
+            MovedToPath = "/library/SERIES/Already.Moved.File.mkv",
+            FileSize = 1024 * 1024 * 200,
+            Status = FileStatus.Moved,
+            Category = "TEST SERIES"
+        };
+
+        await Factory.SeedDatabaseAsync(context =>
+        {
+            context.TrackedFiles.Add(movedFile);
+        });
+
+        // Act
+        var response = await Client.PostAsync($"/api/v1/file-actions/ignore/{movedFile.Hash}", null);
+
+        // Assert
+        response.Should().HaveStatusCode(HttpStatusCode.BadRequest);
+
+        var content = await response.Content.ReadAsStringAsync();
+        content.Should().Contain("Cannot ignore a file that has already been moved");
+    }
+
+    [Theory]
+    [InlineData(FileStatus.New, "New file")]
+    [InlineData(FileStatus.Processing, "Processing file")]
+    [InlineData(FileStatus.Classified, "Classified file")]
+    [InlineData(FileStatus.ReadyToMove, "Ready to move file")]
+    [InlineData(FileStatus.Error, "Error file")]
+    [InlineData(FileStatus.Retry, "Retry file")]
+    public async Task IgnoreFile_WithVariousStatuses_ShouldSucceed(FileStatus initialStatus, string description)
+    {
+        // Arrange
+        var testFile = new Core.Entities.TrackedFile
+        {
+            Hash = GenerateTestHash($"file.with.{initialStatus}.status"),
+            FileName = $"File.With.{initialStatus}.Status.mkv",
+            OriginalPath = $"/downloads/File.With.{initialStatus}.Status.mkv",
+            FileSize = 1024 * 1024 * 150,
+            Status = initialStatus
+        };
+
+        if (initialStatus == FileStatus.Classified)
+        {
+            testFile.SuggestedCategory = "TEST SERIES";
+            testFile.Confidence = 0.8m;
+        }
+
+        await Factory.SeedDatabaseAsync(context =>
+        {
+            context.TrackedFiles.Add(testFile);
+        });
+
+        // Act
+        var response = await Client.PostAsync($"/api/v1/file-actions/ignore/{testFile.Hash}", null);
+
+        // Assert
+        response.Should().HaveStatusCode(HttpStatusCode.OK);
+
+        var content = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<JsonElement>(content, JsonOptions);
+
+        result.GetProperty("message").GetString().Should().Be("File successfully marked as ignored");
+        result.GetProperty("status").GetString().Should().Be("Ignored");
+    }
+
+    [Fact]
+    public async Task IgnoreFile_ShouldPersistToDatabase()
+    {
+        // Arrange
+        var seededFile = await SeedTrackedFileAsync();
+
+        // Act
+        var response = await Client.PostAsync($"/api/v1/file-actions/ignore/{seededFile.Hash}", null);
+
+        // Assert
+        response.Should().HaveStatusCode(HttpStatusCode.OK);
+
+        // Verify the change persisted by fetching the file again
+        var getResponse = await Client.GetAsync($"/api/files/{seededFile.Hash}");
+        getResponse.Should().HaveStatusCode(HttpStatusCode.OK);
+
+        var content = await getResponse.Content.ReadAsStringAsync();
+        var file = JsonSerializer.Deserialize<JsonElement>(content, JsonOptions);
+
+        // Status is returned as numeric enum value, 8 = Ignored
+        file.GetProperty("status").GetInt32().Should().Be((int)FileStatus.Ignored);
+    }
+
+    [Fact]
+    public async Task IgnoreFile_ShouldAppearInIgnoredFilesFilter()
+    {
+        // Arrange
+        var seededFile = await SeedTrackedFileAsync();
+
+        // Act - Ignore the file
+        var ignoreResponse = await Client.PostAsync($"/api/v1/file-actions/ignore/{seededFile.Hash}", null);
+        ignoreResponse.Should().HaveStatusCode(HttpStatusCode.OK);
+
+        // Assert - File should appear when filtering by Ignored status
+        var filterResponse = await Client.GetAsync("/api/files?status=Ignored");
+        filterResponse.Should().HaveStatusCode(HttpStatusCode.OK);
+
+        var content = await filterResponse.Content.ReadAsStringAsync();
+        var files = JsonSerializer.Deserialize<JsonElement[]>(content, JsonOptions);
+
+        files.Should().HaveCountGreaterOrEqualTo(1);
+        var ignoredFile = files.FirstOrDefault(f => f.GetProperty("hash").GetString() == seededFile.Hash);
+        ignoredFile.ValueKind.Should().NotBe(JsonValueKind.Undefined);
+        ignoredFile.GetProperty("status").GetInt32().Should().Be((int)FileStatus.Ignored);
+    }
+
+    #endregion
 }

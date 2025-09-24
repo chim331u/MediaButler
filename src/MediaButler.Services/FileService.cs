@@ -553,6 +553,57 @@ public class FileService : IFileService
         }
     }
 
+    /// <summary>
+    /// Marks a file as ignored, transitioning it to the Ignored status.
+    /// </summary>
+    public async Task<Result<TrackedFile>> IgnoreFileAsync(string hash, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(hash))
+            return Result<TrackedFile>.Failure("Hash cannot be empty");
+
+        try
+        {
+            var file = await _trackedFileRepository.GetByHashAsync(hash, cancellationToken);
+            if (file == null)
+            {
+                _logger.LogWarning("Attempted to ignore non-existent file with hash: {Hash}", hash);
+                return Result<TrackedFile>.Failure($"File with hash '{hash}' not found");
+            }
+
+            // Check if file is already ignored
+            if (file.Status == FileStatus.Ignored)
+            {
+                _logger.LogDebug("File {Hash} is already ignored", hash);
+                return Result<TrackedFile>.Success(file);
+            }
+
+            // Check if file is already moved - might want to prevent ignoring moved files
+            if (file.Status == FileStatus.Moved)
+            {
+                _logger.LogWarning("Attempted to ignore file {Hash} that has already been moved", hash);
+                return Result<TrackedFile>.Failure("Cannot ignore a file that has already been moved");
+            }
+
+            _logger.LogInformation("Marking file {Hash} ({FileName}) as ignored. Previous status: {PreviousStatus}",
+                hash, file.FileName, file.Status);
+
+            // Update file status to Ignored
+            file.Status = FileStatus.Ignored;
+            file.LastUpdateDate = DateTime.UtcNow;
+
+            _trackedFileRepository.Update(file);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            _logger.LogInformation("Successfully marked file {Hash} as ignored", hash);
+            return Result<TrackedFile>.Success(file);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to mark file {Hash} as ignored", hash);
+            return Result<TrackedFile>.Failure($"Failed to ignore file: {ex.Message}");
+        }
+    }
+
     #region Private Helper Methods
 
     /// <summary>

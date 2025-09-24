@@ -9,9 +9,6 @@ public class FileManagementDto
     public required string Name { get; set; }
     public long FileSize { get; set; }
     public string? FileCategory { get; set; }
-    public bool IsToCategorize { get; set; }
-    public bool IsNotToMove { get; set; }
-    public bool IsNew { get; set; }
     public string? Hash { get; set; }
     public string? OriginalPath { get; set; }
     public string? TargetPath { get; set; }
@@ -19,6 +16,35 @@ public class FileManagementDto
     public DateTime? ClassifiedAt { get; set; }
     public decimal Confidence { get; set; }
     public string? Status { get; set; }
+
+    // Helper methods to replace the removed boolean properties
+    public bool IsToCategorize => Status == "Classified" || GetStatusCode() == 2;
+    public bool IsNotToMove => Status == "Moved" || Status == "Error" || Status == "Ignored" ||
+                               GetStatusCode() == 5 || GetStatusCode() == 6 || GetStatusCode() == 8;
+    public bool IsNew => Status == "New" || Status == "Processing" ||
+                         GetStatusCode() == 0 || GetStatusCode() == 1;
+
+    private int GetStatusCode()
+    {
+        // Try to extract status code from status string if it's in format "Status X"
+        if (Status?.StartsWith("Status ") == true && int.TryParse(Status.Substring(7), out int code))
+            return code;
+
+        // Map string status to code
+        return Status switch
+        {
+            "New" => 0,
+            "Processing" => 1,
+            "Classified" => 2,
+            "ReadyToMove" => 3,
+            "Moving" => 4,
+            "Moved" => 5,
+            "Error" => 6,
+            "Retry" => 7,
+            "Ignored" => 8,
+            _ => -1
+        };
+    }
 }
 
 /// <summary>

@@ -112,6 +112,14 @@ public interface IFilesApiService
     /// </summary>
     Task<Result<IReadOnlyList<string>>> GetDistinctCategoriesAsync(
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Marks a file as ignored, preventing it from being processed further.
+    /// This transitions the file to the Ignored status.
+    /// </summary>
+    Task<Result<object>> IgnoreFileAsync(
+        string hash,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -461,6 +469,32 @@ public class FilesApiService : IFilesApiService
         }
     }
 
+    public async Task<Result<object>> IgnoreFileAsync(
+        string hash,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(hash))
+            {
+                return Result<object>.Failure("Hash cannot be empty");
+            }
+
+            var result = await _httpClient.PostAsync<object>($"/api/v1/file-actions/ignore/{hash}", null, cancellationToken);
+
+            if (!result.IsSuccess)
+            {
+                return Result<object>.Failure(result.Error, result.StatusCode);
+            }
+
+            return Result<object>.Success(result.Value ?? new object());
+        }
+        catch (Exception ex)
+        {
+            return Result<object>.Failure($"Failed to ignore file: {ex.Message}");
+        }
+    }
+
     /// <summary>
     /// Maps API response to FileManagementDto.
     /// Pure function - deterministic mapping logic.
@@ -473,9 +507,6 @@ public class FilesApiService : IFilesApiService
             Name = file.FileName,
             FileSize = file.FileSize,
             FileCategory = file.Category ?? file.SuggestedCategory,
-            IsToCategorize = file.Status == 2, // Status 2 = "Ready for review"
-            IsNotToMove = file.Status == 6 || file.Status == 5, // Error or Moved status
-            IsNew = file.Status == 0 || file.Status == 1, // New or Processing status
             Hash = file.Hash,
             OriginalPath = file.OriginalPath,
             TargetPath = file.TargetPath,

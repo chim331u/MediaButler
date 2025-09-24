@@ -621,4 +621,215 @@ public class FileServiceTests : TestBase
     }
 
     #endregion
+
+    #region IgnoreFileAsync Tests
+
+    [Fact]
+    public async Task IgnoreFileAsync_WithValidHash_ShouldReturnSuccess()
+    {
+        // Arrange
+        var testFile = new TrackedFileBuilder()
+            .WithFileName("test_file.mkv")
+            .WithStatus(FileStatus.New)
+            .Build();
+
+        _mockFileRepository
+            .Setup(repo => repo.GetByHashAsync(testFile.Hash, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(testFile);
+
+        // Act
+        var result = await _fileService.IgnoreFileAsync(testFile.Hash);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().NotBeNull();
+        result.Value.Hash.Should().Be(testFile.Hash);
+        result.Value.Status.Should().Be(FileStatus.Ignored);
+
+        _mockFileRepository.Verify(repo => repo.Update(It.Is<TrackedFile>(f =>
+            f.Hash == testFile.Hash && f.Status == FileStatus.Ignored)), Times.Once);
+        _mockUnitOfWork.Verify(uow => uow.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task IgnoreFileAsync_WithEmptyHash_ShouldReturnFailure()
+    {
+        // Act
+        var result = await _fileService.IgnoreFileAsync("");
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Be("Hash cannot be empty");
+
+        _mockFileRepository.Verify(repo => repo.GetByHashAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task IgnoreFileAsync_WithNullHash_ShouldReturnFailure()
+    {
+        // Act
+        var result = await _fileService.IgnoreFileAsync(null!);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Be("Hash cannot be empty");
+
+        _mockFileRepository.Verify(repo => repo.GetByHashAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task IgnoreFileAsync_WithNonExistentFile_ShouldReturnFailure()
+    {
+        // Arrange
+        var nonExistentHash = "non_existent_hash";
+
+        _mockFileRepository
+            .Setup(repo => repo.GetByHashAsync(nonExistentHash, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TrackedFile?)null);
+
+        // Act
+        var result = await _fileService.IgnoreFileAsync(nonExistentHash);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Be($"File with hash '{nonExistentHash}' not found");
+
+        _mockFileRepository.Verify(repo => repo.Update(It.IsAny<TrackedFile>()), Times.Never);
+        _mockUnitOfWork.Verify(uow => uow.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task IgnoreFileAsync_WithAlreadyIgnoredFile_ShouldReturnSuccessWithoutUpdate()
+    {
+        // Arrange
+        var testFile = new TrackedFileBuilder()
+            .WithFileName("already_ignored_file.mkv")
+            .WithStatus(FileStatus.Ignored)
+            .Build();
+
+        _mockFileRepository
+            .Setup(repo => repo.GetByHashAsync(testFile.Hash, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(testFile);
+
+        // Act
+        var result = await _fileService.IgnoreFileAsync(testFile.Hash);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().NotBeNull();
+        result.Value.Hash.Should().Be(testFile.Hash);
+        result.Value.Status.Should().Be(FileStatus.Ignored);
+
+        // Should not call update or save since file is already ignored
+        _mockFileRepository.Verify(repo => repo.Update(It.IsAny<TrackedFile>()), Times.Never);
+        _mockUnitOfWork.Verify(uow => uow.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task IgnoreFileAsync_WithMovedFile_ShouldReturnFailure()
+    {
+        // Arrange
+        var testFile = new TrackedFileBuilder()
+            .WithFileName("moved_file.mkv")
+            .WithStatus(FileStatus.Moved)
+            .Build();
+
+        _mockFileRepository
+            .Setup(repo => repo.GetByHashAsync(testFile.Hash, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(testFile);
+
+        // Act
+        var result = await _fileService.IgnoreFileAsync(testFile.Hash);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Be("Cannot ignore a file that has already been moved");
+
+        _mockFileRepository.Verify(repo => repo.Update(It.IsAny<TrackedFile>()), Times.Never);
+        _mockUnitOfWork.Verify(uow => uow.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData(FileStatus.New)]
+    [InlineData(FileStatus.Processing)]
+    [InlineData(FileStatus.Classified)]
+    [InlineData(FileStatus.ReadyToMove)]
+    [InlineData(FileStatus.Error)]
+    [InlineData(FileStatus.Retry)]
+    public async Task IgnoreFileAsync_WithVariousStatuses_ShouldSucceed(FileStatus initialStatus)
+    {
+        // Arrange
+        var testFile = new TrackedFileBuilder()
+            .WithFileName($"file_with_{initialStatus}_status.mkv")
+            .WithStatus(initialStatus)
+            .Build();
+
+        _mockFileRepository
+            .Setup(repo => repo.GetByHashAsync(testFile.Hash, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(testFile);
+
+        // Act
+        var result = await _fileService.IgnoreFileAsync(testFile.Hash);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().NotBeNull();
+        result.Value.Status.Should().Be(FileStatus.Ignored);
+
+        _mockFileRepository.Verify(repo => repo.Update(It.Is<TrackedFile>(f =>
+            f.Hash == testFile.Hash && f.Status == FileStatus.Ignored)), Times.Once);
+        _mockUnitOfWork.Verify(uow => uow.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task IgnoreFileAsync_WithRepositoryException_ShouldReturnFailure()
+    {
+        // Arrange
+        var testFile = new TrackedFileBuilder()
+            .WithFileName("test_file.mkv")
+            .WithStatus(FileStatus.New)
+            .Build();
+
+        var exceptionMessage = "Database connection failed";
+        _mockFileRepository
+            .Setup(repo => repo.GetByHashAsync(testFile.Hash, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception(exceptionMessage));
+
+        // Act
+        var result = await _fileService.IgnoreFileAsync(testFile.Hash);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Contain("Failed to ignore file");
+        result.Error.Should().Contain(exceptionMessage);
+    }
+
+    [Fact]
+    public async Task IgnoreFileAsync_WithSaveException_ShouldReturnFailure()
+    {
+        // Arrange
+        var testFile = new TrackedFileBuilder()
+            .WithFileName("test_file.mkv")
+            .WithStatus(FileStatus.New)
+            .Build();
+
+        _mockFileRepository
+            .Setup(repo => repo.GetByHashAsync(testFile.Hash, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(testFile);
+
+        var exceptionMessage = "Failed to save changes";
+        _mockUnitOfWork
+            .Setup(uow => uow.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception(exceptionMessage));
+
+        // Act
+        var result = await _fileService.IgnoreFileAsync(testFile.Hash);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Contain("Failed to ignore file");
+        result.Error.Should().Contain(exceptionMessage);
+    }
+
+    #endregion
 }

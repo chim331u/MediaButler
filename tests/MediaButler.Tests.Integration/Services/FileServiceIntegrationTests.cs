@@ -411,4 +411,228 @@ public class FileServiceIntegrationTests : IntegrationTestBase
         unchangedFile.Confidence.Should().Be(0);
         unchangedFile.ClassifiedAt.Should().BeNull();
     }
+
+    #region IgnoreFileAsync Integration Tests
+
+    [Fact]
+    public async Task IgnoreFileAsync_WithExistingFile_ShouldUpdateStatusInDatabase()
+    {
+        // Arrange
+        var testFile = new TrackedFile
+        {
+            Hash = "ignore_integration_test_hash_12345678901234567890123456789012345",
+            FileName = "Integration.Test.File.mkv",
+            OriginalPath = "/integration/test/Integration.Test.File.mkv",
+            FileSize = 1500000,
+            Status = FileStatus.New,
+            CreatedDate = DateTime.UtcNow.AddHours(-1),
+            LastUpdateDate = DateTime.UtcNow.AddHours(-1)
+        };
+
+        Context.TrackedFiles.Add(testFile);
+        await Context.SaveChangesAsync();
+
+        var repository = new TrackedFileRepository(Context);
+        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
+        var logger = ServiceProvider.GetRequiredService<ILogger<FileService>>();
+        var fileService = new FileService(repository, unitOfWork, logger);
+
+        var originalUpdateDate = testFile.LastUpdateDate;
+
+        // Act
+        var result = await fileService.IgnoreFileAsync(testFile.Hash);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().NotBeNull();
+        result.Value.Status.Should().Be(FileStatus.Ignored);
+        result.Value.LastUpdateDate.Should().BeAfter(originalUpdateDate);
+
+        // Verify in database
+        var savedFile = await Context.TrackedFiles.FindAsync(testFile.Hash);
+        savedFile.Should().NotBeNull();
+        savedFile!.Status.Should().Be(FileStatus.Ignored);
+        savedFile.LastUpdateDate.Should().BeAfter(originalUpdateDate);
+    }
+
+    [Fact]
+    public async Task IgnoreFileAsync_WithNonExistentFile_ShouldReturnFailure()
+    {
+        // Arrange
+        var repository = new TrackedFileRepository(Context);
+        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
+        var logger = ServiceProvider.GetRequiredService<ILogger<FileService>>();
+        var fileService = new FileService(repository, unitOfWork, logger);
+
+        var nonExistentHash = "non_existent_hash_integration_test_12345678901234567890123";
+
+        // Act
+        var result = await fileService.IgnoreFileAsync(nonExistentHash);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Contain("not found");
+    }
+
+    [Fact]
+    public async Task IgnoreFileAsync_WithAlreadyIgnoredFile_ShouldReturnSuccessWithoutChanges()
+    {
+        // Arrange
+        var testFile = new TrackedFile
+        {
+            Hash = "already_ignored_integration_test_hash_12345678901234567890123",
+            FileName = "Already.Ignored.File.mkv",
+            OriginalPath = "/integration/test/Already.Ignored.File.mkv",
+            FileSize = 1200000,
+            Status = FileStatus.Ignored,
+            CreatedDate = DateTime.UtcNow.AddHours(-2),
+            LastUpdateDate = DateTime.UtcNow.AddHours(-1)
+        };
+
+        Context.TrackedFiles.Add(testFile);
+        await Context.SaveChangesAsync();
+
+        var repository = new TrackedFileRepository(Context);
+        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
+        var logger = ServiceProvider.GetRequiredService<ILogger<FileService>>();
+        var fileService = new FileService(repository, unitOfWork, logger);
+
+        var originalUpdateDate = testFile.LastUpdateDate;
+
+        // Act
+        var result = await fileService.IgnoreFileAsync(testFile.Hash);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().NotBeNull();
+        result.Value.Status.Should().Be(FileStatus.Ignored);
+
+        // Verify LastUpdateDate was NOT changed since file was already ignored
+        var savedFile = await Context.TrackedFiles.FindAsync(testFile.Hash);
+        savedFile.Should().NotBeNull();
+        savedFile!.Status.Should().Be(FileStatus.Ignored);
+        savedFile.LastUpdateDate.Should().Be(originalUpdateDate); // Should not have changed
+    }
+
+    [Fact]
+    public async Task IgnoreFileAsync_WithMovedFile_ShouldReturnFailure()
+    {
+        // Arrange
+        var testFile = new TrackedFile
+        {
+            Hash = "moved_file_integration_test_hash_12345678901234567890123456789",
+            FileName = "Moved.File.mkv",
+            OriginalPath = "/integration/test/Moved.File.mkv",
+            MovedToPath = "/library/SOME SERIES/Moved.File.mkv",
+            FileSize = 2000000,
+            Status = FileStatus.Moved,
+            CreatedDate = DateTime.UtcNow.AddHours(-3),
+            LastUpdateDate = DateTime.UtcNow.AddHours(-1),
+            MovedAt = DateTime.UtcNow.AddMinutes(-30)
+        };
+
+        Context.TrackedFiles.Add(testFile);
+        await Context.SaveChangesAsync();
+
+        var repository = new TrackedFileRepository(Context);
+        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
+        var logger = ServiceProvider.GetRequiredService<ILogger<FileService>>();
+        var fileService = new FileService(repository, unitOfWork, logger);
+
+        // Act
+        var result = await fileService.IgnoreFileAsync(testFile.Hash);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Contain("Cannot ignore a file that has already been moved");
+
+        // Verify file status remains unchanged
+        var savedFile = await Context.TrackedFiles.FindAsync(testFile.Hash);
+        savedFile.Should().NotBeNull();
+        savedFile!.Status.Should().Be(FileStatus.Moved);
+    }
+
+    [Theory]
+    [InlineData(FileStatus.New)]
+    [InlineData(FileStatus.Processing)]
+    [InlineData(FileStatus.Classified)]
+    [InlineData(FileStatus.ReadyToMove)]
+    [InlineData(FileStatus.Error)]
+    [InlineData(FileStatus.Retry)]
+    public async Task IgnoreFileAsync_WithVariousInitialStatuses_ShouldSucceed(FileStatus initialStatus)
+    {
+        // Arrange
+        var testFile = new TrackedFile
+        {
+            Hash = $"status_{initialStatus}_integration_test_hash_12345678901234567890123",
+            FileName = $"Status.{initialStatus}.File.mkv",
+            OriginalPath = $"/integration/test/Status.{initialStatus}.File.mkv",
+            FileSize = 1800000,
+            Status = initialStatus,
+            CreatedDate = DateTime.UtcNow.AddHours(-2),
+            LastUpdateDate = DateTime.UtcNow.AddHours(-1)
+        };
+
+        Context.TrackedFiles.Add(testFile);
+        await Context.SaveChangesAsync();
+
+        var repository = new TrackedFileRepository(Context);
+        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
+        var logger = ServiceProvider.GetRequiredService<ILogger<FileService>>();
+        var fileService = new FileService(repository, unitOfWork, logger);
+
+        var originalUpdateDate = testFile.LastUpdateDate;
+
+        // Act
+        var result = await fileService.IgnoreFileAsync(testFile.Hash);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().NotBeNull();
+        result.Value.Status.Should().Be(FileStatus.Ignored);
+        result.Value.LastUpdateDate.Should().BeAfter(originalUpdateDate);
+
+        // Verify in database
+        var savedFile = await Context.TrackedFiles.FindAsync(testFile.Hash);
+        savedFile.Should().NotBeNull();
+        savedFile!.Status.Should().Be(FileStatus.Ignored);
+        savedFile.LastUpdateDate.Should().BeAfter(originalUpdateDate);
+    }
+
+    [Fact]
+    public async Task IgnoreFileAsync_WithDatabaseTransaction_ShouldCommitChanges()
+    {
+        // Arrange
+        var testFile = new TrackedFile
+        {
+            Hash = "transaction_test_integration_hash_12345678901234567890123456789",
+            FileName = "Transaction.Test.File.mkv",
+            OriginalPath = "/integration/test/Transaction.Test.File.mkv",
+            FileSize = 1900000,
+            Status = FileStatus.Classified,
+            CreatedDate = DateTime.UtcNow.AddHours(-2),
+            LastUpdateDate = DateTime.UtcNow.AddHours(-1)
+        };
+
+        Context.TrackedFiles.Add(testFile);
+        await Context.SaveChangesAsync();
+
+        var repository = new TrackedFileRepository(Context);
+        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
+        var logger = ServiceProvider.GetRequiredService<ILogger<FileService>>();
+        var fileService = new FileService(repository, unitOfWork, logger);
+
+        // Act
+        var result = await fileService.IgnoreFileAsync(testFile.Hash);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+
+        // Verify changes were committed to the database
+        var committedFile = await Context.TrackedFiles.FindAsync(testFile.Hash);
+        committedFile.Should().NotBeNull();
+        committedFile!.Status.Should().Be(FileStatus.Ignored);
+    }
+
+    #endregion
 }
