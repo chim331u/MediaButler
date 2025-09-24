@@ -193,9 +193,14 @@
                          Style="margin: 0 1rem;" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Medium">
             <Items>
                 <RadzenSelectBarItem Text="ALL" Value="@("ALL")" Icon="list"/>
-                <RadzenSelectBarItem Text="To Classify" Value="@("TO_CLASSIFY")" Icon="psychology"/>
+                <RadzenSelectBarItem Text="New" Value="@("New")" Icon="fiber_new"/>
+                @* <RadzenSelectBarItem Text="Processing" Value="@("Processing")" Icon="sync"/> *@
+                <RadzenSelectBarItem Text="ML Classified" Value="@("Classified")" Icon="psychology"/>
                 <RadzenSelectBarItem Text="Ready To Move" Value="@("ReadyToMove")" Icon="check_circle"/>
+                @* <RadzenSelectBarItem Text="Moving" Value="@("Moving")" Icon="swap_horiz"/> *@
+                <RadzenSelectBarItem Text="Moved" Value="@("Moved")" Icon="done"/>
                 <RadzenSelectBarItem Text="Error" Value="@("Error")" Icon="error"/>
+                @* <RadzenSelectBarItem Text="Retry" Value="@("Retry")" Icon="refresh"/> *@
                 <RadzenSelectBarItem Text="Ignored" Value="@("Ignored")" Icon="visibility_off"/>
             </Items>
         </RadzenSelectBar>
@@ -522,8 +527,8 @@
     private string _newCategory = string.Empty;
     private string _consoleText = string.Empty;
     private int _addCategory = 0;
-    private string _selectedStatusGroup = "TO_CLASSIFY"; // Default to "To Classify"
-    private FileStatus[] _selectedStatuses = { FileStatus.New, FileStatus.Processing, FileStatus.Classified }; // Default to TO_CLASSIFY statuses
+    private string _selectedStatusGroup = "ALL"; // Default to "ALL" ReadyToMove
+    private FileStatus[] _selectedStatuses = { FileStatus.New, FileStatus.Processing, FileStatus.Classified, FileStatus.ReadyToMove, FileStatus.Moving, FileStatus.Moved, FileStatus.Error, FileStatus.Retry, FileStatus.Ignored }; // Default to ALL statuses
 
     // Centralized SignalR notification subscriptions
     private readonly List<IDisposable> _notificationSubscriptions = new();
@@ -815,10 +820,21 @@
         var statuses = statusGroup switch
         {
             "ALL" => new[] { FileStatus.New, FileStatus.Processing, FileStatus.Classified, FileStatus.ReadyToMove, FileStatus.Moving, FileStatus.Moved, FileStatus.Error, FileStatus.Retry, FileStatus.Ignored },
-            "TO_CLASSIFY" => new[] { FileStatus.New, FileStatus.Processing, FileStatus.Classified },
-            "READY_TO_MOVE" => new[] { FileStatus.ReadyToMove },
-            "ERROR" => new[] { FileStatus.Retry, FileStatus.Error },
-            "IGNORED" => new[] { FileStatus.Ignored },
+            // Individual status values
+            "New" => new[] { FileStatus.New },
+            "Processing" => new[] { FileStatus.Processing },
+            "Classified" => new[] { FileStatus.Classified },
+            "ReadyToMove" => new[] { FileStatus.ReadyToMove },
+            "Moving" => new[] { FileStatus.Moving },
+            "Moved" => new[] { FileStatus.Moved },
+            "Error" => new[] { FileStatus.Error },
+            "Retry" => new[] { FileStatus.Retry },
+            "Ignored" => new[] { FileStatus.Ignored },
+            // // Legacy group values (for backward compatibility)
+            // "TO_CLASSIFY" => new[] { FileStatus.New, FileStatus.Processing, FileStatus.Classified },
+            // "READY_TO_MOVE" => new[] { FileStatus.ReadyToMove },
+            // "ERROR" => new[] { FileStatus.Retry, FileStatus.Error },
+            // "IGNORED" => new[] { FileStatus.Ignored },
             _ => new[] { FileStatus.New, FileStatus.Processing, FileStatus.Classified, FileStatus.ReadyToMove, FileStatus.Moving, FileStatus.Moved, FileStatus.Error, FileStatus.Retry, FileStatus.Ignored } // Default to ALL
         };
 

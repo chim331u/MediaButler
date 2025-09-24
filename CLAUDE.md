@@ -140,16 +140,23 @@ dotnet run --project src/MediaButler.Web
 dotnet watch --project src/MediaButler.Web
 ```
 
-#### Web UI Status Filtering (Updated)
+#### Web UI Status Filtering (Enhanced)
 
-The Web UI now features simplified status filtering with intelligent auto-refresh capabilities:
+The Web UI now features granular individual status filtering with intelligent auto-refresh capabilities:
 
-**Status Groups**:
-- **ALL**: Displays files across all statuses and categories
-- **To Classify**: Shows files in New, Processing, or Classified states
-- **Ready To Move**: Shows files ready for organization (ReadyToMove status)
-- **Error**: Shows files in Retry or Error states requiring attention
-- **Ignored**: Shows files marked as ignored
+**Individual Status Filters**:
+- **ALL**: Displays files across all statuses and categories (default view)
+- **New**: Shows files just discovered but not yet processed
+- **ML Classified**: Shows files with completed ML classification awaiting user confirmation
+- **Ready To Move**: Shows files confirmed and ready for organization
+- **Moved**: Shows files successfully organized to their final location
+- **Error**: Shows files with processing errors requiring attention
+- **Ignored**: Shows files marked as ignored by user
+
+**Removed Status Filters** (commented out for cleaner UI):
+- **Processing**: Files currently being analyzed (transitional state)
+- **Moving**: Files currently being moved (transitional state)
+- **Retry**: Files queued for retry (transitional state)
 
 **Smart Auto-Refresh Features**:
 - **New File Detection**: When SignalR detects a new file, automatically switches to "ALL" view
@@ -157,9 +164,12 @@ The Web UI now features simplified status filtering with intelligent auto-refres
 - **Scan Results**: Auto-switches to "ALL" when folder scan discovers new files
 
 **Technical Implementation**:
-- Uses new `GET /api/files/by-statuses` endpoint for efficient multi-status filtering
+- **Granular Filtering**: Each status filter maps to a single FileStatus enum value
+- **Default to ALL**: Shows comprehensive file overview on initial load
+- Uses `GET /api/files/by-statuses` endpoint for efficient multi-status filtering
 - SignalR integration for real-time updates without manual refresh
 - Respects API pagination limits (max 100 records per request)
+- Backward compatibility maintained for legacy group status values
 
 ### Testing
 ```bash
