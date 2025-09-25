@@ -298,6 +298,16 @@
                 <p>Showing first 20 categories. Use search to find specific files.</p>
             </div>
         }
+
+        @if (_allFiles.Count >= 100)
+        {
+            <div style="text-align: center; padding: 20px; background-color: var(--rz-info-lighter); border-radius: 8px; margin: 16px 0;">
+                <i class="rzi rzi-info-circle"></i>
+                <p style="margin: 8px 0 0 0; color: var(--rz-info-darker);">
+                    Showing the 100 most recent files. Use search to find older files or check the file management page for complete history.
+                </p>
+            </div>
+        }
     }
 </div>
 
@@ -329,10 +339,10 @@
             _errorMessage = null;
             StateHasChanged();
 
-            // Load recently moved files
+            // Load recently moved files (API limit is 100 per request)
             var result = await FilesApiService.GetFilesByStatusesAsync(
                 skip: 0,
-                take: 1000, // Get a large number for grouping
+                take: 100, // API maximum limit
                 statuses: new[] { FileStatus.Moved },
                 cancellationToken: default);
 
