@@ -27,6 +27,7 @@
         padding: 24px;
         border-radius: 12px 12px 0 0;
         margin-bottom: 0;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
     }
 
     .last-view-title {
@@ -45,10 +46,11 @@
     }
 
     .search-section {
-        background: white;
+        background: var(--rz-background-color-alt);
         padding: 20px;
         border: 1px solid var(--rz-border-color);
         border-top: none;
+        border-bottom: 1px solid var(--rz-border-color-light);
     }
 
     .category-group {
@@ -67,7 +69,7 @@
     }
 
     .category-header {
-        background: linear-gradient(135deg, var(--rz-secondary) 0%, var(--rz-secondary-darker) 100%);
+        background: linear-gradient(135deg, var(--rz-primary) 0%, var(--rz-primary-darker) 100%);
         color: white;
         padding: 16px 20px;
         cursor: pointer;
@@ -76,10 +78,15 @@
         justify-content: space-between;
         font-weight: 600;
         transition: all 0.2s ease;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        font-size: 0.875rem;
     }
 
     .category-header:hover {
-        background: linear-gradient(135deg, var(--rz-secondary-darker) 0%, var(--rz-secondary-darkest) 100%);
+        background: linear-gradient(135deg, var(--rz-primary-darker) 0%, var(--rz-primary-darkest) 100%);
+        transform: translateY(-1px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
     }
 
     .category-info {
@@ -124,6 +131,8 @@
 
     .file-row:hover {
         background-color: var(--rz-background-color-hover);
+        transform: translateY(-1px);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     }
 
     .file-info {
@@ -151,12 +160,25 @@
         color: var(--rz-text-color-secondary);
         min-width: 80px;
         text-align: right;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
 
     .file-actions {
         display: flex;
         gap: 8px;
         align-items: center;
+    }
+
+    .file-actions .rz-button {
+        min-width: 36px;
+        min-height: 36px;
+        border-radius: 8px;
+        transition: all 0.2s ease;
+    }
+
+    .file-actions .rz-button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
     }
 
     .loading-state, .empty-state {
@@ -186,6 +208,17 @@
         border-radius: 8px;
         margin: 16px 0;
         border-left: 4px solid var(--rz-danger);
+        border: 1px solid var(--rz-border-color-light);
+    }
+
+    .info-message {
+        background-color: var(--rz-info-lighter);
+        color: var(--rz-info-darker);
+        padding: 16px;
+        border-radius: 8px;
+        margin: 16px 0;
+        border-left: 4px solid var(--rz-info);
+        border: 1px solid var(--rz-border-color-light);
     }
 </style>
 
@@ -213,12 +246,11 @@
                     <span><strong>@_totalFiles</strong> files</span>
                     <span><strong>@_categoryGroups.Count</strong> categories</span>
                     <RadzenButton
-                        Icon="refresh"
-                        ButtonStyle="ButtonStyle.Light"
-                        Size="ButtonSize.Medium"
+                        Icon="autorenew"
+                        ButtonStyle="ButtonStyle.Dark"
+                        Size="ButtonSize.Large"
                         Click="RefreshData"
-                        Disabled="@_isLoading"
-                        Text="Refresh" />
+                        Disabled="@_isLoading" />
                 </div>
             </RadzenColumn>
         </RadzenRow>
@@ -273,17 +305,17 @@
                                     <RadzenButton
                                         Icon="folder_open"
                                         ButtonStyle="ButtonStyle.Light"
-                                        Size="ButtonSize.Small"
+                                        Size="ButtonSize.Medium"
                                         Click="() => OpenFileLocation(file)"
-                                        Title="Open folder"
-                                        class="rz-border-radius-10" />
+                                        Title="Open folder" />
                                     <RadzenButton
                                         Icon="visibility_off"
                                         ButtonStyle="ButtonStyle.Secondary"
-                                        Size="ButtonSize.Small"
+                                        Variant="Variant.Flat"
+                                        Shade="Shade.Lighter"
+                                        Size="ButtonSize.Medium"
                                         Click="() => IgnoreFile(file)"
-                                        Title="Don't show again"
-                                        class="rz-border-radius-10" />
+                                        Title="Don't show again" />
                                 </div>
                             </div>
                         }
@@ -301,9 +333,9 @@
 
         @if (_allFiles.Count >= 100)
         {
-            <div style="text-align: center; padding: 20px; background-color: var(--rz-info-lighter); border-radius: 8px; margin: 16px 0;">
+            <div class="info-message" style="text-align: center;">
                 <i class="rzi rzi-info-circle"></i>
-                <p style="margin: 8px 0 0 0; color: var(--rz-info-darker);">
+                <p style="margin: 8px 0 0 0;">
                     Showing the 100 most recent files. Use search to find older files or check the file management page for complete history.
                 </p>
             </div>
