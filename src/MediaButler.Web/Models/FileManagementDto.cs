@@ -17,9 +17,12 @@ public class FileManagementDto
     public decimal Confidence { get; set; }
     public string? Status { get; set; }
 
+    // Move queue management
+    public bool IsInMoveQueue { get; set; } = false;
+
     // Helper methods to replace the removed boolean properties
     public bool IsToCategorize => Status == "Classified" || GetStatusCode() == 2;
-    public bool IsNotToMove => Status == "Moved" || Status == "Error" || Status == "Ignored" ||
+    public bool IsNotToMove => IsInMoveQueue || Status == "Moved" || Status == "Error" || Status == "Ignored" ||
                                GetStatusCode() == 5 || GetStatusCode() == 6 || GetStatusCode() == 8;
     public bool IsNew => Status == "New" || Status == "Processing" ||
                          GetStatusCode() == 0 || GetStatusCode() == 1;

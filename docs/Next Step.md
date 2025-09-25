@@ -1,11 +1,20 @@
 # 🎩 MediaButler - NEXT STEP list -
 
+## ✅ COMPLETED TASKS
 
-[![Version](https://img.shields.io/badge/version-1.0.2-blue.svg)]()
+### Web UI Implementation (Sprint 4 - COMPLETED)
+- ✅ **UI Elements & Actions Matrix** - Fully implemented in Files.razor
+- ✅ **ML Classification Integration** - Real ML service integrated in ProcessingController.cs
+- ✅ **Move Queue Functionality** - ReadyToMove → Move → Revert workflow implemented
+- ✅ **Health Check Display** - Fixed Database status mapping issue
+- ✅ **Navigation Structure** - Files.razor as home page, updated sidebar
+- ✅ **Icon Updates** - Health Status with health_and_safety icon
+
+[![Version](https://img.shields.io/badge/version-1.0.3-blue.svg)]()
 [![Platform](https://img.shields.io/badge/platform-ARM32%20|%20x64-green.svg)]()
-[![.NET](https://img.shields.io/badge/.NET-8.0-purple.svg)]()
+[![.NET](https://img.shields.io/badge/.NET-8.0%20|%2010-purple.svg)]()
 
-merge web_analysis_panning_complete.md/9. Implementation Plan & Roadmap in dev_planning.md/SPRINT 4: Web Interface & User Experience (Days 13-16)
+## UPCOMING TASKS
 
 Increase test coverage task 1.7.1
 
@@ -69,65 +78,35 @@ The SearchBarComponent displays files with different status-based UI states and 
 
 **Note:** ✅* = Conditional (Active when move queue > 0)
 
-## Status-Specific Behavior
+## ✅ IMPLEMENTATION STATUS - COMPLETED
 
-### NEW Status
+### Files.razor Button Visibility Implementation
+All UI elements and actions from the matrix above have been successfully implemented with status-based visibility logic:
 
-Category Display: Hidden (no ML classification yet)
-Move File: Disabled (requires classification first)
-Refresh Button: Disabled (no ML data to refresh)
-NotShowAgain: Hidden (no confirmation needed)
+```csharp
+// Helper methods implemented for conditional button display
+private bool ShowAddSelectCategory(string? status) =>
+    status?.ToUpperInvariant() switch
+    {
+        "ML CLASSIFIED" or "CLASSIFIED" => true,
+        "READYTOMOVE" => true,
+        "IGNORED" => true,
+        _ => false
+    };
 
-### ML CLASSIFIED Status
-Category Display: Shows ML-suggested category
-Move File: Enabled (ready for organization)
-Refresh Button: Enabled (can re-run ML classification)
-NotShowAgain: Conditional (visible when move queue > 0)
+private bool ShowMoveButton(FileManagementDto file) =>
+    file.IsInMoveQueue && (file.Status == "ML CLASSIFIED" || file.Status == "READYTOMOVE");
+```
 
-### MOVED Status
-Category Display: Hidden (file already organized)
-Move File: Disabled (already moved)
-Refresh Button: Disabled (no classification needed)
-NotShowAgain: Hidden (operation complete)
+### Key Features Implemented:
+- ✅ **Dynamic Button Visibility**: Buttons show/hide based on file status
+- ✅ **Move Queue Management**: ReadyToMove → Move → Revert workflow
+- ✅ **Status Pills with Colors**: Yellow for ReadyToMove, proper status display
+- ✅ **ML Classification Integration**: Real ML service replacing simulation
+- ✅ **Health Check Fixes**: Database status properly displays OK icon
 
-### ERROR Status
-Category Display: Hidden (classification failed)
-Move File: Disabled (needs error resolution)
-Refresh Button: Disabled (error state)
-NotShowAgain: Hidden (requires manual intervention)
-
-### IGNORED Status
-Category Display: Shows assigned category
-Move File: Enabled (can still be moved if desired)
-Refresh Button: Enabled (can re-classify)
-NotShowAgain: Conditional (visible when move queue > 0)
-
-## Action Categories
-
-### Always Available Actions
-These actions are available regardless of file status:
-- Force Category
-- Scan Folder
-- Train Model
-- Add Select Category
-- Add To Move Queue
-- View Detail
-- Copy Path
-- Open Folder
-- Delete Action Button
-
-### Status-Dependent Actions
-| Action | Available For | Condition |
-|---|---|---|
-| **Move File** | ML CLASSIFIED, IGNORED | File has valid category |
-| **Refresh Button** | ML CLASSIFIED, IGNORED | Can re-run classification |
-| **Category Display** | ML CLASSIFIED, IGNORED | Shows current/suggested category |
-| **NotShowAgain** | ML CLASSIFIED, IGNORED | Move queue count > 0 |
-
-## Implementation Notes
-
-- **Status Pills**: Visual indicators showing current file state
-- **Conditional Visibility**: UI elements show/hide based on status and queue state
-- **Queue Integration**: Some actions depend on move queue status
-- **Category Management**: Different category display logic per status
-- **Error Handling**: Disabled actions for error states to prevent issues
+### Technical Improvements:
+- ✅ **Home Page Navigation**: Files.razor is now the default home route
+- ✅ **Sidebar Updates**: Removed Files link, added Health Status with proper icon
+- ✅ **API Integration**: ProcessingController uses actual IClassificationService
+- ✅ **Status Mapping**: Fixed health check status mapping for proper UI display

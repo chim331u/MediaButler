@@ -120,6 +120,15 @@ public interface IFilesApiService
     Task<Result<object>> IgnoreFileAsync(
         string hash,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Queues files for ML evaluation/re-evaluation.
+    /// Processes files in New, Classified, and ReadyToMove status.
+    /// </summary>
+    Task<Result<MlEvaluationResponse>> QueueMlEvaluationAsync(
+        string? filterByCategory = null,
+        bool forceReEvaluation = true,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -492,6 +501,37 @@ public class FilesApiService : IFilesApiService
         catch (Exception ex)
         {
             return Result<object>.Failure($"Failed to ignore file: {ex.Message}");
+        }
+    }
+
+    public async Task<Result<MlEvaluationResponse>> QueueMlEvaluationAsync(
+        string? filterByCategory = null,
+        bool forceReEvaluation = true,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var request = new MlEvaluationRequest
+            {
+                FilterByCategory = filterByCategory,
+                ForceReEvaluation = forceReEvaluation
+            };
+
+            var result = await _httpClient.PostAsync<MlEvaluationResponse>(
+                "/api/processing/ml-evaluation/queue",
+                request,
+                cancellationToken);
+
+            if (!result.IsSuccess)
+            {
+                return Result<MlEvaluationResponse>.Failure(result.Error, result.StatusCode);
+            }
+
+            return Result<MlEvaluationResponse>.Success(result.Value!);
+        }
+        catch (Exception ex)
+        {
+            return Result<MlEvaluationResponse>.Failure($"Failed to queue ML evaluation: {ex.Message}");
         }
     }
 

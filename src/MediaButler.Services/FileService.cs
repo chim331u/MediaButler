@@ -193,7 +193,7 @@ public class FileService : IFileService
             if (file == null)
                 return Result<TrackedFile>.Failure($"File with hash {hash} not found");
 
-            if (file.Status != FileStatus.New)
+            if (file.Status != FileStatus.New && file.Status !=  FileStatus.Classified)
                 return Result<TrackedFile>.Failure($"File is not in New status. Current status: {file.Status}");
 
             file.SuggestedCategory = suggestedCategory;

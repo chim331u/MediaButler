@@ -255,7 +255,11 @@ public class HealthApiService : IHealthApiService
     private static HealthStatus MapStatus(string status) => status.ToLowerInvariant() switch
     {
         "healthy" => HealthStatus.Healthy,
+        "connected" => HealthStatus.Healthy,  // Database connection is healthy
+        "operational" => HealthStatus.Healthy, // File operations are healthy
+        "available" => HealthStatus.Healthy,   // ML services are healthy
         "degraded" => HealthStatus.Degraded,
+        "warning" => HealthStatus.Degraded,   // File operations degraded
         _ => HealthStatus.Unhealthy
     };
 

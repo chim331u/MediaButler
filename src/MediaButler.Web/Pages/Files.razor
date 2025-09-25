@@ -1,3 +1,4 @@
+@page "/"
 @page "/files"
 @using MediaButler.Web.Models
 @using MediaButler.Web.Services
@@ -165,6 +166,23 @@
         border-bottom: 1px solid var(--rz-border-color);
     }
 
+    /* Custom text-muted override to white */
+    .text-muted {
+        color: white !important;
+    }
+
+    /* Yellow background for Ready to Move pill badges */
+    .ready-to-move-badge {
+        background-color: yellow !important;
+        color: black !important;
+        border-color: yellow !important;
+    }
+
+    .ready-to-move-badge .rz-badge-content {
+        background-color: yellow !important;
+        color: black !important;
+    }
+
     .modern-data-grid .rz-datatable-filter .rz-textbox,
     .modern-data-grid .rz-datatable-filter .rz-dropdown {
         border-radius: 6px;
@@ -184,9 +202,8 @@
 <div class="p-2">
     <RadzenRow JustifyContent="JustifyContent.SpaceBetween">
 
-        @* <RadzenButton Click="RefreshFiles" Icon="autorenew" ButtonStyle="ButtonStyle.Dark" Size="ButtonSize.Large" *@
-        @*     IsBusy="@busyRefresh" Text="Refresh" *@
-        @*     BusyText="Wait ..." /> *@
+        <RadzenButton Click="RefreshFileListAsync" Icon="autorenew" ButtonStyle="ButtonStyle.Dark"
+                      Size="ButtonSize.Large"/>
 
         <RadzenSelectBar @bind-Value="@_selectedStatusGroup" TValue="string"
                          Change="@(args => OnChangeStatusFilter(args))"
@@ -205,22 +222,24 @@
             </Items>
         </RadzenSelectBar>
 
-        <RadzenButton Text="Scan Folders" Icon="folder_open" Click="ScanFolders" ButtonStyle="ButtonStyle.Dark"
+        <RadzenButton Icon="folder_open" Click="ScanFolders" ButtonStyle="ButtonStyle.Dark"
                       Size="ButtonSize.Large"
                       IsBusy="@_busyScan"
                       BusyText="Scanning ..."/>
 
-        <RadzenButton Text="Train Model" Icon="psychology" Click="TrainModel" ButtonStyle="ButtonStyle.Dark"
+        <RadzenButton Icon="psychology" Click="TrainModel" ButtonStyle="ButtonStyle.Dark"
                       Size="ButtonSize.Large"
                       IsBusy="@_busyTrain"
-                      BusyText="Training ..."/>
+                      BusyText="Training ..."
+        />
 
-        <RadzenButton Text="Force Categories" Icon="category" Click="ForceCategory" ButtonStyle="ButtonStyle.Dark"
-                      Size="ButtonSize.Large"/>
+        <RadzenButton  Icon="category" Click="ForceCategory" ButtonStyle="ButtonStyle.Dark"
+                       Size="ButtonSize.Large"
+                       />
 
         <RadzenButton ButtonStyle="ButtonStyle.Primary" Icon="drive_file_move" Variant="Variant.Flat" Text="Move"
                       Shade="Shade.Default" Size="ButtonSize.Medium" Class="my-1 ms-1" Click="MoveFiles"
-                      Disabled="@(!HasFilesToMove)"
+                      Disabled="@(!HasFilesToMove || !CanMoveFilesInCurrentView())"
                       title="@GetMoveButtonTooltip()"
                       IsBusy="@_busyMove"
                       BusyText="Moving files...">
@@ -363,7 +382,7 @@
                     </HeaderTemplate>
                     <Template Context="category">
                         <div class="category-cell" role="gridcell">
-                            @if (category.IsToCategorize)
+                            @if (ShowAddSelectCategory(category.Status))
                             {
                                 @if (_addCategory == category.Id)
                                 {
@@ -401,16 +420,19 @@
                                                       @onclick:stopPropagation="true"
                                                       title="Add new category"
                                                       aria-label="Add new category"/>
-                                        <RadzenDropDown AllowClear="true"
-                                                        TValue="string"
-                                                        class="flex-grow-1"
-                                                        Placeholder="Select category..."
-                                                        FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
-                                                        AllowFiltering="true"
-                                                        Data="@_categories"
-                                                        @bind-Value="@category.FileCategory"
-                                                        Change="@((args) => OnCategoryChanged(category, args))"
-                                                        aria-label="Category selection"/>
+                                        @if (ShowRadzenDropDownCategory(category.Status))
+                                        {
+                                            <RadzenDropDown AllowClear="true"
+                                                            TValue="string"
+                                                            class="flex-grow-1"
+                                                            Placeholder="Select category..."
+                                                            FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                                            AllowFiltering="true"
+                                                            Data="@_categories"
+                                                            @bind-Value="@category.FileCategory"
+                                                            Change="@((args) => OnCategoryChanged(category, args))"
+                                                            aria-label="Category selection"/>
+                                        }
                                     </div>
                                 }
                             }
@@ -427,7 +449,8 @@
                                                      Text="Ready to Move"
                                                      IsPill="true"
                                                      Variant="Variant.Filled"
-                                                     title="File is ready to be moved"/>
+                                                     title="File is ready to be moved"
+                                                     class="ready-to-move-badge"/>
                                     }
                                 </div>
                             }
@@ -451,30 +474,35 @@
                     </HeaderTemplate>
                     <Template Context="file">
                         <div class="actions-cell d-flex justify-content-center gap-1" role="gridcell">
-                            @if (file.IsNotToMove)
+                            @* Move Queue Management buttons - only show for ML CLASSIFIED, ERROR, and IGNORED *@
+                            @if (ShowAddToMoveQueue(file.Status))
                             {
-                                <RadzenButton ButtonStyle="ButtonStyle.Secondary"
-                                              Icon="undo"
-                                              Variant="Variant.Text"
-                                              Size="ButtonSize.Small"
-                                              Click="@(() => Revert(file))"
-                                              @onclick:stopPropagation="true"
-                                              title="Remove from move queue"
-                                              aria-label="@($"Remove {file.Name} from move queue")"/>
-                            }
-                            else
-                            {
-                                <RadzenButton ButtonStyle="ButtonStyle.Success"
-                                              Icon="playlist_add"
-                                              Variant="Variant.Text"
-                                              Size="ButtonSize.Small"
-                                              Click="@(() => Schedule(file))"
-                                              @onclick:stopPropagation="true"
-                                              title="Add to move queue"
-                                              aria-label="@($"Add {file.Name} to move queue")"/>
+                                @if (file.IsInMoveQueue)
+                                {
+                                    <RadzenButton ButtonStyle="ButtonStyle.Secondary"
+                                                  Icon="undo"
+                                                  Variant="Variant.Text"
+                                                  Size="ButtonSize.Small"
+                                                  Click="@(() => Revert(file))"
+                                                  @onclick:stopPropagation="true"
+                                                  title="Remove from move queue"
+                                                  aria-label="@($"Remove {file.Name} from move queue")"/>
+                                }
+                                else
+                                {
+                                    <RadzenButton ButtonStyle="ButtonStyle.Success"
+                                                  Icon="playlist_add"
+                                                  Variant="Variant.Text"
+                                                  Size="ButtonSize.Small"
+                                                  Click="@(() => Schedule(file))"
+                                                  @onclick:stopPropagation="true"
+                                                  title="Add to move queue"
+                                                  aria-label="@($"Add {file.Name} to move queue")"/>
+                                }
                             }
 
-                            @if (file.Status != "Ignored")
+                            @* NotShowAgain button - available for all statuses except ERROR *@
+                            @if (ShowNotShowAgain(file.Status))
                             {
                                 <RadzenButton ButtonStyle="ButtonStyle.Warning"
                                               Icon="visibility_off"
@@ -527,7 +555,7 @@
     private string _newCategory = string.Empty;
     private string _consoleText = string.Empty;
     private int _addCategory = 0;
-    private string _selectedStatusGroup = "ALL"; // Default to "ALL" ReadyToMove
+    private string _selectedStatusGroup = "ReadyToMove"; // Default to "ALL" ReadyToMove
     private FileStatus[] _selectedStatuses = { FileStatus.New, FileStatus.Processing, FileStatus.Classified, FileStatus.ReadyToMove, FileStatus.Moving, FileStatus.Moved, FileStatus.Error, FileStatus.Retry, FileStatus.Ignored }; // Default to ALL statuses
 
     // Centralized SignalR notification subscriptions
@@ -537,14 +565,14 @@
     private string? _currentBatchJobId;
 
     // Helper properties for move button state
-    private bool HasFilesToMove => _fileList?.Any(f => f.IsNotToMove && !string.IsNullOrEmpty(f.FileCategory)) == true;
+    private bool HasFilesToMove => _fileList?.Any(f => f.IsInMoveQueue && !string.IsNullOrEmpty(f.FileCategory)) == true;
 
     private string GetMoveButtonTooltip()
     {
         if (_fileList == null) return "Loading files...";
 
-        var filesToMove = _fileList.Where(f => f.IsNotToMove && !string.IsNullOrEmpty(f.FileCategory)).ToList();
-        if (!filesToMove.Any()) return "No files ready to move. Schedule files first.";
+        var filesToMove = _fileList.Where(f => f.IsInMoveQueue && !string.IsNullOrEmpty(f.FileCategory)).ToList();
+        if (!filesToMove.Any()) return "No files in move queue. Add files to queue first.";
 
         return $"Move {filesToMove.Count} file(s) to their target locations";
     }
@@ -917,27 +945,48 @@
 
     private async Task ForceCategory()
     {
-        WriteConsole("Starting force categorization...");
+        WriteConsole("Starting ML re-evaluation for files...");
 
         try
         {
-            // Note: Force categorization endpoint would need to be added to FilesApiService or created as MLApiService
-            WriteConsole("Force categorization feature coming soon...");
-            await RefreshFileListAsync();
+            var result = await FilesApiService.QueueMlEvaluationAsync(
+                filterByCategory: null, // Process all categories
+                forceReEvaluation: true // Force re-evaluation even if already classified
+            );
+
+            if (result.IsSuccess && result.Value != null)
+            {
+                var response = result.Value;
+                WriteConsole($"ML evaluation queued successfully!");
+                WriteConsole($"Files queued: {response.TotalFilesQueued}");
+                WriteConsole($"Estimated processing time: {response.EstimatedProcessingTimeMinutes} minutes");
+                WriteConsole($"Message: {response.Message}");
+
+                if (response.TotalFilesQueued > 0)
+                {
+                    // Refresh the file list after a short delay to show updated statuses
+                    await Task.Delay(2000);
+                    await RefreshFileListAsync();
+                }
+            }
+            else
+            {
+                WriteConsole($"Failed to queue ML evaluation: {result.Error}");
+            }
         }
         catch (Exception ex)
         {
-            WriteConsole($"Force categorization error: {ex.Message}");
+            WriteConsole($"ML evaluation error: {ex.Message}");
         }
     }
 
     private async Task MoveFiles()
     {
-        var filesToMove = _fileList?.Where(f => f.IsNotToMove && !string.IsNullOrEmpty(f.FileCategory)).ToList() ?? new List<FileManagementDto>();
+        var filesToMove = _fileList?.Where(f => f.IsInMoveQueue && !string.IsNullOrEmpty(f.FileCategory)).ToList() ?? new List<FileManagementDto>();
 
         if (!filesToMove.Any())
         {
-            WriteConsole("No files scheduled for moving or missing categories");
+            WriteConsole("No files in move queue or missing categories");
             return;
         }
 
@@ -1024,6 +1073,15 @@
                                 }
                             }
 
+                            // Clear move queue for successfully moved files
+                            if (_fileList != null)
+                            {
+                                foreach (var file in _fileList.Where(f => f.IsInMoveQueue))
+                                {
+                                    file.IsInMoveQueue = false;
+                                }
+                            }
+
                             // Refresh the file list to show updated statuses
                             _ = Task.Run(async () => await RefreshFileListAsync());
                             return;
@@ -1090,17 +1148,18 @@
 
     private void Schedule(FileManagementDto item)
     {
-        // Mark as ready to move
-        item.Status = "ReadyToMove";
-        WriteConsole($"Scheduled for move: {item.Name}");
+        // Add to move queue - this will enable the Move button
+        item.IsInMoveQueue = true;
+        WriteConsole($"Added to move queue: {item.Name}");
+        StateHasChanged(); // Refresh UI to update button states
     }
 
     private void Revert(FileManagementDto item)
     {
-        // Reset status to a state that allows processing again
-        // This is a UI operation - the server state should be updated via API call if needed
-        item.Status = "New";
-        WriteConsole($"Reverted from move queue: {item.Name}");
+        // Remove from move queue
+        item.IsInMoveQueue = false;
+        WriteConsole($"Removed from move queue: {item.Name}");
+        StateHasChanged(); // Refresh UI to update button states
     }
 
     private async Task NotShowAgain(FileManagementDto item)
@@ -1216,6 +1275,79 @@
         await Task.CompletedTask;
     }
 
-    // Alias method for compatibility
-    private async Task RefreshFiles() => await RefreshFileListAsync();
+    // UI Elements & Actions Matrix Helper Methods
+    private bool ShowAddSelectCategory(string? status)
+    {
+        if (string.IsNullOrEmpty(status)) return false;
+
+        return status.ToUpperInvariant() switch
+        {
+            "ML CLASSIFIED" or "CLASSIFIED" => true,
+            "READYTOMOVE" => true,
+            "IGNORED" => true,
+            _ => false
+        };
+    }
+
+    private bool ShowRadzenDropDownCategory(string? status)
+    {
+        if (string.IsNullOrEmpty(status)) return false;
+
+        return status.ToUpperInvariant() switch
+        {
+            "ML CLASSIFIED" or "CLASSIFIED" => true,
+            "ERROR" => true,
+            "READYTOMOVE" => true,
+            "IGNORED" => true,
+            _ => false
+        };
+    }
+
+    private bool ShowAddToMoveQueue(string? status)
+    {
+        if (string.IsNullOrEmpty(status)) return false;
+
+        return status.ToUpperInvariant() switch
+        {
+            "ML CLASSIFIED" or "CLASSIFIED" => true,
+            "ERROR" => true,
+            "READYTOMOVE" => true,
+            "IGNORED" => true,
+            _ => false
+        };
+    }
+
+    private bool ShowNotShowAgain(string? status)
+    {
+        if (string.IsNullOrEmpty(status)) return false;
+
+        // Available for all statuses except ERROR
+        return status.ToUpperInvariant() switch
+        {
+            "ERROR" => false,
+            _ => true
+        };
+    }
+
+    private bool CanMoveFile(string? status)
+    {
+        if (string.IsNullOrEmpty(status)) return false;
+
+        return status.ToUpperInvariant() switch
+        {
+            "ML CLASSIFIED" or "CLASSIFIED" => true,
+            "READYTOMOVE" => true,
+            "IGNORED" => true,
+            _ => false
+        };
+    }
+
+    private bool CanMoveFilesInCurrentView()
+    {
+        // Move File * (Active when move queue > 0) - only for ML CLASSIFIED and IGNORED files
+        if (_fileList == null) return false;
+
+        return _fileList.Any(f => f.IsNotToMove && CanMoveFile(f.Status));
+    }
+
 }
