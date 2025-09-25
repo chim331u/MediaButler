@@ -66,6 +66,13 @@ public interface ISignalRNotificationService
     IDisposable SubscribeToErrors(Action<string, string, string> handler);
 
     /// <summary>
+    /// Subscribes to job progress notifications (training, scanning, etc.)
+    /// </summary>
+    /// <param name="handler">Handler for job progress events (jobType, message, progress)</param>
+    /// <returns>Disposable subscription that can be used to unsubscribe</returns>
+    IDisposable SubscribeToJobProgress(Action<string, string, int> handler);
+
+    /// <summary>
     /// Event fired when the connection state changes
     /// </summary>
     event EventHandler<HubConnectionState>? ConnectionStateChanged;

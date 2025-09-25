@@ -39,6 +39,7 @@ builder.Services.AddHttpClient<IHttpClientService, HttpClientService>(client =>
 // MediaButler API services - following "Simple Made Easy" principles
 builder.Services.AddScoped<IHealthApiService, HealthApiService>();
 builder.Services.AddScoped<IFilesApiService, FilesApiService>();
+builder.Services.AddScoped<ITrainingApiService, TrainingApiService>();
 
 // SignalR notification service - centralized real-time communication
 builder.Services.AddSingleton<ISignalRNotificationService, SignalRNotificationService>();

@@ -8,6 +8,7 @@
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @inject IFilesApiService FilesApiService
+@inject ITrainingApiService TrainingApiService
 @inject ISignalRNotificationService SignalRService
 @implements IAsyncDisposable
 
@@ -560,6 +561,7 @@
 
     // Centralized SignalR notification subscriptions
     private readonly List<IDisposable> _notificationSubscriptions = new();
+    private IDisposable? _trainingSubscription;
 
     // Batch job tracking
     private string? _currentBatchJobId;
@@ -930,16 +932,59 @@
 
         try
         {
-            // Note: ML training endpoint would need to be added to FilesApiService or created as MLApiService
-            WriteConsole("ML model training feature coming soon...");
+            // Start training via API
+            var trainingRequest = new TrainingRequest
+            {
+                Epochs = 25,
+                LearningRate = 0.01f,
+                BatchSize = 32,
+                ForceRetrain = true
+            };
+
+            var result = await TrainingApiService.StartTrainingAsync(trainingRequest);
+
+            if (result.IsSuccess && result.Value != null)
+            {
+                var response = result.Value;
+                WriteConsole($"Training started successfully! Session: {response.SessionId}");
+                WriteConsole($"Estimated duration: {response.EstimatedDurationMinutes} minutes");
+
+                // Subscribe to training progress via SignalR
+                _trainingSubscription = SignalRService.SubscribeToJobProgress(OnTrainingProgress);
+                WriteConsole("Subscribed to training progress updates...");
+            }
+            else
+            {
+                WriteConsole($"Failed to start training: {result.Error}");
+                _busyTrain = false;
+            }
         }
         catch (Exception ex)
         {
             WriteConsole($"Training error: {ex.Message}");
-        }
-        finally
-        {
             _busyTrain = false;
+        }
+    }
+
+    private void OnTrainingProgress(string jobType, string message, int progress)
+    {
+        if (jobType == "training")
+        {
+            WriteConsole($"Training Progress ({progress}%): {message}");
+
+            // Update UI when training completes
+            if (progress >= 100)
+            {
+                _busyTrain = false;
+                WriteConsole("🎉 ML model training completed successfully!");
+
+                // Dispose of the subscription
+                _trainingSubscription?.Dispose();
+                _trainingSubscription = null;
+
+                // Refresh the UI
+                InvokeAsync(StateHasChanged);
+            }
         }
     }
 
@@ -1266,6 +1311,9 @@
 
         _notificationSubscriptions.Clear();
 
+        // Dispose training subscription
+        _trainingSubscription?.Dispose();
+
         // Unsubscribe from SignalR service events
         SignalRService.ConnectionStateChanged -= OnConnectionStateChanged;
         SignalRService.Connected -= OnSignalRConnected;
@@ -1349,5 +1397,4 @@
 
         return _fileList.Any(f => f.IsNotToMove && CanMoveFile(f.Status));
     }
-
 }

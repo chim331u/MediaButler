@@ -967,24 +967,24 @@ public class ModelTrainingService : IModelTrainingService
         return algorithm.AlgorithmType switch
         {
             AlgorithmType.LightGBM => _mlContext.MulticlassClassification.Trainers.SdcaMaximumEntropy(
-                labelColumnName: "Category",
+                labelColumnName: "Label",
                 featureColumnName: "Features",
                 maximumNumberOfIterations: config.MaxEpochs),
 
             AlgorithmType.FastTree => _mlContext.MulticlassClassification.Trainers.OneVersusAll(
                 _mlContext.BinaryClassification.Trainers.FastTree(
-                    labelColumnName: "Category",
+                    labelColumnName: "Label",
                     featureColumnName: "Features",
                     numberOfTrees: (int)algorithm.Hyperparameters.GetValueOrDefault("num_trees", 300),
                     numberOfLeaves: (int)algorithm.Hyperparameters.GetValueOrDefault("num_leaves", 31))),
 
             AlgorithmType.LogisticRegression => _mlContext.MulticlassClassification.Trainers.OneVersusAll(
                 _mlContext.BinaryClassification.Trainers.LbfgsLogisticRegression(
-                    labelColumnName: "Category",
+                    labelColumnName: "Label",
                     featureColumnName: "Features")),
 
             _ => _mlContext.MulticlassClassification.Trainers.SdcaMaximumEntropy(
-                labelColumnName: "Category",
+                labelColumnName: "Label",
                 featureColumnName: "Features")
         };
     }
@@ -998,6 +998,7 @@ public class ModelTrainingService : IModelTrainingService
             .Append(_mlContext.Transforms.Categorical.OneHotEncoding("VideoCodecEncoded", "VideoCodec"))
             .Append(_mlContext.Transforms.Concatenate("Features", "FilenameFeatures", "QualityTierEncoded", "VideoCodecEncoded"))
             .Append(_mlContext.Transforms.NormalizeMinMax("Features"))
+            .Append(_mlContext.Transforms.Conversion.MapValueToKey(outputColumnName: "Label", inputColumnName: "Category"))
             .Append(trainer);
     }
 

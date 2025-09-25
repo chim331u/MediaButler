@@ -144,6 +144,14 @@ public class SignalRNotificationService : ISignalRNotificationService, IAsyncDis
         return SubscribeToNotification("ErrorNotification", handler, "Error");
     }
 
+    public IDisposable SubscribeToJobProgress(Action<string, string, int> handler)
+    {
+        if (_disposed)
+            throw new ObjectDisposedException(nameof(SignalRNotificationService));
+
+        return SubscribeToNotification("JobProgressNotification", handler, "JobProgress");
+    }
+
     public void SetAutoReconnect(bool enabled)
     {
         _autoReconnectEnabled = enabled;
@@ -321,6 +329,19 @@ public class SignalRNotificationService : ISignalRNotificationService, IAsyncDis
                 }
             }),
             Action<string, string, string> h => _hubConnection!.On(methodName, (string a1, string a2, string a3) =>
+            {
+                try
+                {
+                    _lastMessageAt = DateTime.UtcNow;
+                    _logger.LogDebug("Received {Category} notification: {Method}", category, methodName);
+                    h(a1, a2, a3);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error handling {Category} notification", category);
+                }
+            }),
+            Action<string, string, int> h => _hubConnection!.On(methodName, (string a1, string a2, int a3) =>
             {
                 try
                 {
