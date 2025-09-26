@@ -13,8 +13,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.api
-      platforms:
-        - ${DOCKER_PLATFORM:-linux/amd64}
+      platform: ${DOCKER_PLATFORM:-linux/amd64}
       args:
         - BUILDKIT_INLINE_CACHE=1
     image: mediabutler/api:latest
@@ -104,8 +103,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.web
-      platforms:
-        - ${DOCKER_PLATFORM:-linux/amd64}
+      platform: ${DOCKER_PLATFORM:-linux/amd64}
       args:
         - BUILDKIT_INLINE_CACHE=1
     image: mediabutler/web:latest
@@ -174,8 +172,8 @@ services:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - ./logs/nginx:/var/log/nginx
       # SSL certificates (if enabled)
-      - ${SSL_CERT_PATH:-/dev/null}:/etc/nginx/ssl/cert.pem:ro
-      - ${SSL_KEY_PATH:-/dev/null}:/etc/nginx/ssl/key.pem:ro
+      - "${SSL_CERT_PATH:-/dev/null}:/etc/nginx/ssl/cert.pem:ro"
+      - "${SSL_KEY_PATH:-/dev/null}:/etc/nginx/ssl/key.pem:ro"
     environment:
       - NGINX_HOST=${NGINX_HOST:-_}
       - NGINX_PORT=80
