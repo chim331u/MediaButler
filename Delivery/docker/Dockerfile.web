@@ -18,9 +18,18 @@ RUN apk add --no-cache \
 COPY src/MediaButler.Web/*.csproj src/MediaButler.Web/
 COPY src/MediaButler.Core/*.csproj src/MediaButler.Core/
 
+# Determine runtime identifier based on target architecture
+ARG TARGETARCH
+RUN case "${TARGETARCH}" in \
+        "amd64") echo "linux-musl-x64" > /tmp/rid ;; \
+        "arm64") echo "linux-musl-arm64" > /tmp/rid ;; \
+        "arm") echo "linux-musl-arm" > /tmp/rid ;; \
+        *) echo "linux-musl-x64" > /tmp/rid ;; \
+    esac
+
 # Restore dependencies (cached layer if project files unchanged)
 RUN dotnet restore src/MediaButler.Web/MediaButler.Web.csproj \
-    --runtime linux-musl-x64
+    --runtime $(cat /tmp/rid)
 
 # Copy entire source code
 COPY . .
@@ -30,7 +39,7 @@ RUN dotnet publish src/MediaButler.Web/MediaButler.Web.csproj \
     --configuration Release \
     --output /app \
     --self-contained true \
-    --runtime linux-musl-x64 \
+    --runtime $(cat /tmp/rid) \
     --verbosity minimal \
     /p:PublishSingleFile=true \
     /p:IncludeNativeLibrariesForSelfExtract=true \

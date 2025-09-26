@@ -21,9 +21,18 @@ COPY src/MediaButler.Data/*.csproj src/MediaButler.Data/
 COPY src/MediaButler.ML/*.csproj src/MediaButler.ML/
 COPY src/MediaButler.Services/*.csproj src/MediaButler.Services/
 
+# Determine runtime identifier based on target architecture
+ARG TARGETARCH
+RUN case "${TARGETARCH}" in \
+        "amd64") echo "linux-musl-x64" > /tmp/rid ;; \
+        "arm64") echo "linux-musl-arm64" > /tmp/rid ;; \
+        "arm") echo "linux-musl-arm" > /tmp/rid ;; \
+        *) echo "linux-musl-x64" > /tmp/rid ;; \
+    esac
+
 # Restore dependencies (cached layer if project files unchanged)
 RUN dotnet restore src/MediaButler.API/MediaButler.API.csproj \
-    --runtime linux-musl-x64 \
+    --runtime $(cat /tmp/rid) \
     --configfile NuGet.Config
 
 # Copy entire source code
@@ -34,7 +43,7 @@ RUN dotnet publish src/MediaButler.API/MediaButler.API.csproj \
     --configuration Release \
     --output /app \
     --self-contained true \
-    --runtime linux-musl-x64 \
+    --runtime $(cat /tmp/rid) \
     --verbosity minimal \
     /p:PublishSingleFile=true \
     /p:IncludeNativeLibrariesForSelfExtract=true \

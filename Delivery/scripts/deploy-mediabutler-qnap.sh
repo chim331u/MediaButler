@@ -119,22 +119,27 @@ check_requirements() {
     case "$ARCH" in
         "x86_64")
             DOCKER_PLATFORM="linux/amd64"
+            DOCKER_ARCH="amd64"
             success "Architecture: x86_64 (AMD64)"
             ;;
         "aarch64"|"arm64")
             DOCKER_PLATFORM="linux/arm64"
+            DOCKER_ARCH="arm64"
             success "Architecture: ARM64"
             ;;
         "armv7l"|"armv6l")
             DOCKER_PLATFORM="linux/arm/v7"
+            DOCKER_ARCH="arm"
             success "Architecture: ARM32"
             ;;
         *)
             warning "Unknown architecture: $ARCH. Defaulting to linux/amd64"
             DOCKER_PLATFORM="linux/amd64"
+            DOCKER_ARCH="amd64"
             ;;
     esac
     export DOCKER_PLATFORM
+    export DOCKER_ARCH
 
     # Check available disk space (with proper error handling)
     # First ensure the install path directory exists or can be created
@@ -333,6 +338,7 @@ substitutions = {
     'MEMORY_LIMIT_WEB': '$MEMORY_LIMIT_WEB',
     'MEMORY_LIMIT_PROXY': '$MEMORY_LIMIT_PROXY',
     'DOCKER_PLATFORM': '$DOCKER_PLATFORM',
+    'DOCKER_ARCH': '$DOCKER_ARCH',
     'INSTALL_PATH': '$INSTALL_PATH'
 }
 
@@ -352,6 +358,7 @@ with open('docker-compose.yml', 'w') as f:
                 sed -i "s|\${MEMORY_LIMIT_WEB}|$MEMORY_LIMIT_WEB|g" docker-compose.yml
                 sed -i "s|\${MEMORY_LIMIT_PROXY}|$MEMORY_LIMIT_PROXY|g" docker-compose.yml
                 sed -i "s|\${DOCKER_PLATFORM}|$DOCKER_PLATFORM|g" docker-compose.yml
+                sed -i "s|\${DOCKER_ARCH}|$DOCKER_ARCH|g" docker-compose.yml
                 sed -i "s|\${INSTALL_PATH}|$INSTALL_PATH|g" docker-compose.yml
             }
         fi
