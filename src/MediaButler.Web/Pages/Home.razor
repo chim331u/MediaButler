@@ -1,0 +1,81 @@
+@page "/home"
+
+<PageTitle>MediaButler</PageTitle>
+
+<RadzenStack Gap="2rem">
+    <RadzenCard>
+        <RadzenStack Gap="1rem">
+            <RadzenText TextStyle="TextStyle.H3" Text="Welcome to MediaButler" />
+            <RadzenText TextStyle="TextStyle.Body1">
+                MediaButler is an intelligent TV series file organization system that uses machine learning
+                to automatically categorize and move video files based on filenames.
+            </RadzenText>
+        </RadzenStack>
+    </RadzenCard>
+
+    <RadzenRow>
+        <RadzenColumn SizeMD="6">
+            <RadzenCard class="h-100">
+                <RadzenStack Gap="1rem">
+                    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                        <RadzenIcon Icon="health_and_safety" Style="color: var(--rz-success); font-size: 1.5rem;" />
+                        <RadzenText TextStyle="TextStyle.H5" Text="System Health" />
+                    </RadzenStack>
+                    <RadzenText TextStyle="TextStyle.Body2">
+                        Monitor system status including database connectivity and API health.
+                    </RadzenText>
+                    <RadzenButton Text="Check Health"
+                                 Icon="health_and_safety"
+                                 Click="@(() => NavigationManager.NavigateTo("/health"))"
+                                 ButtonStyle="ButtonStyle.Success" />
+                </RadzenStack>
+            </RadzenCard>
+        </RadzenColumn>
+
+        <RadzenColumn SizeMD="6">
+            <RadzenCard class="h-100">
+                <RadzenStack Gap="1rem">
+                    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                        <RadzenIcon Icon="folder" Style="color: var(--rz-primary); font-size: 1.5rem;" />
+                        <RadzenText TextStyle="TextStyle.H5" Text="File Management" />
+                    </RadzenStack>
+                    <RadzenText TextStyle="TextStyle.Body2">
+                        Organize and categorize your media files with ML-powered automation.
+                    </RadzenText>
+                    <RadzenButton Text="Coming Soon"
+                                 Icon="construction"
+                                 ButtonStyle="ButtonStyle.Light"
+                                 Disabled="true" />
+                </RadzenStack>
+            </RadzenCard>
+        </RadzenColumn>
+    </RadzenRow>
+
+    <RadzenCard>
+        <RadzenStack Gap="1rem">
+            <RadzenText TextStyle="TextStyle.H5" Text="Key Features" />
+            <RadzenStack Gap="0.5rem">
+                <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
+                    <RadzenIcon Icon="check_circle" Style="color: var(--rz-success);" />
+                    <RadzenText TextStyle="TextStyle.Body2" Text="ML-powered classification using FastText (~20MB model)" />
+                </RadzenStack>
+                <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
+                    <RadzenIcon Icon="check_circle" Style="color: var(--rz-success);" />
+                    <RadzenText TextStyle="TextStyle.Body2" Text="API-first design optimized for NAS ARM32 deployment" />
+                </RadzenStack>
+                <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
+                    <RadzenIcon Icon="check_circle" Style="color: var(--rz-success);" />
+                    <RadzenText TextStyle="TextStyle.Body2" Text="File identification via SHA256 hashing" />
+                </RadzenStack>
+                <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
+                    <RadzenIcon Icon="check_circle" Style="color: var(--rz-success);" />
+                    <RadzenText TextStyle="TextStyle.Body2" Text="Handles related files (subtitles, metadata) automatically" />
+                </RadzenStack>
+            </RadzenStack>
+        </RadzenStack>
+    </RadzenCard>
+</RadzenStack>
+
+@code {
+    [Inject] public NavigationManager NavigationManager { get; set; } = default!;
+}

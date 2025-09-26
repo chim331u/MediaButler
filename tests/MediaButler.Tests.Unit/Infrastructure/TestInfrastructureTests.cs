@@ -76,33 +76,6 @@ public class TestInfrastructureTests : TestBase
         file.Confidence.Should().Be(0.75m);
     }
 
-    [Fact]
-    public void ConfigurationSettingBuilder_AsPath_ShouldCreatePathSetting()
-    {
-        // Act
-        var setting = new ConfigurationSettingBuilder()
-            .AsPath("TestPath", "/test/path")
-            .Build();
-
-        // Assert
-        setting.Key.Should().Be("MediaButler.Paths.TestPath");
-        setting.Value.Should().Be("/test/path");
-        setting.Description.Should().Contain("path");
-        setting.RequiresRestart.Should().BeTrue();
-    }
-
-    [Fact]
-    public void ConfigurationObjectMother_DefaultPathSettings_ShouldReturnAllRequiredPaths()
-    {
-        // Act
-        var settings = ConfigurationObjectMother.DefaultPathSettings().ToList();
-
-        // Assert
-        settings.Should().HaveCountGreaterThan(3);
-        settings.Should().Contain(s => s.Key.Contains("WatchFolder"));
-        settings.Should().Contain(s => s.Key.Contains("MediaLibrary"));
-        settings.Should().Contain(s => s.Key.Contains("PendingReview"));
-    }
 
     [Fact]
     public void TestBase_TestDateTime_ShouldBeDeterministic()

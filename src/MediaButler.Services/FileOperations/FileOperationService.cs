@@ -141,18 +141,40 @@ public class FileOperationService : IFileOperationService
                 try
                 {
                     // Check if source and target are on the same drive
-                    var sourceRoot = Path.GetPathRoot(sourcePath);
-                    var targetRoot = Path.GetPathRoot(targetPath);
+                    // Convert to full paths first to handle relative paths properly
+                    var fullSourcePath = Path.GetFullPath(sourcePath);
+                    var fullTargetPath = Path.GetFullPath(targetPath);
+                    var sourceRoot = Path.GetPathRoot(fullSourcePath);
+                    var targetRoot = Path.GetPathRoot(fullTargetPath);
                     wasCrossDriveOperation = !string.Equals(sourceRoot, targetRoot, StringComparison.OrdinalIgnoreCase);
+
+                    _logger.LogDebug("Drive detection: Source={SourcePath} ({SourceRoot}) -> Target={TargetPath} ({TargetRoot}), CrossDrive={CrossDrive}",
+                        fullSourcePath, sourceRoot, fullTargetPath, targetRoot, wasCrossDriveOperation);
 
                     if (wasCrossDriveOperation)
                     {
                         // Cross-drive: copy then delete
                         await CopyFileAsync(sourcePath, targetPath, cancellationToken);
-                        File.Delete(sourcePath);
-                        
-                        _logger.LogDebug("Completed cross-drive move from {SourcePath} to {TargetPath}", 
-                            sourcePath, targetPath);
+
+                        // Verify copy was successful before deleting source
+                        if (File.Exists(targetPath))
+                        {
+                            try
+                            {
+                                File.Delete(sourcePath);
+                                _logger.LogDebug("Completed cross-drive move from {SourcePath} to {TargetPath}",
+                                    sourcePath, targetPath);
+                            }
+                            catch (Exception deleteEx)
+                            {
+                                _logger.LogError(deleteEx, "Failed to delete source file {SourcePath} after successful copy", sourcePath);
+                                throw new InvalidOperationException($"File copied successfully but failed to delete source: {deleteEx.Message}", deleteEx);
+                            }
+                        }
+                        else
+                        {
+                            throw new InvalidOperationException($"Copy operation failed: target file {targetPath} does not exist after copy");
+                        }
                     }
                     else
                     {

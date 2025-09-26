@@ -12,6 +12,7 @@ using MediaButler.Data.UnitOfWork;
 using MediaButler.Services;
 using MediaButler.Tests.Unit.Infrastructure;
 using MediaButler.Tests.Unit.ObjectMothers;
+using MediaButler.Tests.Unit.Builders;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;
@@ -371,4 +372,464 @@ public class FileServiceTests : TestBase
         result.Value.LastErrorAt.Should().BeNull();
         result.Value.Status.Should().Be(FileStatus.New); // Reset to initial state
     }
+
+    #region GetFilesPagedByStatusesAsync Tests
+
+    [Fact]
+    public async Task GetFilesPagedByStatusesAsync_WithValidParameters_ShouldReturnFilteredFiles()
+    {
+        // Arrange
+        var testFiles = new List<TrackedFile>
+        {
+            new TrackedFileBuilder().WithFileName("file1.mkv").WithStatus(FileStatus.ReadyToMove).Build(),
+            new TrackedFileBuilder().WithFileName("file2.mkv").WithStatus(FileStatus.Moving).Build(),
+            new TrackedFileBuilder().WithFileName("file3.mkv").WithStatus(FileStatus.Moved).Build(),
+            new TrackedFileBuilder().WithFileName("file4.mkv").WithStatus(FileStatus.New).Build(),
+            new TrackedFileBuilder().WithFileName("file5.mkv").WithStatus(FileStatus.Error).Build()
+        };
+
+        var expectedStatuses = new[] { FileStatus.ReadyToMove, FileStatus.Moving, FileStatus.Moved };
+        var expectedFiles = testFiles.Where(f => expectedStatuses.Contains(f.Status)).ToList();
+
+        _mockFileRepository
+            .Setup(repo => repo.GetPagedAsync(
+                0, 20,
+                It.IsAny<System.Linq.Expressions.Expression<Func<TrackedFile, bool>>>(),
+                It.IsAny<System.Linq.Expressions.Expression<Func<TrackedFile, object>>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expectedFiles);
+
+        // Act
+        var result = await _fileService.GetFilesPagedByStatusesAsync(0, 20, expectedStatuses);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().NotBeNull();
+        result.Value.Should().HaveCount(3);
+        result.Value.Should().AllSatisfy(file => expectedStatuses.Should().Contain(file.Status));
+    }
+
+    [Fact]
+    public async Task GetFilesPagedByStatusesAsync_WithNegativeSkip_ShouldReturnFailure()
+    {
+        // Arrange
+        var statuses = new[] { FileStatus.ReadyToMove };
+
+        // Act
+        var result = await _fileService.GetFilesPagedByStatusesAsync(-1, 20, statuses);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Be("Skip must be non-negative");
+    }
+
+    [Fact]
+    public async Task GetFilesPagedByStatusesAsync_WithInvalidTake_ShouldReturnFailure()
+    {
+        // Arrange
+        var statuses = new[] { FileStatus.ReadyToMove };
+
+        // Act
+        var result = await _fileService.GetFilesPagedByStatusesAsync(0, 0, statuses);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Be("Take must be between 1 and 1000");
+    }
+
+    [Fact]
+    public async Task GetFilesPagedByStatusesAsync_WithTakeExceedingLimit_ShouldReturnFailure()
+    {
+        // Arrange
+        var statuses = new[] { FileStatus.ReadyToMove };
+
+        // Act
+        var result = await _fileService.GetFilesPagedByStatusesAsync(0, 1001, statuses);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Be("Take must be between 1 and 1000");
+    }
+
+    [Fact]
+    public async Task GetFilesPagedByStatusesAsync_WithNullStatuses_ShouldReturnFailure()
+    {
+        // Act
+        var result = await _fileService.GetFilesPagedByStatusesAsync(0, 20, null!);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Be("Statuses collection cannot be null");
+    }
+
+    [Fact]
+    public async Task GetFilesPagedByStatusesAsync_WithEmptyStatuses_ShouldReturnFailure()
+    {
+        // Arrange
+        var emptyStatuses = Array.Empty<FileStatus>();
+
+        // Act
+        var result = await _fileService.GetFilesPagedByStatusesAsync(0, 20, emptyStatuses);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Be("At least one status must be provided");
+    }
+
+    [Fact]
+    public async Task GetFilesPagedByStatusesAsync_WithCategoryFilter_ShouldReturnFilteredFiles()
+    {
+        // Arrange
+        var testFiles = new List<TrackedFile>
+        {
+            new TrackedFileBuilder().WithFileName("file1.mkv").WithStatus(FileStatus.ReadyToMove).WithCategory("BREAKING BAD").Build(),
+            new TrackedFileBuilder().WithFileName("file2.mkv").WithStatus(FileStatus.Moving).WithCategory("THE OFFICE").Build(),
+            new TrackedFileBuilder().WithFileName("file3.mkv").WithStatus(FileStatus.Moved).WithCategory("BREAKING BAD").Build()
+        };
+
+        var statuses = new[] { FileStatus.ReadyToMove, FileStatus.Moving, FileStatus.Moved };
+        var category = "BREAKING BAD";
+        var expectedFiles = testFiles.Where(f => f.Category == category).ToList();
+
+        _mockFileRepository
+            .Setup(repo => repo.GetPagedAsync(
+                0, 20,
+                It.IsAny<System.Linq.Expressions.Expression<Func<TrackedFile, bool>>>(),
+                It.IsAny<System.Linq.Expressions.Expression<Func<TrackedFile, object>>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expectedFiles);
+
+        // Act
+        var result = await _fileService.GetFilesPagedByStatusesAsync(0, 20, statuses, category);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().NotBeNull();
+        result.Value.Should().HaveCount(2);
+        result.Value.Should().AllSatisfy(file => file.Category.Should().Be(category));
+    }
+
+    [Fact]
+    public async Task GetFilesPagedByStatusesAsync_WithSingleStatus_ShouldReturnFilteredFiles()
+    {
+        // Arrange
+        var testFiles = new List<TrackedFile>
+        {
+            new TrackedFileBuilder().WithFileName("file1.mkv").WithStatus(FileStatus.ReadyToMove).Build(),
+            new TrackedFileBuilder().WithFileName("file2.mkv").WithStatus(FileStatus.ReadyToMove).Build()
+        };
+
+        var statuses = new[] { FileStatus.ReadyToMove };
+
+        _mockFileRepository
+            .Setup(repo => repo.GetPagedAsync(
+                0, 20,
+                It.IsAny<System.Linq.Expressions.Expression<Func<TrackedFile, bool>>>(),
+                It.IsAny<System.Linq.Expressions.Expression<Func<TrackedFile, object>>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(testFiles);
+
+        // Act
+        var result = await _fileService.GetFilesPagedByStatusesAsync(0, 20, statuses);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().NotBeNull();
+        result.Value.Should().HaveCount(2);
+        result.Value.Should().AllSatisfy(file => file.Status.Should().Be(FileStatus.ReadyToMove));
+    }
+
+    #endregion
+
+    #region GetDistinctCategoriesAsync Tests
+
+    [Fact]
+    public async Task GetDistinctCategoriesAsync_WithValidCategories_ShouldReturnSuccess()
+    {
+        // Arrange
+        var expectedCategories = new List<string> { "BREAKING BAD", "THE OFFICE", "STRANGER THINGS" };
+
+        _mockFileRepository
+            .Setup(repo => repo.GetDistinctCategoriesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expectedCategories);
+
+        // Act
+        var result = await _fileService.GetDistinctCategoriesAsync();
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().NotBeNull();
+        result.Value.Should().BeEquivalentTo(expectedCategories);
+        result.Value.Should().HaveCount(3);
+    }
+
+    [Fact]
+    public async Task GetDistinctCategoriesAsync_WithEmptyResult_ShouldReturnEmptyList()
+    {
+        // Arrange
+        var emptyCategories = new List<string>();
+
+        _mockFileRepository
+            .Setup(repo => repo.GetDistinctCategoriesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(emptyCategories);
+
+        // Act
+        var result = await _fileService.GetDistinctCategoriesAsync();
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().NotBeNull();
+        result.Value.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetDistinctCategoriesAsync_WithRepositoryException_ShouldReturnFailure()
+    {
+        // Arrange
+        var exceptionMessage = "Database connection failed";
+        _mockFileRepository
+            .Setup(repo => repo.GetDistinctCategoriesAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception(exceptionMessage));
+
+        // Act
+        var result = await _fileService.GetDistinctCategoriesAsync();
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Contain("Failed to retrieve distinct categories");
+        result.Error.Should().Contain(exceptionMessage);
+    }
+
+    [Fact]
+    public async Task GetDistinctCategoriesAsync_WithSortedCategories_ShouldReturnInCorrectOrder()
+    {
+        // Arrange
+        var expectedCategories = new List<string> { "ANIME", "DOCUMENTARIES", "MOVIES", "TV SERIES" };
+
+        _mockFileRepository
+            .Setup(repo => repo.GetDistinctCategoriesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expectedCategories);
+
+        // Act
+        var result = await _fileService.GetDistinctCategoriesAsync();
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().NotBeNull();
+        result.Value.Should().BeInAscendingOrder(); // Categories should be sorted alphabetically
+        result.Value.Should().ContainInOrder(expectedCategories);
+    }
+
+    #endregion
+
+    #region IgnoreFileAsync Tests
+
+    [Fact]
+    public async Task IgnoreFileAsync_WithValidHash_ShouldReturnSuccess()
+    {
+        // Arrange
+        var testFile = new TrackedFileBuilder()
+            .WithFileName("test_file.mkv")
+            .WithStatus(FileStatus.New)
+            .Build();
+
+        _mockFileRepository
+            .Setup(repo => repo.GetByHashAsync(testFile.Hash, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(testFile);
+
+        // Act
+        var result = await _fileService.IgnoreFileAsync(testFile.Hash);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().NotBeNull();
+        result.Value.Hash.Should().Be(testFile.Hash);
+        result.Value.Status.Should().Be(FileStatus.Ignored);
+
+        _mockFileRepository.Verify(repo => repo.Update(It.Is<TrackedFile>(f =>
+            f.Hash == testFile.Hash && f.Status == FileStatus.Ignored)), Times.Once);
+        _mockUnitOfWork.Verify(uow => uow.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task IgnoreFileAsync_WithEmptyHash_ShouldReturnFailure()
+    {
+        // Act
+        var result = await _fileService.IgnoreFileAsync("");
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Be("Hash cannot be empty");
+
+        _mockFileRepository.Verify(repo => repo.GetByHashAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task IgnoreFileAsync_WithNullHash_ShouldReturnFailure()
+    {
+        // Act
+        var result = await _fileService.IgnoreFileAsync(null!);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Be("Hash cannot be empty");
+
+        _mockFileRepository.Verify(repo => repo.GetByHashAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task IgnoreFileAsync_WithNonExistentFile_ShouldReturnFailure()
+    {
+        // Arrange
+        var nonExistentHash = "non_existent_hash";
+
+        _mockFileRepository
+            .Setup(repo => repo.GetByHashAsync(nonExistentHash, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TrackedFile?)null);
+
+        // Act
+        var result = await _fileService.IgnoreFileAsync(nonExistentHash);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Be($"File with hash '{nonExistentHash}' not found");
+
+        _mockFileRepository.Verify(repo => repo.Update(It.IsAny<TrackedFile>()), Times.Never);
+        _mockUnitOfWork.Verify(uow => uow.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task IgnoreFileAsync_WithAlreadyIgnoredFile_ShouldReturnSuccessWithoutUpdate()
+    {
+        // Arrange
+        var testFile = new TrackedFileBuilder()
+            .WithFileName("already_ignored_file.mkv")
+            .WithStatus(FileStatus.Ignored)
+            .Build();
+
+        _mockFileRepository
+            .Setup(repo => repo.GetByHashAsync(testFile.Hash, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(testFile);
+
+        // Act
+        var result = await _fileService.IgnoreFileAsync(testFile.Hash);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().NotBeNull();
+        result.Value.Hash.Should().Be(testFile.Hash);
+        result.Value.Status.Should().Be(FileStatus.Ignored);
+
+        // Should not call update or save since file is already ignored
+        _mockFileRepository.Verify(repo => repo.Update(It.IsAny<TrackedFile>()), Times.Never);
+        _mockUnitOfWork.Verify(uow => uow.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task IgnoreFileAsync_WithMovedFile_ShouldReturnFailure()
+    {
+        // Arrange
+        var testFile = new TrackedFileBuilder()
+            .WithFileName("moved_file.mkv")
+            .WithStatus(FileStatus.Moved)
+            .Build();
+
+        _mockFileRepository
+            .Setup(repo => repo.GetByHashAsync(testFile.Hash, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(testFile);
+
+        // Act
+        var result = await _fileService.IgnoreFileAsync(testFile.Hash);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Be("Cannot ignore a file that has already been moved");
+
+        _mockFileRepository.Verify(repo => repo.Update(It.IsAny<TrackedFile>()), Times.Never);
+        _mockUnitOfWork.Verify(uow => uow.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData(FileStatus.New)]
+    [InlineData(FileStatus.Processing)]
+    [InlineData(FileStatus.Classified)]
+    [InlineData(FileStatus.ReadyToMove)]
+    [InlineData(FileStatus.Error)]
+    [InlineData(FileStatus.Retry)]
+    public async Task IgnoreFileAsync_WithVariousStatuses_ShouldSucceed(FileStatus initialStatus)
+    {
+        // Arrange
+        var testFile = new TrackedFileBuilder()
+            .WithFileName($"file_with_{initialStatus}_status.mkv")
+            .WithStatus(initialStatus)
+            .Build();
+
+        _mockFileRepository
+            .Setup(repo => repo.GetByHashAsync(testFile.Hash, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(testFile);
+
+        // Act
+        var result = await _fileService.IgnoreFileAsync(testFile.Hash);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().NotBeNull();
+        result.Value.Status.Should().Be(FileStatus.Ignored);
+
+        _mockFileRepository.Verify(repo => repo.Update(It.Is<TrackedFile>(f =>
+            f.Hash == testFile.Hash && f.Status == FileStatus.Ignored)), Times.Once);
+        _mockUnitOfWork.Verify(uow => uow.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task IgnoreFileAsync_WithRepositoryException_ShouldReturnFailure()
+    {
+        // Arrange
+        var testFile = new TrackedFileBuilder()
+            .WithFileName("test_file.mkv")
+            .WithStatus(FileStatus.New)
+            .Build();
+
+        var exceptionMessage = "Database connection failed";
+        _mockFileRepository
+            .Setup(repo => repo.GetByHashAsync(testFile.Hash, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception(exceptionMessage));
+
+        // Act
+        var result = await _fileService.IgnoreFileAsync(testFile.Hash);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Contain("Failed to ignore file");
+        result.Error.Should().Contain(exceptionMessage);
+    }
+
+    [Fact]
+    public async Task IgnoreFileAsync_WithSaveException_ShouldReturnFailure()
+    {
+        // Arrange
+        var testFile = new TrackedFileBuilder()
+            .WithFileName("test_file.mkv")
+            .WithStatus(FileStatus.New)
+            .Build();
+
+        _mockFileRepository
+            .Setup(repo => repo.GetByHashAsync(testFile.Hash, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(testFile);
+
+        var exceptionMessage = "Failed to save changes";
+        _mockUnitOfWork
+            .Setup(uow => uow.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception(exceptionMessage));
+
+        // Act
+        var result = await _fileService.IgnoreFileAsync(testFile.Hash);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Contain("Failed to ignore file");
+        result.Error.Should().Contain(exceptionMessage);
+    }
+
+    #endregion
 }

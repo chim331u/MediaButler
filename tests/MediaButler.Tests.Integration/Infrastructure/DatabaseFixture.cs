@@ -76,7 +76,6 @@ public class DatabaseFixture : IDisposable
         
         // Add application services
         services.AddScoped<IFileService, FileService>();
-        services.AddScoped<IConfigurationService, ConfigurationService>();
         services.AddScoped<IStatsService, StatsService>();
         services.AddScoped<IRollbackService, RollbackService>();
         services.AddScoped<IErrorClassificationService, ErrorClassificationService>();
@@ -119,13 +118,12 @@ public class DatabaseFixture : IDisposable
             // Remove all data using raw SQL to avoid tracking issues
             await Context.Database.ExecuteSqlRawAsync("DELETE FROM ProcessingLogs");
             await Context.Database.ExecuteSqlRawAsync("DELETE FROM TrackedFiles");
-            await Context.Database.ExecuteSqlRawAsync("DELETE FROM ConfigurationSettings");
             await Context.Database.ExecuteSqlRawAsync("DELETE FROM UserPreferences");
             
             // Reset auto-increment counters for consistent test behavior
             try
             {
-                await Context.Database.ExecuteSqlRawAsync("DELETE FROM sqlite_sequence WHERE name IN ('TrackedFiles', 'ProcessingLogs', 'ConfigurationSettings', 'UserPreferences')");
+                await Context.Database.ExecuteSqlRawAsync("DELETE FROM sqlite_sequence WHERE name IN ('TrackedFiles', 'ProcessingLogs', 'UserPreferences')");
             }
             catch (Microsoft.Data.Sqlite.SqliteException)
             {

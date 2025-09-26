@@ -67,16 +67,45 @@ public class HealthController : ControllerBase
         {
             var statsResult = await _statsService.GetProcessingStatsAsync();
             var systemHealthResult = await _statsService.GetSystemHealthStatsAsync();
-            
+
+            // Determine database health status
+            string databaseStatus;
             if (!statsResult.IsSuccess)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, new
+                databaseStatus = "Unhealthy";
+                // If database is unhealthy, return early with appropriate response
+                return Ok(new
                 {
                     Status = "Unhealthy",
                     Timestamp = DateTime.UtcNow,
-                    Error = "Failed to retrieve system statistics",
-                    Details = statsResult.Error
+                    Version = "1.0.0",
+                    Service = "MediaButler.API",
+                    Database = new
+                    {
+                        Status = databaseStatus,
+                        TotalFiles = 0,
+                        ProcessedToday = 0,
+                        Error = statsResult.Error
+                    },
+                    Memory = new
+                    {
+                        ManagedMemoryMB = Math.Round(GC.GetTotalMemory(false) / 1024.0 / 1024.0, 2),
+                        WorkingSetMB = Math.Round(Environment.WorkingSet / 1024.0 / 1024.0, 2),
+                        TargetLimitMB = 300
+                    },
+                    Processing = new
+                    {
+                        StatusCounts = new Dictionary<string, int>(),
+                        AverageProcessingTimeMinutes = 0.0,
+                        Error = "Cannot retrieve processing stats - database unavailable"
+                    },
+                    FileOperations = new { Status = "Unknown", Error = "Database connectivity required" },
+                    MachineLearning = await GetMLHealthStatusAsync()
                 });
+            }
+            else
+            {
+                databaseStatus = "Healthy"; // If we can get stats, database is accessible
             }
 
             var memoryUsage = GC.GetTotalMemory(false);
@@ -85,17 +114,24 @@ public class HealthController : ControllerBase
             // Check ML service health with graceful degradation
             var mlHealthStatus = await GetMLHealthStatusAsync();
 
+            // Determine overall service status
+            string overallStatus = "Healthy";
+            if (databaseStatus == "Unhealthy")
+            {
+                overallStatus = "Unhealthy"; // Database problems are critical
+            }
+
             return Ok(new
             {
-                Status = "Healthy",
+                Status = overallStatus,
                 Timestamp = DateTime.UtcNow,
                 Version = "1.0.0",
                 Service = "MediaButler.API",
                 Database = new
                 {
-                    Status = "Connected",
-                    TotalFiles = statsResult.Value.TotalFiles,
-                    ProcessedToday = statsResult.Value.ProcessedToday
+                    Status = databaseStatus,
+                    TotalFiles = statsResult.IsSuccess ? statsResult.Value.TotalFiles : 0,
+                    ProcessedToday = statsResult.IsSuccess ? statsResult.Value.ProcessedToday : 0
                 },
                 Memory = new
                 {

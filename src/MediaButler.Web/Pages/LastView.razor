@@ -1,0 +1,579 @@
+@page "/lastview"
+@using MediaButler.Web.Models
+@using MediaButler.Web.Services
+@using MediaButler.Core.Enums
+@using Microsoft.AspNetCore.SignalR.Client
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@inject IFilesApiService FilesApiService
+@inject ISignalRNotificationService SignalRService
+@inject TooltipService TooltipService
+@inject NotificationService NotificationService
+@implements IAsyncDisposable
+
+<PageTitle>Last Moved Files - MediaButler</PageTitle>
+
+<style>
+    /* Modern Last View Styling */
+    .last-view-container {
+        padding: 20px;
+        max-width: 1400px;
+        margin: 0 auto;
+    }
+
+    .last-view-header {
+        background: linear-gradient(135deg, var(--rz-base) 0%, var(--rz-base-darker) 100%);
+        color: white;
+        padding: 24px;
+        border-radius: 12px 12px 0 0;
+        margin-bottom: 0;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    }
+
+    .last-view-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .last-view-subtitle {
+        font-size: 0.9rem;
+        opacity: 0.9;
+        margin: 4px 0 0 0;
+    }
+
+    .search-section {
+        background: var(--rz-background-color-alt);
+        padding: 20px;
+        border: 1px solid var(--rz-border-color);
+        border-top: none;
+        border-bottom: 1px solid var(--rz-border-color-light);
+    }
+
+    .category-group {
+        background: var(--rz-base-50) !important;
+        border: 1px solid var(--rz-border-color);
+        border-radius: 12px;
+        margin-bottom: 16px;
+        overflow: hidden;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        transition: all 0.2s ease;
+    }
+
+    .category-group:hover {
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+        transform: translateY(-1px);
+    }
+
+    .category-header {
+        background: linear-gradient(135deg, var(--rz-base) 0%, var(--rz-base-darker) 100%);
+        color: white;
+        padding: 16px 20px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-weight: 600;
+        transition: all 0.2s ease;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        font-size: 0.875rem;
+    }
+
+    .category-header:hover {
+        background: linear-gradient(135deg, var(--rz-base-darker) 0%, var(--rz-base-darkest) 100%);
+        transform: translateY(-1px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    }
+
+    .category-info {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .file-count-badge {
+        background: rgba(255, 255, 255, 0.2);
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        font-weight: 500;
+    }
+
+    .expand-icon {
+        transition: transform 0.2s ease;
+        font-size: 1.2rem;
+    }
+
+    .expand-icon.expanded {
+        transform: rotate(180deg);
+    }
+
+    .category-files {
+        border-top: 1px solid var(--rz-border-color-light);
+        background-color: var(--rz-base-50) !important;
+    }
+
+    .file-row {
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--rz-border-color-light);
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        transition: all 0.2s ease;
+        background-color: var(--rz-base-50) !important;
+    }
+
+    .file-row:last-child {
+        border-bottom: none;
+    }
+
+    .file-row:hover {
+        background-color: var(--rz-base-100) !important;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .file-info {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .file-name {
+        font-size: 0.95rem;
+        font-weight: 500;
+        color: var(--rz-text-color);
+        margin-bottom: 4px;
+        word-break: break-word;
+    }
+
+    .file-path {
+        font-size: 0.8rem;
+        color: var(--rz-text-color-secondary);
+        font-family: 'Courier New', monospace;
+        word-break: break-all;
+    }
+
+    .file-size {
+        font-size: 0.85rem;
+        color: var(--rz-text-color-secondary);
+        min-width: 80px;
+        text-align: right;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    .file-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .file-actions .rz-button {
+        min-width: 36px;
+        min-height: 36px;
+        border-radius: 8px;
+        transition: all 0.2s ease;
+    }
+
+    .file-actions .rz-button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    }
+
+    .loading-state, .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: var(--rz-text-color-secondary);
+    }
+
+    .empty-state-icon {
+        font-size: 4rem;
+        opacity: 0.3;
+        margin-bottom: 16px;
+    }
+
+    .stats-bar {
+        display: flex;
+        gap: 20px;
+        align-items: center;
+        font-size: 0.9rem;
+        color: var(--rz-text-color-secondary);
+    }
+
+    .error-message {
+        background-color: var(--rz-danger-lighter);
+        color: var(--rz-danger-darker);
+        padding: 16px;
+        border-radius: 8px;
+        margin: 16px 0;
+        border-left: 4px solid var(--rz-danger);
+        border: 1px solid var(--rz-border-color-light);
+    }
+
+    .info-message {
+        background-color: var(--rz-info-lighter);
+        color: var(--rz-info-darker);
+        padding: 16px;
+        border-radius: 8px;
+        margin: 16px 0;
+        border-left: 4px solid var(--rz-info);
+        border: 1px solid var(--rz-border-color-light);
+    }
+</style>
+
+<div class="last-view-container">
+    <div class="last-view-header">
+        <h1 class="last-view-title">
+            <i class="rzi rzi-history"></i>
+            Recently Moved Files
+        </h1>
+        <p class="last-view-subtitle">Files successfully organized by category</p>
+    </div>
+
+    <div class="search-section">
+        <RadzenRow JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center">
+            <RadzenColumn Size="8">
+                <RadzenTextBox
+                    Placeholder="Search by filename or category..."
+                    @bind-Value="@_searchText"
+                    @oninput="OnSearchInput"
+                    Style="width: 100%;"
+                    class="rz-textbox-lg" />
+            </RadzenColumn>
+            <RadzenColumn Size="4">
+                <div class="stats-bar">
+                    <span><strong>@_totalFiles</strong> files</span>
+                    <span><strong>@_categoryGroups.Count</strong> categories</span>
+                    <RadzenButton
+                        Icon="autorenew"
+                        ButtonStyle="ButtonStyle.Dark"
+                        Size="ButtonSize.Large"
+                        Click="RefreshData"
+                        Disabled="@_isLoading" />
+                </div>
+            </RadzenColumn>
+        </RadzenRow>
+    </div>
+
+    @if (_isLoading)
+    {
+        <div class="loading-state">
+            <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Large" />
+            <p style="margin-top: 16px;">Loading recently moved files...</p>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <div class="error-message">
+            <i class="rzi rzi-alert-circle"></i> @_errorMessage
+        </div>
+    }
+    else if (!_filteredGroups.Any())
+    {
+        <div class="empty-state">
+            <i class="rzi rzi-folder-open empty-state-icon"></i>
+            <h3>No files found</h3>
+            <p>@(string.IsNullOrEmpty(_searchText) ? "No files have been moved yet." : $"No files match your search: '{_searchText}'")</p>
+        </div>
+    }
+    else
+    {
+        @foreach (var group in _filteredGroups.Take(20))
+        {
+            <div class="category-group">
+                <div class="category-header" @onclick="() => ToggleCategoryExpansion(group.Key)">
+                    <div class="category-info">
+                        <strong>@group.Key</strong>
+                        <span class="file-count-badge">@group.Value.Count files</span>
+                    </div>
+                    <i class="rzi rzi-chevron-down expand-icon @(IsCategoryExpanded(group.Key) ? "expanded" : "")"></i>
+                </div>
+
+                @if (IsCategoryExpanded(group.Key))
+                {
+                    <div class="category-files">
+                        @foreach (var file in group.Value.Take(50))
+                        {
+                            <div class="file-row">
+                                <div class="file-info">
+                                    <div class="file-name">@file.Name</div>
+                                    <div class="file-path">@file.TargetPath</div>
+                                </div>
+                                <div class="file-size">@FormatFileSize(file.FileSize)</div>
+                                <div class="file-actions">
+                                    <RadzenButton
+                                        Icon="folder_open"
+                                        ButtonStyle="ButtonStyle.Light"
+                                        Size="ButtonSize.Medium"
+                                        Click="() => OpenFileLocation(file)"
+                                        Title="Open folder" />
+                                    <RadzenButton
+                                        Icon="visibility_off"
+                                        ButtonStyle="ButtonStyle.Secondary"
+                                        Variant="Variant.Flat"
+                                        Shade="Shade.Lighter"
+                                        Size="ButtonSize.Medium"
+                                        Click="() => IgnoreFile(file)"
+                                        Title="Don't show again" />
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+
+        @if (_filteredGroups.Count > 20)
+        {
+            <div style="text-align: center; padding: 20px;">
+                <p>Showing first 20 categories. Use search to find specific files.</p>
+            </div>
+        }
+
+        @if (_allFiles.Count >= 100)
+        {
+            <div class="info-message" style="text-align: center;">
+                <i class="rzi rzi-info-circle"></i>
+                <p style="margin: 8px 0 0 0;">
+                    Showing the 100 most recent files. Use search to find older files or check the file management page for complete history.
+                </p>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private List<FileManagementDto> _allFiles = new();
+    private Dictionary<string, List<FileManagementDto>> _categoryGroups = new();
+    private Dictionary<string, List<FileManagementDto>> _filteredGroups = new();
+    private HashSet<string> _expandedCategories = new();
+
+    private string _searchText = string.Empty;
+    private bool _isLoading = true;
+    private string? _errorMessage;
+    private int _totalFiles;
+
+    // SignalR subscriptions
+    private readonly List<IDisposable> _notificationSubscriptions = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+        SetupSignalRSubscriptions();
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            _isLoading = true;
+            _errorMessage = null;
+            StateHasChanged();
+
+            // Load recently moved files (API limit is 100 per request)
+            var result = await FilesApiService.GetFilesByStatusesAsync(
+                skip: 0,
+                take: 100, // API maximum limit
+                statuses: new[] { FileStatus.Moved },
+                cancellationToken: default);
+
+            if (result.IsSuccess && result.Value != null)
+            {
+                _allFiles = result.Value.ToList();
+                GroupFilesByCategory();
+                ApplySearchFilter();
+                _totalFiles = _allFiles.Count;
+            }
+            else
+            {
+                _errorMessage = result.Error ?? "Failed to load files";
+                _allFiles.Clear();
+                _categoryGroups.Clear();
+                _filteredGroups.Clear();
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error loading data: {ex.Message}";
+            _allFiles.Clear();
+            _categoryGroups.Clear();
+            _filteredGroups.Clear();
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void GroupFilesByCategory()
+    {
+        _categoryGroups = _allFiles
+            .Where(f => !string.IsNullOrEmpty(f.FileCategory))
+            .GroupBy(f => f.FileCategory!)
+            .OrderByDescending(g => g.Count())
+            .ThenBy(g => g.Key)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(f => f.CreatedDate ?? DateTime.MinValue).ToList());
+    }
+
+    private void ApplySearchFilter()
+    {
+        if (string.IsNullOrWhiteSpace(_searchText))
+        {
+            _filteredGroups = _categoryGroups;
+        }
+        else
+        {
+            var searchLower = _searchText.ToLowerInvariant();
+            _filteredGroups = _categoryGroups
+                .Where(kvp =>
+                    kvp.Key.ToLowerInvariant().Contains(searchLower) ||
+                    kvp.Value.Any(f => f.Name.ToLowerInvariant().Contains(searchLower)))
+                .ToDictionary(
+                    kvp => kvp.Key,
+                    kvp => kvp.Value.Where(f =>
+                        kvp.Key.ToLowerInvariant().Contains(searchLower) ||
+                        f.Name.ToLowerInvariant().Contains(searchLower)).ToList());
+        }
+    }
+
+    private async Task OnSearchInput(ChangeEventArgs e)
+    {
+        _searchText = e.Value?.ToString() ?? string.Empty;
+        ApplySearchFilter();
+        StateHasChanged();
+    }
+
+    private void ToggleCategoryExpansion(string category)
+    {
+        if (_expandedCategories.Contains(category))
+            _expandedCategories.Remove(category);
+        else
+            _expandedCategories.Add(category);
+    }
+
+    private bool IsCategoryExpanded(string category) => _expandedCategories.Contains(category);
+
+    private async Task RefreshData()
+    {
+        await LoadData();
+    }
+
+    private async Task OpenFileLocation(FileManagementDto file)
+    {
+        try
+        {
+            if (!string.IsNullOrEmpty(file.TargetPath))
+            {
+                var directory = Path.GetDirectoryName(file.TargetPath);
+                if (!string.IsNullOrEmpty(directory))
+                {
+                    await JSRuntime.InvokeVoidAsync("open", directory);
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // Fallback to showing notification
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Info,
+                Summary = "File Location",
+                Detail = $"File location: {file.TargetPath}",
+                Duration = 5000
+            });
+        }
+    }
+
+    private async Task IgnoreFile(FileManagementDto file)
+    {
+        try
+        {
+            // Call ignore endpoint (similar to the old NotShowAgain functionality)
+            var result = await FilesApiService.IgnoreFileAsync(file.Hash);
+
+            if (result.IsSuccess)
+            {
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Success,
+                    Summary = "File Ignored",
+                    Detail = "File will not be shown in future views",
+                    Duration = 3000
+                });
+
+                // Remove from current view
+                foreach (var group in _categoryGroups.Values)
+                {
+                    group.RemoveAll(f => f.Hash == file.Hash);
+                }
+                GroupFilesByCategory();
+                ApplySearchFilter();
+                StateHasChanged();
+            }
+            else
+            {
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Error,
+                    Summary = "Failed to Ignore File",
+                    Detail = result.Error ?? "Unknown error occurred",
+                    Duration = 5000
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Error",
+                Detail = $"Failed to ignore file: {ex.Message}",
+                Duration = 5000
+            });
+        }
+    }
+
+    private void SetupSignalRSubscriptions()
+    {
+        // Subscribe to file move notifications to refresh the view
+        _notificationSubscriptions.Add(SignalRService.SubscribeToJobProgress((jobType, message, progress) =>
+        {
+            if (jobType.Contains("move") && progress >= 100)
+            {
+                _ = InvokeAsync(async () =>
+                {
+                    await LoadData();
+                    StateHasChanged();
+                });
+            }
+        }));
+    }
+
+    private static string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+        double len = bytes;
+        int order = 0;
+
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+
+        return $"{len:0.##} {sizes[order]}";
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        foreach (var subscription in _notificationSubscriptions)
+        {
+            subscription?.Dispose();
+        }
+        _notificationSubscriptions.Clear();
+    }
+}

@@ -239,15 +239,15 @@ public class TrackedFileResponse
     {
         return status switch
         {
-            FileStatus.New => "Newly discovered",
-            FileStatus.Processing => "Processing in progress",
-            FileStatus.Classified => "Ready for review",
-            FileStatus.ReadyToMove => "Approved for organization",
-            FileStatus.Moving => "Organizing file",
-            FileStatus.Moved => "Successfully organized",
-            FileStatus.Error => "Error occurred",
-            FileStatus.Retry => "Queued for retry",
-            FileStatus.Ignored => "Ignored by user",
+            FileStatus.New => "New",
+            FileStatus.Processing => "Processing",
+            FileStatus.Classified => "Classified",
+            FileStatus.ReadyToMove => "ReadyToMove",
+            FileStatus.Moving => "Moving",
+            FileStatus.Moved => "Moved",
+            FileStatus.Error => "Error",
+            FileStatus.Retry => "Retry",
+            FileStatus.Ignored => "Ignored",
             _ => "Unknown status"
         };
     }

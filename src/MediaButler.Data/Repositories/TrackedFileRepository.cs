@@ -252,4 +252,16 @@ public class TrackedFileRepository : Repository<TrackedFile>, ITrackedFileReposi
             .Take(limit)
             .ToListAsync(cancellationToken);
     }
+
+    /// <inheritdoc />
+    public async Task<IEnumerable<string>> GetDistinctCategoriesAsync(CancellationToken cancellationToken = default)
+    {
+        // Uses IX_TrackedFiles_Category_Stats index for efficient category queries
+        return await DbSet
+            .Where(f => !string.IsNullOrEmpty(f.Category))
+            .Select(f => f.Category)
+            .Distinct()
+            .OrderBy(c => c)
+            .ToListAsync(cancellationToken);
+    }
 }

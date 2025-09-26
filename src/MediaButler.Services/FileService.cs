@@ -193,7 +193,7 @@ public class FileService : IFileService
             if (file == null)
                 return Result<TrackedFile>.Failure($"File with hash {hash} not found");
 
-            if (file.Status != FileStatus.New)
+            if (file.Status != FileStatus.New && file.Status !=  FileStatus.Classified)
                 return Result<TrackedFile>.Failure($"File is not in New status. Current status: {file.Status}");
 
             file.SuggestedCategory = suggestedCategory;
@@ -511,6 +511,99 @@ public class FileService : IFileService
         }
     }
 
+    /// <summary>
+    /// Gets paginated list of tracked files filtered by multiple statuses.
+    /// </summary>
+    public async Task<Result<IEnumerable<TrackedFile>>> GetFilesPagedByStatusesAsync(
+        int skip,
+        int take,
+        IEnumerable<FileStatus> statuses,
+        string? category = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (skip < 0)
+            return Result<IEnumerable<TrackedFile>>.Failure("Skip must be non-negative");
+
+        if (take <= 0 || take > 1000)
+            return Result<IEnumerable<TrackedFile>>.Failure("Take must be between 1 and 1000");
+
+        if (statuses == null)
+            return Result<IEnumerable<TrackedFile>>.Failure("Statuses collection cannot be null");
+
+        var statusList = statuses.ToList();
+        if (!statusList.Any())
+            return Result<IEnumerable<TrackedFile>>.Failure("At least one status must be provided");
+
+        try
+        {
+            var files = await _trackedFileRepository.GetPagedAsync(
+                skip,
+                take,
+                predicate: f => statusList.Contains(f.Status) &&
+                              (category == null || f.Category == category),
+                orderBy: f => f.CreatedDate,
+                cancellationToken: cancellationToken);
+
+            return Result<IEnumerable<TrackedFile>>.Success(files);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get paged files by statuses");
+            return Result<IEnumerable<TrackedFile>>.Failure($"Failed to retrieve paged files by statuses: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Marks a file as ignored, transitioning it to the Ignored status.
+    /// </summary>
+    public async Task<Result<TrackedFile>> IgnoreFileAsync(string hash, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(hash))
+            return Result<TrackedFile>.Failure("Hash cannot be empty");
+
+        try
+        {
+            var file = await _trackedFileRepository.GetByHashAsync(hash, cancellationToken);
+            if (file == null)
+            {
+                _logger.LogWarning("Attempted to ignore non-existent file with hash: {Hash}", hash);
+                return Result<TrackedFile>.Failure($"File with hash '{hash}' not found");
+            }
+
+            // Check if file is already ignored
+            if (file.Status == FileStatus.Ignored)
+            {
+                _logger.LogDebug("File {Hash} is already ignored", hash);
+                return Result<TrackedFile>.Success(file);
+            }
+
+            // Check if file is already moved - might want to prevent ignoring moved files
+            if (file.Status == FileStatus.Moved)
+            {
+                _logger.LogWarning("Attempted to ignore file {Hash} that has already been moved", hash);
+                return Result<TrackedFile>.Failure("Cannot ignore a file that has already been moved");
+            }
+
+            _logger.LogInformation("Marking file {Hash} ({FileName}) as ignored. Previous status: {PreviousStatus}",
+                hash, file.FileName, file.Status);
+
+            // Update file status to Ignored
+            file.Status = FileStatus.Ignored;
+            file.LastUpdateDate = DateTime.UtcNow;
+
+            _trackedFileRepository.Update(file);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            _logger.LogInformation("Successfully marked file {Hash} as ignored", hash);
+            return Result<TrackedFile>.Success(file);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to mark file {Hash} as ignored", hash);
+            return Result<TrackedFile>.Failure($"Failed to ignore file: {ex.Message}");
+        }
+    }
+
     #region Private Helper Methods
 
     /// <summary>
@@ -541,6 +634,33 @@ public class FileService : IFileService
         sanitized = sanitized.Replace(' ', '_').Trim('_');
         
         return string.IsNullOrEmpty(sanitized) ? "UNKNOWN" : sanitized.ToUpperInvariant();
+    }
+
+    /// <summary>
+    /// Gets distinct categories from tracked files.
+    /// </summary>
+    public async Task<Result<IEnumerable<string>>> GetDistinctCategoriesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var categories = await _trackedFileRepository.GetDistinctCategoriesAsync(cancellationToken);
+
+            // Filter out null/empty categories and sort alphabetically
+            var validCategories = categories
+                .Where(c => !string.IsNullOrWhiteSpace(c))
+                .OrderBy(c => c)
+                .ToList();
+
+            _logger.LogDebug("Retrieved {Count} distinct categories from tracked files", validCategories.Count);
+
+            return Result<IEnumerable<string>>.Success(validCategories);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get distinct categories from tracked files");
+            return Result<IEnumerable<string>>.Failure($"Failed to retrieve categories: {ex.Message}");
+        }
     }
 
     #endregion

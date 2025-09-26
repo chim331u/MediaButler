@@ -21,7 +21,7 @@ namespace MediaButler.Services;
 /// </remarks>
 public class PathGenerationService : IPathGenerationService
 {
-    private readonly IConfigurationService _configurationService;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<PathGenerationService> _logger;
 
     // Cross-platform invalid characters for filenames and directories
@@ -38,10 +38,10 @@ public class PathGenerationService : IPathGenerationService
     private static readonly Regex TemplateVariableRegex = new(@"\{(\w+)\}", RegexOptions.Compiled);
 
     public PathGenerationService(
-        IConfigurationService configurationService,
+        IConfiguration configuration,
         ILogger<PathGenerationService> logger)
     {
-        _configurationService = configurationService ?? throw new ArgumentNullException(nameof(configurationService));
+        _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -93,18 +93,13 @@ public class PathGenerationService : IPathGenerationService
                 return Result<string>.Failure($"Failed to sanitize filename: {sanitizedFilenameResult.Error}");
             }
 
-            // Get media library path from configuration
-            var mediaLibraryPathResult = await _configurationService.GetConfigurationOrDefaultAsync<string>(
-                "MediaButler.Paths.MediaLibrary", "/tmp/mediabutler/library");
-            if (!mediaLibraryPathResult.IsSuccess)
-            {
-                return Result<string>.Failure($"Failed to get media library path: {mediaLibraryPathResult.Error}");
-            }
+            // Get media library path from static configuration
+            var mediaLibraryPath = _configuration["MediaButler:Paths:MediaLibrary"] ?? "/tmp/mediabutler/library";
 
             // Create template variables
             var variables = new Dictionary<string, string>
             {
-                ["MediaLibraryPath"] = mediaLibraryPathResult.Value.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                ["MediaLibraryPath"] = mediaLibraryPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
                 ["Category"] = sanitizedCategoryResult.Value,
                 ["Filename"] = sanitizedFilenameResult.Value,
                 ["OriginalCategory"] = category,

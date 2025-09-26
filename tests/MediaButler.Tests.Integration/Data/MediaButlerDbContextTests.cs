@@ -59,35 +59,6 @@ public class MediaButlerDbContextTests : IntegrationTestBase
         persistedFile.Status.Should().Be(FileStatus.New);
     }
 
-    [Fact]
-    public async Task SaveChangesAsync_WithConfigurationSetting_ShouldPersistCorrectly()
-    {
-        // Arrange
-        
-        var configSetting = new ConfigurationSetting
-        {
-            Key = "MediaButler.Integration.TestSetting",
-            Value = "test value",
-            Section = "Integration",
-            Description = "Test setting for integration tests",
-            DataType = ConfigurationDataType.String,
-            RequiresRestart = false
-        };
-
-        // Act
-        Context.ConfigurationSettings.Add(configSetting);
-        await Context.SaveChangesAsync();
-
-        // Assert - Verify persistence
-        var persistedSetting = await Context.ConfigurationSettings
-            .FirstOrDefaultAsync(s => s.Key == configSetting.Key);
-        
-        persistedSetting.Should().NotBeNull();
-        persistedSetting!.Value.Should().Be("test value");
-        persistedSetting.Section.Should().Be("Integration");
-        persistedSetting.DataType.Should().Be(ConfigurationDataType.String);
-        persistedSetting.RequiresRestart.Should().BeFalse();
-    }
 
     [Fact]
     public async Task SoftDeleteFilter_ShouldExcludeInactiveEntities()
@@ -343,29 +314,20 @@ public class MediaButlerDbContextTests : IntegrationTestBase
             FileSize = 1000000
         };
 
-        var configSetting = new ConfigurationSetting
-        {
-            Key = "MediaButler.Schema.Test",
-            Value = "test value",
-            Section = "Schema",
-            DataType = ConfigurationDataType.String
-        };
-
         var processingLog = ProcessingLog.Info(
-            trackedFile.Hash, 
-            "Schema", 
+            trackedFile.Hash,
+            "Schema",
             "Test Operation",
             "Schema validation test");
 
         // Add all entities
         Context.TrackedFiles.Add(trackedFile);
-        Context.ConfigurationSettings.Add(configSetting);
         Context.ProcessingLogs.Add(processingLog);
 
         var result = await Context.SaveChangesAsync();
 
         // Assert - All entities should be persisted
-        result.Should().Be(3);
+        result.Should().Be(2);
 
         // Verify relationships and constraints work
         var savedLog = await Context.ProcessingLogs

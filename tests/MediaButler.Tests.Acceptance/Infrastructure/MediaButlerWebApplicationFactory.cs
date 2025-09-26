@@ -94,7 +94,6 @@ public class MediaButlerWebApplicationFactory : WebApplicationFactory<Program>
         // Clear all tables in reverse dependency order
         context.ProcessingLogs.RemoveRange(context.ProcessingLogs);
         context.TrackedFiles.RemoveRange(context.TrackedFiles);
-        context.ConfigurationSettings.RemoveRange(context.ConfigurationSettings);
         context.UserPreferences.RemoveRange(context.UserPreferences);
         
         await context.SaveChangesAsync();
