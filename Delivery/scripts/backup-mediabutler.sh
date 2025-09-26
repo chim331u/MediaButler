@@ -288,7 +288,7 @@ restore_backup() {
     # Stop services before restore
     log_backup "Stopping MediaButler services..."
     cd "$INSTALL_PATH"
-    docker-compose down --remove-orphans 2>/dev/null || true
+    docker compose down --remove-orphans 2>/dev/null || true
 
     # Create restore point
     local restore_backup="$BACKUP_DIR/pre_restore_$(date +%Y%m%d_%H%M%S).tar.gz"
@@ -303,7 +303,7 @@ restore_backup() {
         # Restart services
         log_backup "Starting MediaButler services..."
         cd "$restore_path"
-        if docker-compose up -d; then
+        if docker compose up -d; then
             log_backup "Restore completed successfully"
             return 0
         else

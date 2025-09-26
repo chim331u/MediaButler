@@ -11,11 +11,11 @@ set -euo pipefail
 # =============================================================================
 
 # Default Configuration (can be overridden via environment variables)
-GITHUB_REPO_URL="${GITHUB_REPO_URL:-https://github.com/luca/mediabutler}"
+GITHUB_REPO_URL="${GITHUB_REPO_URL:-https://github.com/chim331u/MediaButler}"
 GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
-API_PORT="${API_PORT:-5000}"
-WEB_PORT="${WEB_PORT:-3000}"
-PROXY_PORT="${PROXY_PORT:-80}"
+API_PORT="${API_PORT:-30129}"
+WEB_PORT="${WEB_PORT:-30139}"
+PROXY_PORT="${PROXY_PORT:-8080}"
 INSTALL_PATH="${INSTALL_PATH:-/share/Container/mediabutler}"
 MEMORY_LIMIT_API="${MEMORY_LIMIT_API:-150m}"
 MEMORY_LIMIT_WEB="${MEMORY_LIMIT_WEB:-100m}"
@@ -124,12 +124,18 @@ check_requirements() {
     DOCKER_VERSION=$(docker --version | cut -d' ' -f3 | cut -d',' -f1)
     success "Docker found: $DOCKER_VERSION"
 
-    # Check Docker Compose
-    if ! command -v docker-compose >/dev/null 2>&1; then
+    # Check Docker Compose (modern Docker includes compose as a plugin)
+    if docker compose version >/dev/null 2>&1; then
+        COMPOSE_CMD="docker compose"
+        COMPOSE_VERSION=$(docker compose version --short 2>/dev/null || docker compose version | grep -o 'v[0-9]\+\.[0-9]\+\.[0-9]\+' | head -1)
+        success "Docker Compose (plugin) found: $COMPOSE_VERSION"
+    elif command -v docker-compose >/dev/null 2>&1; then
+        COMPOSE_CMD="docker-compose"
+        COMPOSE_VERSION=$(docker-compose --version | cut -d' ' -f3 | cut -d',' -f1)
+        success "Docker Compose (standalone) found: $COMPOSE_VERSION"
+    else
         error "Docker Compose not found. Please install Container Station first."
     fi
-    COMPOSE_VERSION=$(docker-compose --version | cut -d' ' -f3 | cut -d',' -f1)
-    success "Docker Compose found: $COMPOSE_VERSION"
 
     # Check architecture
     ARCH=$(uname -m)
@@ -160,7 +166,7 @@ cleanup_deployment() {
 
         # Stop existing containers
         if [[ -f "docker-compose.yml" ]]; then
-            docker-compose down --remove-orphans 2>/dev/null || true
+            $COMPOSE_CMD down --remove-orphans 2>/dev/null || true
             success "Stopped existing containers"
         fi
 
@@ -280,7 +286,7 @@ ENV DOTNET_EnableDiagnostics=0 \
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:5000/health || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
 
 ENTRYPOINT ["./MediaButler.API"]
 EOF
@@ -390,7 +396,7 @@ services:
           memory: 100m
           cpus: '0.2'
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -650,20 +656,20 @@ build_and_deploy() {
 
     # Build images with detailed progress
     log "Building API container..."
-    if ! docker-compose build --progress=plain mediabutler-api; then
+    if ! $COMPOSE_CMD build --progress=plain mediabutler-api; then
         error "Failed to build API container"
     fi
     success "API container built successfully"
 
     log "Building Web container..."
-    if ! docker-compose build --progress=plain mediabutler-web; then
+    if ! $COMPOSE_CMD build --progress=plain mediabutler-web; then
         error "Failed to build Web container"
     fi
     success "Web container built successfully"
 
     # Start services
     log "Starting MediaButler services..."
-    if ! docker-compose up -d; then
+    if ! $COMPOSE_CMD up -d; then
         error "Failed to start services"
     fi
 
@@ -673,7 +679,7 @@ build_and_deploy() {
     local attempt=1
 
     while [[ $attempt -le $max_attempts ]]; do
-        local healthy_count=$(docker-compose ps --filter health=healthy | wc -l)
+        local healthy_count=$($COMPOSE_CMD ps --filter health=healthy | wc -l)
         local total_services=3
 
         if [[ $healthy_count -ge $total_services ]]; then
@@ -683,7 +689,7 @@ build_and_deploy() {
 
         if [[ $((attempt % 6)) -eq 0 ]]; then
             log "Health check progress: $healthy_count/$total_services services healthy (attempt $attempt/$max_attempts)"
-            docker-compose ps
+            $COMPOSE_CMD ps
         fi
 
         sleep 10
@@ -691,8 +697,8 @@ build_and_deploy() {
     done
 
     warning "Services started but health check timeout reached"
-    docker-compose ps
-    docker-compose logs --tail=20
+    $COMPOSE_CMD ps
+    $COMPOSE_CMD logs --tail=20
 }
 
 create_monitoring() {
@@ -731,14 +737,14 @@ check_containers() {
     local failed_services=()
 
     # Check if all services are running
-    local running_count=$(docker-compose ps --filter status=running | grep -c "Up" || echo 0)
+    local running_count=$($COMPOSE_CMD ps --filter status=running | grep -c "Up" || echo 0)
     if [[ $running_count -lt 3 ]]; then
         log_monitor "WARNING: Not all services running ($running_count/3)"
         failed_services+=("containers_not_running")
     fi
 
     # Check health status
-    local unhealthy=$(docker-compose ps --filter health=unhealthy | grep -v "^Name" | wc -l)
+    local unhealthy=$($COMPOSE_CMD ps --filter health=unhealthy | grep -v "^Name" | wc -l)
     if [[ $unhealthy -gt 0 ]]; then
         log_monitor "WARNING: $unhealthy unhealthy containers detected"
         failed_services+=("unhealthy_containers")
@@ -801,17 +807,17 @@ restart_unhealthy() {
     log_monitor "INFO: Attempting to restart unhealthy services"
 
     # Get unhealthy containers
-    local unhealthy_containers=$(docker-compose ps --filter health=unhealthy --format "{{.Name}}")
+    local unhealthy_containers=$($COMPOSE_CMD ps --filter health=unhealthy --format "{{.Name}}")
 
     if [[ -n "$unhealthy_containers" ]]; then
         for container in $unhealthy_containers; do
             log_monitor "INFO: Restarting unhealthy container: $container"
-            docker-compose restart "$(echo "$container" | sed 's/^mediabutler-//')" || true
+            $COMPOSE_CMD restart "$(echo "$container" | sed 's/^mediabutler-//')" || true
         done
     else
         # If no specific unhealthy containers, restart all
         log_monitor "INFO: Restarting all services"
-        docker-compose restart
+        $COMPOSE_CMD restart
     fi
 }
 
@@ -912,17 +918,17 @@ show_deployment_info() {
     echo
     echo "🛠️  Management Commands:"
     echo "════════════════════════════════════════════════════════════════"
-    echo "📊 View status:       cd ${INSTALL_PATH} && docker-compose ps"
-    echo "📜 View logs:         cd ${INSTALL_PATH} && docker-compose logs -f"
-    echo "🔄 Restart services:  cd ${INSTALL_PATH} && docker-compose restart"
-    echo "⏹️  Stop services:     cd ${INSTALL_PATH} && docker-compose down"
+    echo "📊 View status:       cd ${INSTALL_PATH} && $COMPOSE_CMD ps"
+    echo "📜 View logs:         cd ${INSTALL_PATH} && $COMPOSE_CMD logs -f"
+    echo "🔄 Restart services:  cd ${INSTALL_PATH} && $COMPOSE_CMD restart"
+    echo "⏹️  Stop services:     cd ${INSTALL_PATH} && $COMPOSE_CMD down"
     echo "🗂️  Manual backup:     cd ${INSTALL_PATH} && ./backup-mediabutler.sh"
     echo "🔍 Check health:      cd ${INSTALL_PATH} && ./monitor-mediabutler.sh"
     echo "🆙 Update:            Re-run deployment script with same parameters"
     echo
     echo "📊 Current Container Status:"
     echo "════════════════════════════════════════════════════════════════"
-    docker-compose ps
+    $COMPOSE_CMD ps
     echo
     echo "📈 Resource Usage:"
     echo "════════════════════════════════════════════════════════════════"

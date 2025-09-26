@@ -166,7 +166,7 @@ backup_current_installation() {
 
     # Stop services
     cd "$INSTALL_PATH"
-    docker-compose down --remove-orphans 2>/dev/null || true
+    docker compose down --remove-orphans 2>/dev/null || true
 
     # Create backup
     cp -r "$INSTALL_PATH" "$backup_dir/current_installation"
@@ -183,7 +183,7 @@ update_source_files() {
     # Preserve configuration files
     local temp_config_dir=$(mktemp -d)
     cp "$INSTALL_PATH/.env" "$temp_config_dir/" 2>/dev/null || true
-    cp "$INSTALL_PATH/docker-compose.yml" "$temp_config_dir/" 2>/dev/null || true
+    cp "$INSTALL_PATH/docker compose.yml" "$temp_config_dir/" 2>/dev/null || true
     cp "$INSTALL_PATH/nginx.conf" "$temp_config_dir/" 2>/dev/null || true
     cp -r "$INSTALL_PATH/configs" "$temp_config_dir/" 2>/dev/null || true
 
@@ -193,14 +193,14 @@ update_source_files() {
         --exclude='logs/' \
         --exclude='backups/' \
         --exclude='.env' \
-        --exclude='docker-compose.yml' \
+        --exclude='docker compose.yml' \
         --exclude='nginx.conf' \
         --exclude='configs/' \
         "$source_dir/" "$INSTALL_PATH/"
 
     # Restore configuration files
     cp "$temp_config_dir/.env" "$INSTALL_PATH/" 2>/dev/null || true
-    cp "$temp_config_dir/docker-compose.yml" "$INSTALL_PATH/" 2>/dev/null || true
+    cp "$temp_config_dir/docker compose.yml" "$INSTALL_PATH/" 2>/dev/null || true
     cp "$temp_config_dir/nginx.conf" "$INSTALL_PATH/" 2>/dev/null || true
     cp -r "$temp_config_dir/configs" "$INSTALL_PATH/" 2>/dev/null || true
 
@@ -217,10 +217,10 @@ rebuild_containers() {
     cd "$INSTALL_PATH"
 
     # Pull latest base images
-    docker-compose pull 2>/dev/null || true
+    docker compose pull 2>/dev/null || true
 
     # Rebuild with no cache
-    if docker-compose build --no-cache --progress=plain; then
+    if docker compose build --no-cache --progress=plain; then
         log_update "Containers rebuilt successfully"
         return 0
     else
@@ -235,7 +235,7 @@ start_updated_services() {
 
     cd "$INSTALL_PATH"
 
-    if docker-compose up -d; then
+    if docker compose up -d; then
         log_update "Services started successfully"
         return 0
     else
@@ -256,7 +256,7 @@ rollback_update() {
 
     # Stop current services
     cd "$INSTALL_PATH"
-    docker-compose down --remove-orphans 2>/dev/null || true
+    docker compose down --remove-orphans 2>/dev/null || true
 
     # Restore from backup
     if [[ -d "$backup_dir/current_installation" ]]; then
@@ -268,7 +268,7 @@ rollback_update() {
 
         # Start services
         cd "$INSTALL_PATH"
-        if docker-compose up -d; then
+        if docker compose up -d; then
             log_update "Rollback completed successfully"
 
             # Verify rollback
