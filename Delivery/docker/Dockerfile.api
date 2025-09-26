@@ -1,0 +1,145 @@
+# MediaButler API - Production Dockerfile for QNAP NAS
+# Optimized for ARM32/ARM64 with 1GB RAM constraint
+# Target memory footprint: ~150MB
+
+FROM mcr.microsoft.com/dotnet/sdk:8.0-alpine AS build
+WORKDIR /source
+
+# Install build dependencies for cross-compilation
+RUN apk add --no-cache \
+    clang \
+    build-base \
+    zlib-dev \
+    openssl-dev \
+    krb5-dev \
+    icu-dev
+
+# Copy project files for dependency restoration (layer caching optimization)
+COPY src/MediaButler.API/*.csproj src/MediaButler.API/
+COPY src/MediaButler.Core/*.csproj src/MediaButler.Core/
+COPY src/MediaButler.Data/*.csproj src/MediaButler.Data/
+COPY src/MediaButler.ML/*.csproj src/MediaButler.ML/
+COPY src/MediaButler.Services/*.csproj src/MediaButler.Services/
+
+# Restore dependencies (cached layer if project files unchanged)
+RUN dotnet restore src/MediaButler.API/MediaButler.API.csproj \
+    --runtime linux-musl-x64 \
+    --configfile NuGet.Config
+
+# Copy entire source code
+COPY . .
+
+# Build and publish with aggressive optimizations for QNAP
+RUN dotnet publish src/MediaButler.API/MediaButler.API.csproj \
+    --configuration Release \
+    --output /app \
+    --self-contained true \
+    --runtime linux-musl-x64 \
+    --verbosity minimal \
+    /p:PublishSingleFile=true \
+    /p:IncludeNativeLibrariesForSelfExtract=true \
+    /p:PublishTrimmed=true \
+    /p:TrimMode=link \
+    /p:EnableCompressionInSingleFile=true \
+    /p:DebuggerSupport=false \
+    /p:EnableUnsafeBinaryFormatterSerialization=false \
+    /p:EnableUnsafeUTF7Encoding=false \
+    /p:InvariantGlobalization=true
+
+# =============================================================================
+# RUNTIME STAGE - Ultra-minimal Alpine Linux
+# =============================================================================
+
+FROM alpine:3.18
+LABEL maintainer="MediaButler Team"
+LABEL description="MediaButler API - QNAP NAS Optimized"
+LABEL version="1.0.0"
+
+# Install minimal runtime dependencies
+RUN apk add --no-cache \
+    ca-certificates \
+    tzdata \
+    libgcc \
+    libstdc++ \
+    libintl \
+    icu-libs \
+    && update-ca-certificates
+
+# Create non-root user for security
+RUN addgroup -g 1000 mediabutler \
+    && adduser -D -s /bin/sh -u 1000 -G mediabutler mediabutler
+
+# Set working directory
+WORKDIR /app
+
+# Copy published application
+COPY --from=build /app ./
+
+# Copy ML models and configurations (if they exist)
+COPY --chown=mediabutler:mediabutler models/ ./models/ 2>/dev/null || true
+COPY --chown=mediabutler:mediabutler configs/ ./configs/ 2>/dev/null || true
+
+# Create required directories with proper permissions
+RUN mkdir -p \
+    data/{library,watch,temp,processing} \
+    logs \
+    models \
+    configs \
+    && chown -R mediabutler:mediabutler \
+        data/ \
+        logs/ \
+        models/ \
+        configs/ \
+    && chmod -R 755 \
+        data/ \
+        logs/ \
+        models/ \
+        configs/
+
+# Switch to non-root user
+USER mediabutler
+
+# Expose API port
+EXPOSE 5000
+
+# Environment variables for 1GB RAM optimization
+ENV \
+    # .NET Runtime optimizations
+    DOTNET_EnableDiagnostics=0 \
+    DOTNET_gcServer=0 \
+    DOTNET_gcConcurrent=false \
+    DOTNET_GCHeapHardLimit=140000000 \
+    DOTNET_GCHighMemPercent=75 \
+    DOTNET_GCConserveMemory=9 \
+    DOTNET_ThreadPool_ForceMinWorkerThreads=4 \
+    DOTNET_ThreadPool_ForceMaxWorkerThreads=8 \
+    # ASP.NET Core optimizations
+    ASPNETCORE_ENVIRONMENT=Production \
+    ASPNETCORE_URLS=http://+:5000 \
+    ASPNETCORE_HOSTINGSTARTUPASSEMBLIES= \
+    ASPNETCORE_LOGGING__CONSOLE__DISABLECOLORS=true \
+    # MediaButler specific settings
+    MediaButler__Performance__MaxConcurrentOperations=2 \
+    MediaButler__Performance__MaxMemoryUsageMB=140 \
+    MediaButler__ML__MaxBatchSize=10 \
+    MediaButler__FileDiscovery__MaxConcurrentScans=1 \
+    # Timezone
+    TZ=UTC
+
+# Health check for container orchestration
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:5000/health || exit 1
+
+# Signal handling for graceful shutdown
+STOPSIGNAL SIGTERM
+
+# Start the application
+ENTRYPOINT ["./MediaButler.API"]
+
+# Add metadata labels
+LABEL org.opencontainers.image.title="MediaButler API"
+LABEL org.opencontainers.image.description="Intelligent TV series file organization API optimized for QNAP NAS"
+LABEL org.opencontainers.image.version="1.0.0"
+LABEL org.opencontainers.image.vendor="MediaButler"
+LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.source="https://github.com/luca/mediabutler"
