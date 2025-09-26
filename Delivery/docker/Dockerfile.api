@@ -37,21 +37,15 @@ RUN dotnet restore src/MediaButler.API/MediaButler.API.csproj \
 # Copy entire source code
 COPY . .
 
-# Build and publish with aggressive optimizations for QNAP
+# Build and publish with ARM32-compatible optimizations
 RUN dotnet publish src/MediaButler.API/MediaButler.API.csproj \
     --configuration Release \
     --output /app \
     --self-contained true \
     --runtime $(cat /tmp/rid) \
-    --verbosity minimal \
+    --verbosity normal \
     /p:PublishSingleFile=true \
     /p:IncludeNativeLibrariesForSelfExtract=true \
-    /p:PublishTrimmed=true \
-    /p:TrimMode=link \
-    /p:EnableCompressionInSingleFile=true \
-    /p:DebuggerSupport=false \
-    /p:EnableUnsafeBinaryFormatterSerialization=false \
-    /p:EnableUnsafeUTF7Encoding=false \
     /p:InvariantGlobalization=true
 
 # =============================================================================
