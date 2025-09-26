@@ -321,44 +321,59 @@ EOF
             cp config/docker-compose.template.yml docker-compose.yml
 
             # Use a more robust substitution method to avoid sed escaping issues
-            python3 -c "
+            cat > substitute_vars.py << 'PYTHON_SCRIPT'
 import sys
-import re
+import os
 
 # Read the template file
 with open('docker-compose.yml', 'r') as f:
     content = f.read()
 
-# Define substitutions
+# Get environment variables
 substitutions = {
-    'API_PORT': '$API_PORT',
-    'WEB_PORT': '$WEB_PORT',
-    'PROXY_PORT': '$PROXY_PORT',
-    'MEMORY_LIMIT_API': '$MEMORY_LIMIT_API',
-    'MEMORY_LIMIT_WEB': '$MEMORY_LIMIT_WEB',
-    'MEMORY_LIMIT_PROXY': '$MEMORY_LIMIT_PROXY',
-    'DOCKER_PLATFORM': '$DOCKER_PLATFORM',
-    'DOCKER_ARCH': '$DOCKER_ARCH',
-    'INSTALL_PATH': '$INSTALL_PATH'
+    'API_PORT': os.environ.get('API_PORT', '30129'),
+    'WEB_PORT': os.environ.get('WEB_PORT', '30139'),
+    'PROXY_PORT': os.environ.get('PROXY_PORT', '8080'),
+    'MEMORY_LIMIT_API': os.environ.get('MEMORY_LIMIT_API', '150m'),
+    'MEMORY_LIMIT_WEB': os.environ.get('MEMORY_LIMIT_WEB', '100m'),
+    'MEMORY_LIMIT_PROXY': os.environ.get('MEMORY_LIMIT_PROXY', '20m'),
+    'DOCKER_PLATFORM': os.environ.get('DOCKER_PLATFORM', 'linux/amd64'),
+    'DOCKER_ARCH': os.environ.get('DOCKER_ARCH', 'amd64'),
+    'INSTALL_PATH': os.environ.get('INSTALL_PATH', '/tmp'),
+    'PROXY_SSL_PORT': os.environ.get('PROXY_SSL_PORT', '443'),
+    'SSL_ENABLED': os.environ.get('SSL_ENABLED', 'false'),
+    'SSL_CERT_PATH': os.environ.get('SSL_CERT_PATH', '/dev/null'),
+    'SSL_KEY_PATH': os.environ.get('SSL_KEY_PATH', '/dev/null'),
+    'NGINX_HOST': os.environ.get('NGINX_HOST', '_')
 }
 
 # Apply substitutions
 for var, value in substitutions.items():
-    content = content.replace(f'\${{{var}}}', value)
+    content = content.replace(f'${{{var}}}', value)
 
 # Write back
 with open('docker-compose.yml', 'w') as f:
     f.write(content)
-" 2>/dev/null || {
+
+print("Variable substitution completed")
+PYTHON_SCRIPT
+
+            python3 substitute_vars.py 2>/dev/null && rm -f substitute_vars.py || {
                 # Python fallback failed, use simple sed with different delimiter
+                rm -f substitute_vars.py
                 sed -i "s|\${API_PORT}|$API_PORT|g" docker-compose.yml
                 sed -i "s|\${WEB_PORT}|$WEB_PORT|g" docker-compose.yml
                 sed -i "s|\${PROXY_PORT}|$PROXY_PORT|g" docker-compose.yml
+                sed -i "s|\${PROXY_SSL_PORT}|${PROXY_SSL_PORT:-443}|g" docker-compose.yml
                 sed -i "s|\${MEMORY_LIMIT_API}|$MEMORY_LIMIT_API|g" docker-compose.yml
                 sed -i "s|\${MEMORY_LIMIT_WEB}|$MEMORY_LIMIT_WEB|g" docker-compose.yml
                 sed -i "s|\${MEMORY_LIMIT_PROXY}|$MEMORY_LIMIT_PROXY|g" docker-compose.yml
                 sed -i "s|\${DOCKER_PLATFORM}|$DOCKER_PLATFORM|g" docker-compose.yml
                 sed -i "s|\${DOCKER_ARCH}|$DOCKER_ARCH|g" docker-compose.yml
+                sed -i "s|\${SSL_ENABLED}|${SSL_ENABLED}|g" docker-compose.yml
+                sed -i "s|\${SSL_CERT_PATH}|${SSL_CERT_PATH:-/dev/null}|g" docker-compose.yml
+                sed -i "s|\${SSL_KEY_PATH}|${SSL_KEY_PATH:-/dev/null}|g" docker-compose.yml
+                sed -i "s|\${NGINX_HOST}|${NGINX_HOST:-_}|g" docker-compose.yml
                 sed -i "s|\${INSTALL_PATH}|$INSTALL_PATH|g" docker-compose.yml
             }
         fi

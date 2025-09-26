@@ -95,16 +95,7 @@ RUN mkdir -p \
         models/ \
         configs/
 
-# Copy ML models and configurations if they exist in build context
-# Use a multi-stage approach to avoid COPY failures
-FROM alpine:3.18 as optional-files
-WORKDIR /optional
-# Try to copy models and configs, create empty directories if not found
-RUN mkdir -p models configs
-COPY models/* ./models/ 2>/dev/null || echo "No models directory found - using empty"
-COPY configs/* ./configs/ 2>/dev/null || echo "No configs directory found - using empty"
-
-# Back to main image
+# Back to main image - simplified without optional file copying
 FROM alpine:3.18
 LABEL maintainer="MediaButler Team"
 LABEL description="MediaButler API - QNAP NAS Optimized"
@@ -123,10 +114,6 @@ WORKDIR /app
 
 # Copy published application
 COPY --from=build /app ./
-
-# Copy optional files from the optional-files stage
-COPY --from=optional-files --chown=mediabutler:mediabutler /optional/models/ ./models/
-COPY --from=optional-files --chown=mediabutler:mediabutler /optional/configs/ ./configs/
 
 # Create required directories with proper permissions
 RUN mkdir -p \
