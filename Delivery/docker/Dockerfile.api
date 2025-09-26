@@ -32,8 +32,7 @@ RUN case "${TARGETARCH}" in \
 
 # Restore dependencies (cached layer if project files unchanged)
 RUN dotnet restore src/MediaButler.API/MediaButler.API.csproj \
-    --runtime $(cat /tmp/rid) \
-    --configfile NuGet.Config
+    --runtime $(cat /tmp/rid)
 
 # Copy entire source code
 COPY . .
