@@ -50,39 +50,12 @@ public static class TestDataSeeder
             new TrackedFileBuilder().AsTVEpisode("Lost", 1, 1).AsError("Classification timeout", 2).WithHash($"workflowerr01{timestamp:X}".PadRight(64, '0').Substring(0, 64)).Build()
         };
 
-        // Add configuration settings
-        var configurations = new[]
-        {
-            new ConfigurationSetting
-            {
-                Key = "MediaButler.Paths.WatchFolder",
-                Value = "/test/watch",
-                Section = "Paths",
-                DataType = ConfigurationDataType.String
-            },
-            new ConfigurationSetting
-            {
-                Key = "MediaButler.ML.ConfidenceThreshold",
-                Value = "0.85",
-                Section = "ML",
-                DataType = ConfigurationDataType.String
-            },
-            new ConfigurationSetting
-            {
-                Key = "MediaButler.Butler.AutoOrganizeEnabled",
-                Value = "true",
-                Section = "Butler",
-                DataType = ConfigurationDataType.Boolean
-            }
-        };
-
         // Add to context
         await context.TrackedFiles.AddRangeAsync(newFiles);
         await context.TrackedFiles.AddRangeAsync(classifiedFiles);
         await context.TrackedFiles.AddRangeAsync(confirmedFiles);
         await context.TrackedFiles.AddRangeAsync(movedFiles);
         await context.TrackedFiles.AddRangeAsync(errorFiles);
-        await context.ConfigurationSettings.AddRangeAsync(configurations);
 
         // Add processing logs for classified files
         var logs = classifiedFiles.Select(file => ProcessingLog.Info(
@@ -257,16 +230,7 @@ public static class TestDataSeeder
             .WithOriginalPath("/test/Minimal.Test.S01E01.mkv")
             .Build();
 
-        var config = new ConfigurationSetting
-        {
-            Key = "MediaButler.Test.MinimalSetting",
-            Value = "test",
-            Section = "Test",
-            DataType = ConfigurationDataType.String
-        };
-
         await context.TrackedFiles.AddAsync(file);
-        await context.ConfigurationSettings.AddAsync(config);
         await context.SaveChangesAsync();
     }
 }

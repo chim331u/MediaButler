@@ -31,6 +31,14 @@ public interface IFileDiscoveryService
     Task<Result<int>> ScanFoldersAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Performs a one-time scan of a specific folder for existing files.
+    /// </summary>
+    /// <param name="folderPath">The full path to the folder to scan</param>
+    /// <param name="cancellationToken">Cancellation token for the scan operation</param>
+    /// <returns>Result containing the number of files discovered in the folder</returns>
+    Task<Result<int>> ScanSingleFolderAsync(string folderPath, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Gets the current monitoring status.
     /// </summary>
     bool IsMonitoring { get; }
@@ -49,6 +57,7 @@ public interface IFileDiscoveryService
     /// Event triggered when a file discovery error occurs.
     /// </summary>
     event EventHandler<FileDiscoveryErrorEventArgs> DiscoveryError;
+
 }
 
 /// <summary>

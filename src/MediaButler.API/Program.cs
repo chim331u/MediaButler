@@ -7,11 +7,16 @@ using MediaButler.Services.Interfaces;
 using MediaButler.Core.Services;
 using MediaButler.API.Middleware;
 using MediaButler.API.Filters;
+using MediaButler.API.Hubs;
+using MediaButler.API.Services;
 using MediaButler.ML.Extensions;
 using MediaButler.Services.Background;
 using MediaButler.Services.FileOperations;
+using MediaButler.Services.Extensions;
 using Serilog;
 using Serilog.Events;
+using FluentValidation;
+using FluentValidation.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,14 +24,18 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseSerilog((context, configuration) => 
     configuration.ReadFrom.Configuration(context.Configuration));
 
-// Add CORS
+// Add CORS with SignalR support
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", builder =>
     {
-        builder.AllowAnyOrigin()
+        builder.WithOrigins(
+                "http://localhost:5109",   // Default Web app port
+                "http://localhost:5110",   // Alternative Web app port
+                "https://localhost:5111")  // HTTPS Web app port
             .AllowAnyMethod()
-            .AllowAnyHeader();
+            .AllowAnyHeader()
+            .AllowCredentials(); // Required for SignalR
     });
 });
 
@@ -42,12 +51,24 @@ builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
 // Add application services
 builder.Services.AddScoped<IFileService, FileService>();
-builder.Services.AddScoped<IConfigurationService, ConfigurationService>();
 builder.Services.AddScoped<IStatsService, StatsService>();
 builder.Services.AddScoped<IRollbackService, RollbackService>();
 builder.Services.AddScoped<IErrorClassificationService, ErrorClassificationService>();
 builder.Services.AddScoped<IFileOrganizationService, FileOrganizationService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
+
+// Add batch file processing services
+builder.Services.AddScoped<IFileActionsService, FileActionsService>();
+
+// Add custom background task queue (lightweight alternative to Hangfire)
+builder.Services.AddCustomBackgroundTaskQueue(100); // ARM32 optimized queue
+
+// Add SignalR services
+builder.Services.AddSignalR();
+builder.Services.AddSingleton<ISignalRNotificationService, SignalRNotificationService>();
+
+// Add SignalR integration for file discovery notifications
+builder.Services.AddHostedService<FileDiscoverySignalRService>();
 
 // Add file operation services
 builder.Services.AddScoped<IFileOperationService, FileOperationService>();
@@ -57,15 +78,21 @@ builder.Services.AddScoped<IPathGenerationService, PathGenerationService>();
 builder.Services.AddMediaButlerML(builder.Configuration);
 
 // Add background processing services with configuration
-// Temporarily commented out to fix dependency injection issue
-// builder.Services.AddBackgroundServices(builder.Configuration);
+builder.Services.AddBackgroundServices(builder.Configuration);
+
+// Add FluentValidation
+builder.Services.AddFluentValidationAutoValidation()
+    .AddFluentValidationClientsideAdapters();
+
+// Register validators
+builder.Services.AddValidatorsFromAssemblyContaining<Program>();
 
 // Add API services with validation
 builder.Services.AddControllers(options =>
 {
     // Add global model validation filter
     options.Filters.Add<ModelValidationFilter>();
-    
+
     // Configure JSON options for consistent formatting
     options.RespectBrowserAcceptHeader = true;
     options.ReturnHttpNotAcceptable = true;
@@ -131,6 +158,10 @@ if (app.Environment.IsDevelopment())
         c.DisplayRequestDuration();
         c.EnableValidator();
     });
+
+    // Background task queue monitoring available via API endpoints
+    // GET /api/v1/file-actions/batch-status/{id} for job status
+    // GET /api/v1/file-actions/batch-jobs for job list
 }
 
 // Add request/response logging first for complete request tracking
@@ -157,6 +188,10 @@ app.UseCors("AllowAll");
 
 // Map controllers
 app.MapControllers();
+
+// Map SignalR hubs
+app.MapHub<NotificationHub>("/notifications");
+app.MapHub<FileProcessingHub>("/file-processing");
 
 // Enhanced root endpoint with API information
 app.MapGet("/", () => new

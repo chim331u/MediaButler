@@ -35,12 +35,6 @@ public interface IUnitOfWork : IDisposable
     /// <value>The ProcessingLog repository instance.</value>
     IRepository<MediaButler.Core.Entities.ProcessingLog> ProcessingLogs { get; }
 
-    /// <summary>
-    /// Gets the ConfigurationSetting repository for application settings management.
-    /// All repository instances share the same database context and transaction scope.
-    /// </summary>
-    /// <value>The ConfigurationSetting repository instance.</value>
-    IRepository<MediaButler.Core.Entities.ConfigurationSetting> ConfigurationSettings { get; }
 
     /// <summary>
     /// Gets the UserPreference repository for user preference management.

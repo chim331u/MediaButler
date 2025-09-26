@@ -28,6 +28,8 @@ public class FileDiscoveryService : IFileDiscoveryService, IDisposable
     
     private volatile bool _isMonitoring;
     private volatile bool _disposed;
+    private readonly object _watchersLock = new();
+    private List<string> _currentWatchFolders = new();
 
     public FileDiscoveryService(
         IOptions<FileDiscoveryConfiguration> config,
@@ -77,7 +79,16 @@ public class FileDiscoveryService : IFileDiscoveryService, IDisposable
     public bool IsMonitoring => _isMonitoring;
 
     /// <inheritdoc />
-    public IEnumerable<string> MonitoredPaths => _config.WatchFolders.AsReadOnly();
+    public IEnumerable<string> MonitoredPaths
+    {
+        get
+        {
+            lock (_watchersLock)
+            {
+                return _currentWatchFolders.AsReadOnly();
+            }
+        }
+    }
 
     /// <inheritdoc />
     public event EventHandler<FileDiscoveredEventArgs>? FileDiscovered;
@@ -96,7 +107,20 @@ public class FileDiscoveryService : IFileDiscoveryService, IDisposable
 
         try
         {
-            _logger.LogInformation("Starting file monitoring for {FolderCount} folders", _config.WatchFolders.Count);
+            // Initialize current watch folders from config, then check database
+            lock (_watchersLock)
+            {
+                _currentWatchFolders = _config.WatchFolders.ToList();
+            }
+
+            // Get watch folders from static configuration
+            var configWatchFolders = GetWatchFoldersFromConfiguration();
+            lock (_watchersLock)
+            {
+                _currentWatchFolders = configWatchFolders.ToList();
+            }
+
+            _logger.LogInformation("Starting file monitoring for {FolderCount} folders", _currentWatchFolders.Count);
 
             // Setup FileSystemWatcher for each configured folder
             if (_config.EnableFileSystemWatcher)
@@ -166,7 +190,16 @@ public class FileDiscoveryService : IFileDiscoveryService, IDisposable
         }
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    /// Gets watch folders from static configuration (appsettings.json).
+    /// </summary>
+    private List<string> GetWatchFoldersFromConfiguration()
+    {
+        _logger.LogDebug("Using watch folders from static configuration: {Folders}",
+            string.Join(", ", _config.WatchFolders));
+        return _config.WatchFolders.ToList();
+    }
+
     public async Task<Result<int>> ScanFoldersAsync(CancellationToken cancellationToken = default)
     {
         if (_disposed)
@@ -175,11 +208,14 @@ public class FileDiscoveryService : IFileDiscoveryService, IDisposable
         var totalDiscovered = 0;
         var scannedFolders = 0;
 
-        _logger.LogDebug("Starting folder scan for {FolderCount} folders", _config.WatchFolders.Count);
+        // Get watch folders from static configuration
+        var watchFolders = GetWatchFoldersFromConfiguration();
+
+        _logger.LogDebug("Starting folder scan for {FolderCount} folders", watchFolders.Count);
 
         try
         {
-            var scanTasks = _config.WatchFolders.Select(async folder =>
+            var scanTasks = watchFolders.Select(async folder =>
             {
                 await _scanSemaphore.WaitAsync(cancellationToken);
                 try
@@ -223,7 +259,7 @@ public class FileDiscoveryService : IFileDiscoveryService, IDisposable
     /// <summary>
     /// Scans a single folder for files matching the configured criteria.
     /// </summary>
-    private async Task<Result<int>> ScanSingleFolderAsync(string folderPath, CancellationToken cancellationToken)
+    public async Task<Result<int>> ScanSingleFolderAsync(string folderPath, CancellationToken cancellationToken)
     {
         if (!Directory.Exists(folderPath))
         {
@@ -272,7 +308,13 @@ public class FileDiscoveryService : IFileDiscoveryService, IDisposable
     /// </summary>
     private async Task SetupFileSystemWatchersAsync(CancellationToken cancellationToken)
     {
-        foreach (var folderPath in _config.WatchFolders)
+        List<string> foldersToWatch;
+        lock (_watchersLock)
+        {
+            foldersToWatch = _currentWatchFolders.ToList();
+        }
+
+        foreach (var folderPath in foldersToWatch)
         {
             if (!Directory.Exists(folderPath))
             {
@@ -523,6 +565,8 @@ public class FileDiscoveryService : IFileDiscoveryService, IDisposable
             _logger.LogError(ex, "Error raising DiscoveryError event");
         }
     }
+
+
 
     public void Dispose()
     {

@@ -143,4 +143,13 @@ public interface ITrackedFileRepository : IRepository<TrackedFile>
     /// <param name="cancellationToken">Cancellation token for async operation.</param>
     /// <returns>Collection of files matching the filename pattern.</returns>
     Task<IEnumerable<TrackedFile>> SearchByFilenameAsync(string filenamePattern, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets distinct category values from tracked files.
+    /// Retrieves all unique, non-null category values that have been assigned to files.
+    /// Useful for populating category dropdowns and understanding data distribution.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token for async operation.</param>
+    /// <returns>Collection of distinct category names.</returns>
+    Task<IEnumerable<string>> GetDistinctCategoriesAsync(CancellationToken cancellationToken = default);
 }

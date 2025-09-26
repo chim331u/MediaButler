@@ -14,6 +14,17 @@ namespace MediaButler.Core.Enums;
 /// </remarks>
 public enum FileStatus
 {
+    // Summary:
+    // New = 0,           // Just discovered
+    // Processing = 1,    // Being processed
+    // Classified = 2,    // ML classification complete
+    // ReadyToMove = 3,   // Confirmed, ready for organization
+    // Moving = 4,        // File move in progress
+    // Moved = 5,         // Successfully organized
+    // Error = 6,         // Processing failed
+    // Retry = 7,         // Queued for retry
+    // Ignored = 8        // User marked as ignored
+    
     /// <summary>
     /// File has been discovered but not yet processed.
     /// This is the initial state when a file is first detected by the file watcher.

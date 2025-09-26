@@ -59,15 +59,14 @@ public abstract class IntegrationTestBase : IClassFixture<DatabaseFixture>, IAsy
     protected async Task AssertDatabaseIsEmptyAsync()
     {
         var trackedFileCount = Context.TrackedFiles.Count();
-        var configCount = Context.ConfigurationSettings.Count();
         var logCount = Context.ProcessingLogs.Count();
         var userPrefCount = Context.UserPreferences.Count();
 
-        if (trackedFileCount + configCount + logCount + userPrefCount > 0)
+        if (trackedFileCount + logCount + userPrefCount > 0)
         {
             throw new InvalidOperationException(
                 $"Database is not empty: TrackedFiles={trackedFileCount}, " +
-                $"Configs={configCount}, Logs={logCount}, UserPrefs={userPrefCount}");
+                $"Logs={logCount}, UserPrefs={userPrefCount}");
         }
     }
 

@@ -175,9 +175,44 @@ public interface IFileService
     /// <param name="cancellationToken">Cancellation token for async operation.</param>
     /// <returns>Result containing paginated file collection.</returns>
     Task<Result<IEnumerable<TrackedFile>>> GetFilesPagedAsync(
-        int skip, 
-        int take, 
-        FileStatus? status = null, 
-        string? category = null, 
+        int skip,
+        int take,
+        FileStatus? status = null,
+        string? category = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets paginated list of tracked files filtered by multiple statuses.
+    /// Enables efficient querying of files across multiple processing states.
+    /// </summary>
+    /// <param name="skip">Number of files to skip for pagination.</param>
+    /// <param name="take">Number of files to take (page size).</param>
+    /// <param name="statuses">Collection of file statuses to filter by.</param>
+    /// <param name="category">Optional category filter.</param>
+    /// <param name="cancellationToken">Cancellation token for async operation.</param>
+    /// <returns>Result containing paginated file collection matching any of the specified statuses.</returns>
+    Task<Result<IEnumerable<TrackedFile>>> GetFilesPagedByStatusesAsync(
+        int skip,
+        int take,
+        IEnumerable<FileStatus> statuses,
+        string? category = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets distinct categories from tracked files.
+    /// Retrieves all unique category values that have been assigned to files in the system.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token for async operation.</param>
+    /// <returns>Result containing alphabetically sorted list of distinct categories.</returns>
+    Task<Result<IEnumerable<string>>> GetDistinctCategoriesAsync(
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Marks a file as ignored, transitioning it to the Ignored status.
+    /// This is a terminal state - the file will not be processed further.
+    /// </summary>
+    /// <param name="hash">The SHA256 hash of the file to ignore.</param>
+    /// <param name="cancellationToken">Cancellation token for async operation.</param>
+    /// <returns>Result containing updated tracked file if successful.</returns>
+    Task<Result<TrackedFile>> IgnoreFileAsync(string hash, CancellationToken cancellationToken = default);
 }
