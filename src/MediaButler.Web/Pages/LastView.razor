@@ -22,7 +22,7 @@
     }
 
     .last-view-header {
-        background: linear-gradient(135deg, var(--rz-primary) 0%, var(--rz-primary-darker) 100%);
+        background: linear-gradient(135deg, var(--rz-base) 0%, var(--rz-base-darker) 100%);
         color: white;
         padding: 24px;
         border-radius: 12px 12px 0 0;
@@ -54,7 +54,7 @@
     }
 
     .category-group {
-        background: white;
+        background: var(--rz-base-50) !important;
         border: 1px solid var(--rz-border-color);
         border-radius: 12px;
         margin-bottom: 16px;
@@ -69,7 +69,7 @@
     }
 
     .category-header {
-        background: linear-gradient(135deg, var(--rz-primary) 0%, var(--rz-primary-darker) 100%);
+        background: linear-gradient(135deg, var(--rz-base) 0%, var(--rz-base-darker) 100%);
         color: white;
         padding: 16px 20px;
         cursor: pointer;
@@ -84,7 +84,7 @@
     }
 
     .category-header:hover {
-        background: linear-gradient(135deg, var(--rz-primary-darker) 0%, var(--rz-primary-darkest) 100%);
+        background: linear-gradient(135deg, var(--rz-base-darker) 0%, var(--rz-base-darkest) 100%);
         transform: translateY(-1px);
         box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
     }
@@ -114,6 +114,7 @@
 
     .category-files {
         border-top: 1px solid var(--rz-border-color-light);
+        background-color: var(--rz-base-50) !important;
     }
 
     .file-row {
@@ -123,6 +124,7 @@
         align-items: center;
         gap: 16px;
         transition: all 0.2s ease;
+        background-color: var(--rz-base-50) !important;
     }
 
     .file-row:last-child {
@@ -130,7 +132,7 @@
     }
 
     .file-row:hover {
-        background-color: var(--rz-background-color-hover);
+        background-color: var(--rz-base-100) !important;
         transform: translateY(-1px);
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     }

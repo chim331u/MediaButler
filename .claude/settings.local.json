@@ -6,7 +6,8 @@
       "Bash(dotnet build:*)",
       "Bash(dotnet test:*)",
       "Bash(netstat:*)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []
