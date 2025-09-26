@@ -11,11 +11,11 @@ set -euo pipefail
 # =============================================================================
 
 # Default Configuration (can be overridden via environment variables)
-GITHUB_REPO_URL="${GITHUB_REPO_URL:-https://github.com/luca/mediabutler}"
+GITHUB_REPO_URL="${GITHUB_REPO_URL:-https://github.com/chim331u/MediaButler}"
 GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
-API_PORT="${API_PORT:-5000}"
-WEB_PORT="${WEB_PORT:-3000}"
-PROXY_PORT="${PROXY_PORT:-80}"
+API_PORT="${API_PORT:-30129}"
+WEB_PORT="${WEB_PORT:-30139}"
+PROXY_PORT="${PROXY_PORT:-8080}"
 INSTALL_PATH="${INSTALL_PATH:-/share/Container/mediabutler}"
 MEMORY_LIMIT_API="${MEMORY_LIMIT_API:-150m}"
 MEMORY_LIMIT_WEB="${MEMORY_LIMIT_WEB:-100m}"
@@ -280,7 +280,7 @@ ENV DOTNET_EnableDiagnostics=0 \
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:5000/health || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
 
 ENTRYPOINT ["./MediaButler.API"]
 EOF
@@ -390,7 +390,7 @@ services:
           memory: 100m
           cpus: '0.2'
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
