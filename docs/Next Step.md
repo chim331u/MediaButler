@@ -36,7 +36,21 @@ sample code or description
 
 
 # Next Steps
-- [ ] Implement last view page
+- [ ] Implement last view page: review all
 - [ ] Improve test coverage to 80% (currently at 65%)
-- [ ] Review the load records from old db based on import folder - set in config
+- ✅ Review the load records from old db based on import folder - set in config
 - [ ] Docker deploy
+
+
+✅ **COMPLETED**: FileCat Migration Tool Updated
+- ✅ Filter only IsActive = true records from FileCat database
+- ✅ Migrate filesize as-is to new TrackedFiles table
+- ✅ Migrate filecat.name to TrackedFile.FileName with filename refactoring using watch folder method
+- ✅ Migrate path to TargetPath field
+- ✅ Migrate filecategory to Category (uppercased)
+- ✅ Migrate lastupdate date to LastUpdateDate
+- ✅ Status mapping: IsNotToMove = 1 → Status = 8 (Ignored)
+- ✅ Status mapping: IsToCategorize = 0 → Status = 2 (Classified)
+- ✅ Status mapping: All other records → Status = 5 (Moved)
+- ✅ Added project file and fixed compilation issues
+- ✅ Ready for production migration from FileCat to MediaButler

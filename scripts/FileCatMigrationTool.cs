@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Data.SQLite;
+using Microsoft.Data.Sqlite;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
@@ -25,8 +25,8 @@ public class FileCatMigrationTool
 
     public static async Task Main(string[] args)
     {
-        var sourcePath = "../../temp/Import/FileCat.db";
-        var targetPath = "../../temp/mediabutler.dev.db";
+        var sourcePath = "/Users/luca/GitHub/mediabutler/MediaButler/temp/Import/FileCat.db";
+        var targetPath = "/Users/luca/GitHub/mediabutler/MediaButler/temp/mediabutler.dev.db";
         var dryRun = args.Length > 0 && args[0].ToLower() == "--dry-run";
 
         var migrator = new FileCatMigrationTool(sourcePath, targetPath, dryRun);
@@ -100,7 +100,7 @@ public class FileCatMigrationTool
     {
         var records = new List<FileCatRecord>();
 
-        using var connection = new SQLiteConnection($"Data Source={_sourceDatabasePath};Version=3;Read Only=True;");
+        using var connection = new SqliteConnection($"Data Source={_sourceDatabasePath};Mode=ReadOnly;");
         await connection.OpenAsync();
 
         var query = @"
@@ -108,30 +108,30 @@ public class FileCatMigrationTool
                    IsToCategorize, IsNew, IsDeleted, IsNotToMove,
                    CreatedDate, LastUpdatedDate, IsActive, Note
             FROM FilesDetail
-            WHERE Name IS NOT NULL AND Name != ''
+            WHERE Name IS NOT NULL AND Name != '' AND IsActive = 1
             ORDER BY Id";
 
-        using var command = new SQLiteCommand(query, connection);
+        using var command = new SqliteCommand(query, connection);
         using var reader = await command.ExecuteReaderAsync();
 
         while (await reader.ReadAsync())
         {
             records.Add(new FileCatRecord
             {
-                Id = reader.GetInt32("Id"),
-                Name = reader.IsDBNull("Name") ? null : reader.GetString("Name"),
-                Path = reader.IsDBNull("Path") ? null : reader.GetString("Path"),
-                FileSize = reader.GetDouble("FileSize"),
-                LastUpdateFile = reader.GetString("LastUpdateFile"),
-                FileCategory = reader.IsDBNull("FileCategory") ? null : reader.GetString("FileCategory"),
-                IsToCategorize = reader.GetBoolean("IsToCategorize"),
-                IsNew = reader.GetBoolean("IsNew"),
-                IsDeleted = reader.GetBoolean("IsDeleted"),
-                IsNotToMove = reader.GetBoolean("IsNotToMove"),
-                CreatedDate = DateTime.Parse(reader.GetString("CreatedDate")),
-                LastUpdatedDate = DateTime.Parse(reader.GetString("LastUpdatedDate")),
-                IsActive = reader.GetBoolean("IsActive"),
-                Note = reader.IsDBNull("Note") ? null : reader.GetString("Note")
+                Id = Convert.ToInt32(reader["Id"]),
+                Name = reader.IsDBNull(reader.GetOrdinal("Name")) ? null : reader["Name"].ToString(),
+                Path = reader.IsDBNull(reader.GetOrdinal("Path")) ? null : reader["Path"].ToString(),
+                FileSize = Convert.ToDouble(reader["FileSize"]),
+                LastUpdateFile = reader["LastUpdateFile"].ToString() ?? "",
+                FileCategory = reader.IsDBNull(reader.GetOrdinal("FileCategory")) ? null : reader["FileCategory"].ToString(),
+                IsToCategorize = Convert.ToBoolean(reader["IsToCategorize"]),
+                IsNew = Convert.ToBoolean(reader["IsNew"]),
+                IsDeleted = Convert.ToBoolean(reader["IsDeleted"]),
+                IsNotToMove = Convert.ToBoolean(reader["IsNotToMove"]),
+                CreatedDate = DateTime.Parse(reader["CreatedDate"].ToString() ?? DateTime.Now.ToString()),
+                LastUpdatedDate = DateTime.Parse(reader["LastUpdatedDate"].ToString() ?? DateTime.Now.ToString()),
+                IsActive = Convert.ToBoolean(reader["IsActive"]),
+                Note = reader.IsDBNull(reader.GetOrdinal("Note")) ? null : reader["Note"].ToString()
             });
         }
 
@@ -170,10 +170,10 @@ public class FileCatMigrationTool
 
     private async Task<int> GetExistingRecordCountAsync()
     {
-        using var connection = new SQLiteConnection($"Data Source={_targetDatabasePath};Version=3;");
+        using var connection = new SqliteConnection($"Data Source={_targetDatabasePath};");
         await connection.OpenAsync();
 
-        using var command = new SQLiteCommand("SELECT COUNT(*) FROM TrackedFiles", connection);
+        using var command = new SqliteCommand("SELECT COUNT(*) FROM TrackedFiles", connection);
         return Convert.ToInt32(await command.ExecuteScalarAsync());
     }
 
@@ -189,7 +189,7 @@ public class FileCatMigrationTool
             try
             {
                 var trackedFile = MapToTrackedFile(record);
-                Console.WriteLine($"Would migrate: {trackedFile.FileName} -> Status: {trackedFile.Status}, Category: {trackedFile.Category ?? "None"}");
+                Console.WriteLine($"Would migrate: {trackedFile.FileName} -> Status: {trackedFile.Status}, Category: {trackedFile.Category ?? "None"}, MovedToPath: {trackedFile.MovedToPath ?? "None"}");
                 migratedCount++;
             }
             catch (Exception ex)
@@ -207,14 +207,14 @@ public class FileCatMigrationTool
     {
         Console.WriteLine("\n=== LIVE MIGRATION ===");
 
-        using var connection = new SQLiteConnection($"Data Source={_targetDatabasePath};Version=3;");
+        using var connection = new SqliteConnection($"Data Source={_targetDatabasePath};");
         await connection.OpenAsync();
 
         using var transaction = connection.BeginTransaction();
 
         try
         {
-            var insertCommand = new SQLiteCommand(@"
+            var insertCommand = new SqliteCommand(@"
                 INSERT INTO TrackedFiles (
                     Hash, FileName, OriginalPath, FileSize, Status, SuggestedCategory,
                     Confidence, Category, TargetPath, ClassifiedAt, MovedAt, LastError,
@@ -244,7 +244,7 @@ public class FileCatMigrationTool
                     insertCommand.Parameters.AddWithValue("@SuggestedCategory", (object)trackedFile.SuggestedCategory ?? DBNull.Value);
                     insertCommand.Parameters.AddWithValue("@Confidence", trackedFile.Confidence);
                     insertCommand.Parameters.AddWithValue("@Category", (object)trackedFile.Category ?? DBNull.Value);
-                    insertCommand.Parameters.AddWithValue("@TargetPath", DBNull.Value);
+                    insertCommand.Parameters.AddWithValue("@TargetPath", (object)trackedFile.TargetPath ?? DBNull.Value);
                     insertCommand.Parameters.AddWithValue("@ClassifiedAt", (object)trackedFile.ClassifiedAt ?? DBNull.Value);
                     insertCommand.Parameters.AddWithValue("@MovedAt", DBNull.Value);
                     insertCommand.Parameters.AddWithValue("@LastError", (object)trackedFile.LastError ?? DBNull.Value);
@@ -254,7 +254,7 @@ public class FileCatMigrationTool
                     insertCommand.Parameters.AddWithValue("@LastUpdateDate", trackedFile.LastUpdateDate);
                     insertCommand.Parameters.AddWithValue("@Note", (object)trackedFile.Note ?? DBNull.Value);
                     insertCommand.Parameters.AddWithValue("@IsActive", trackedFile.IsActive);
-                    insertCommand.Parameters.AddWithValue("@MovedToPath", DBNull.Value);
+                    insertCommand.Parameters.AddWithValue("@MovedToPath", (object)trackedFile.MovedToPath ?? DBNull.Value);
 
                     await insertCommand.ExecuteNonQueryAsync();
                     migratedCount++;
@@ -287,39 +287,93 @@ public class FileCatMigrationTool
         var hashInput = $"{source.Path ?? ""}/{source.Name ?? ""}";
         var hash = GenerateHash(hashInput);
 
+        // Refactor filename using watch folder method
+        var refactoredFileName = RefactorFileName(source.Name ?? "");
+
         // Determine status based on flags
         var status = DetermineStatus(source);
+
+        // Map target path from source path
+        var targetPath = !string.IsNullOrEmpty(source.Path) && !string.IsNullOrEmpty(source.FileCategory)
+            ? Path.Combine(source.FileCategory.ToUpperInvariant(), refactoredFileName)
+            : null;
 
         return new TrackedFileRecord
         {
             Hash = hash,
-            FileName = source.Name ?? "",
-            OriginalPath = source.Path ?? "",
-            FileSize = (long)source.FileSize,
+            FileName = refactoredFileName,
+            OriginalPath = "", // Keep empty as this represents the watch folder path
+            FileSize = (long)source.FileSize, // Migrate filesize as is
             Status = status,
-            SuggestedCategory = !string.IsNullOrEmpty(source.FileCategory) ? source.FileCategory : null,
+            SuggestedCategory = !string.IsNullOrEmpty(source.FileCategory) ? source.FileCategory.ToUpperInvariant() : null,
             Confidence = !string.IsNullOrEmpty(source.FileCategory) ? 0.95m : 0.0m,
-            Category = !string.IsNullOrEmpty(source.FileCategory) && !source.IsNotToMove ? source.FileCategory : null,
+            Category = !string.IsNullOrEmpty(source.FileCategory) && !source.IsNotToMove ? source.FileCategory.ToUpperInvariant() : null,
+            TargetPath = targetPath,
             ClassifiedAt = !string.IsNullOrEmpty(source.FileCategory) ? source.LastUpdatedDate : null,
             LastError = source.IsDeleted ? "File marked as deleted in source system" : null,
             LastErrorAt = source.IsDeleted ? source.LastUpdatedDate : null,
             CreatedDate = source.CreatedDate,
-            LastUpdateDate = source.LastUpdatedDate,
+            LastUpdateDate = source.LastUpdatedDate, // Migrate lastupdate date in lastupdated
             Note = source.Note,
-            IsActive = source.IsActive && !source.IsDeleted
+            IsActive = source.IsActive && !source.IsDeleted,
+            MovedToPath = source.Path // Migrate FileCat Path to MovedToPath
         };
     }
 
     private int DetermineStatus(FileCatRecord source)
     {
         // MediaButler Status values:
-        // 0 = New, 1 = Discovered, 2 = Classified, 3 = ConfirmedCategory, 4 = Queued, 5 = Moved, 6 = Error, 7 = Failed
+        // 0 = New, 1 = Processing, 2 = Classified, 3 = ReadyToMove, 4 = Moving, 5 = Moved, 6 = Error, 7 = Retry, 8 = Ignored
 
-        if (source.IsDeleted) return 6; // Error
-        if (source.IsNotToMove) return 3; // ConfirmedCategory (but not to move)
-        if (!string.IsNullOrEmpty(source.FileCategory)) return 3; // ConfirmedCategory
-        if (source.IsToCategorize) return 1; // Discovered
-        return 1; // Default: Discovered
+        // migrate records with IsNotToMove = 1 in status = 8 (Ignored)
+        if (source.IsNotToMove) return 8; // Ignored
+
+        // migrate records with isToCategorize = 0 with in Status = 2 (Classified)
+        if (!source.IsToCategorize && !string.IsNullOrEmpty(source.FileCategory)) return 2; // Classified
+
+        // migrate all other records in status = 5 (Moved)
+        return 5; // Moved
+    }
+
+    /// <summary>
+    /// Refactor filename using the method used when a new file is found in watch folder.
+    /// This normalizes the filename for consistent processing.
+    /// </summary>
+    private string RefactorFileName(string originalName)
+    {
+        if (string.IsNullOrWhiteSpace(originalName))
+            return string.Empty;
+
+        var fileName = originalName.Trim();
+
+        // Remove any path separators that might be in the name
+        fileName = Path.GetFileName(fileName);
+
+        // Normalize separators (dots, underscores to spaces)
+        fileName = fileName.Replace('.', ' ').Replace('_', ' ');
+
+        // Remove multiple spaces
+        while (fileName.Contains("  "))
+            fileName = fileName.Replace("  ", " ");
+
+        // Remove common file prefixes/suffixes that don't add value
+        var prefixesToRemove = new[] { "[", "]", "(", ")", "{", "}" };
+        foreach (var prefix in prefixesToRemove)
+        {
+            fileName = fileName.Replace(prefix, " ");
+        }
+
+        // Normalize case - keep original extension case
+        var extension = Path.GetExtension(originalName);
+        var nameWithoutExt = Path.GetFileNameWithoutExtension(fileName);
+
+        // Clean up the name part but preserve the original extension
+        nameWithoutExt = nameWithoutExt.Trim();
+
+        // Reconstruct with cleaned name and original extension
+        fileName = string.IsNullOrEmpty(extension) ? nameWithoutExt : $"{nameWithoutExt}{extension}";
+
+        return fileName.Trim();
     }
 
     private string GenerateHash(string input)
@@ -358,6 +412,7 @@ public class TrackedFileRecord
     public string? SuggestedCategory { get; set; }
     public decimal Confidence { get; set; }
     public string? Category { get; set; }
+    public string? TargetPath { get; set; }
     public DateTime? ClassifiedAt { get; set; }
     public string? LastError { get; set; }
     public DateTime? LastErrorAt { get; set; }
@@ -365,4 +420,5 @@ public class TrackedFileRecord
     public DateTime LastUpdateDate { get; set; }
     public string? Note { get; set; }
     public bool IsActive { get; set; }
+    public string? MovedToPath { get; set; }
 }
