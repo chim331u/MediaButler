@@ -274,7 +274,7 @@ restart_container() {
 
     cd "$INSTALL_PATH" || return 1
 
-    if docker-compose restart "$container"; then
+    if docker compose restart "$container"; then
         log_info "Successfully restarted $container"
         return 0
     else
@@ -289,7 +289,7 @@ restart_all_services() {
 
     cd "$INSTALL_PATH" || return 1
 
-    if docker-compose restart; then
+    if docker compose restart; then
         log_info "Successfully restarted all services"
         return 0
     else
@@ -321,7 +321,7 @@ emergency_recovery() {
     cd "$INSTALL_PATH" || return 1
 
     # Stop all services
-    docker-compose down --remove-orphans 2>/dev/null || true
+    docker compose down --remove-orphans 2>/dev/null || true
 
     # Clean up resources
     cleanup_resources
@@ -330,7 +330,7 @@ emergency_recovery() {
     sleep 10
 
     # Start services
-    if docker-compose up -d; then
+    if docker compose up -d; then
         log_info "Emergency recovery completed successfully"
         return 0
     else
@@ -500,7 +500,7 @@ case "${1:-}" in
         cd "$INSTALL_PATH"
         echo "MediaButler Status Report"
         echo "========================="
-        docker-compose ps
+        docker compose ps
         echo
         echo "Resource Usage:"
         docker stats --no-stream --format "table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}"
