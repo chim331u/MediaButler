@@ -13,10 +13,11 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.api
-      platform: ${DOCKER_PLATFORM:-linux/amd64}
       args:
         - BUILDKIT_INLINE_CACHE=1
+        - TARGETARCH=${DOCKER_ARCH:-amd64}
     image: mediabutler/api:latest
+    platform: ${DOCKER_PLATFORM:-linux/amd64}
     container_name: mediabutler-api
     restart: unless-stopped
     ports:
@@ -103,10 +104,11 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.web
-      platform: ${DOCKER_PLATFORM:-linux/amd64}
       args:
         - BUILDKIT_INLINE_CACHE=1
+        - TARGETARCH=${DOCKER_ARCH:-amd64}
     image: mediabutler/web:latest
+    platform: ${DOCKER_PLATFORM:-linux/amd64}
     container_name: mediabutler-web
     restart: unless-stopped
     ports:
