@@ -68,7 +68,7 @@ public class ErrorClassificationService : IErrorClassificationService
             var errorType = DetermineErrorType(errorContext);
             var confidence = CalculateConfidence(errorType, errorContext);
             
-            var classification = await CreateClassificationResult(errorType, errorContext, confidence);
+            var classification = CreateClassificationResult(errorType, errorContext, confidence);
             
             _logger.LogInformation("Error classified as {ErrorType} with confidence {Confidence:P2}", 
                 errorType, confidence);
@@ -164,7 +164,7 @@ public class ErrorClassificationService : IErrorClassificationService
                     log.Category.StartsWith("ERROR_") && 
                     log.CreatedDate >= cutoffDate);
 
-            var statistics = await CalculateStatistics(errorLogs);
+            var statistics = CalculateStatistics(errorLogs);
             
             _logger.LogInformation("Error statistics calculated for period {TimeRange}: {TotalErrors} total errors", 
                 timeRange, statistics.TotalErrors);
@@ -271,9 +271,9 @@ public class ErrorClassificationService : IErrorClassificationService
         return 0.50;
     }
 
-    private async Task<ErrorClassificationResult> CreateClassificationResult(
-        FileOperationErrorType errorType, 
-        ErrorContext errorContext, 
+    private ErrorClassificationResult CreateClassificationResult(
+        FileOperationErrorType errorType,
+        ErrorContext errorContext,
         double confidence)
     {
         var (delayMs, maxRetries) = RetrySettings[errorType];
@@ -354,7 +354,7 @@ public class ErrorClassificationService : IErrorClassificationService
         };
     }
 
-    private async Task<ErrorStatistics> CalculateStatistics(IEnumerable<ProcessingLog> errorLogs)
+    private ErrorStatistics CalculateStatistics(IEnumerable<ProcessingLog> errorLogs)
     {
         var errorsByType = new Dictionary<string, int>();
         var retrySuccessRates = new Dictionary<string, double>();
@@ -368,7 +368,7 @@ public class ErrorClassificationService : IErrorClassificationService
         {
             try
             {
-                var details = JsonSerializer.Deserialize<JsonElement>(log.Details);
+                var details = JsonSerializer.Deserialize<JsonElement>(log.Details ?? "{}");
                 
                 if (details.TryGetProperty("ErrorType", out var errorTypeElement))
                 {

@@ -204,7 +204,7 @@
     <RadzenRow JustifyContent="JustifyContent.SpaceBetween">
 
         <RadzenButton Click="RefreshFileListAsync" Icon="autorenew" ButtonStyle="ButtonStyle.Dark"
-                      Size="ButtonSize.Large"/>
+                      Size="ButtonSize.Large" Disabled="@_busyRefresh"/>
 
         <RadzenSelectBar @bind-Value="@_selectedStatusGroup" TValue="string"
                          Change="@(args => OnChangeStatusFilter(args))"
@@ -304,7 +304,8 @@
                                       Frozen="true"
                                       MinWidth="200px"
                                       Resizable="true"
-                                      FilterValue="@_fileNameFilter">
+                                      FilterValue="@_fileNameFilter"
+                                      FilterValueChanged="@((string? value) => { _fileNameFilter = value; InvokeAsync(RefreshFileListAsync); })">
                     <HeaderTemplate>
                         <div class="d-flex align-items-center">
                             <RadzenIcon Icon="description" class="me-2"/>

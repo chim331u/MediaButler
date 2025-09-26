@@ -375,7 +375,7 @@ public class TrainingController : ControllerBase
             var trainingSamples = validFiles.Select(f => new ML.Models.TrainingSample
             {
                 Filename = f.FileName,
-                Category = f.Category,
+                Category = f.Category ?? "Unknown",
                 Confidence = 1.0, // User-confirmed files have full confidence
                 Source = ML.Models.TrainingSampleSource.UserFeedback,
                 CreatedAt = f.CreatedDate

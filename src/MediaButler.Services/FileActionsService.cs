@@ -160,7 +160,7 @@ public class FileActionsService : IFileActionsService
                     ["createDirectories"] = request.CreateDirectories,
                     ["missingFiles"] = missingHashes.Count,
                     ["validationErrors"] = validationErrors.Count,
-                    ["maxConcurrency"] = request.MaxConcurrency
+                    ["maxConcurrency"] = request.MaxConcurrency ?? 1
                 }
             };
 

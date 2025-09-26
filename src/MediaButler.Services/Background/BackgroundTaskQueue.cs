@@ -255,7 +255,7 @@ public class BackgroundJobInfo
     {
         if (Metadata.TryGetValue(key, out var value) && value is T typedValue)
             return typedValue;
-        return default(T);
+        return default;
     }
 
     public void UpdateFileCount(string key, int value)
