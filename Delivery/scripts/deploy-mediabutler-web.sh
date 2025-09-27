@@ -53,7 +53,7 @@ DOCKER_IMAGE_TAG="${DOCKER_IMAGE_TAG:-latest}"
 CONTAINER_NAME="${CONTAINER_NAME:-mediabutler_web}"
 
 # Docker Build Configuration
-DOCKERFILE_PATH="${DOCKERFILE_PATH:-Delivery/docker/Dockerfile.web}"
+DOCKERFILE_PATH="${DOCKERFILE_PATH:-Delivery/docker/Dockerfile.webassembly}"
 BUILD_CONTEXT="${BUILD_CONTEXT:-.}"
 
 # Container Runtime Configuration
@@ -349,7 +349,9 @@ clone_repository() {
     # Search for Dockerfile in multiple possible locations (order matters - most optimized first)
     POSSIBLE_DOCKERFILES=(
         "$DOCKERFILE_PATH"
+        "Delivery/docker/Dockerfile.webassembly"
         "Delivery/docker/Dockerfile.web"
+        "docker/Dockerfile.webassembly"
         "docker/Dockerfile.web"
         "web.dockerfile"
         "Dockerfile.web"
@@ -451,7 +453,7 @@ EOF
 #############################################################################
 
 build_docker_image() {
-    log "Building Docker image for ARM32 Blazor WebAssembly..."
+    log "Building Docker image for ARM32 Blazor WebAssembly with nginx..."
 
     cd "$LOCAL_REPO_DIR"
 
