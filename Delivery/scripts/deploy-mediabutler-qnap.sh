@@ -75,17 +75,17 @@ check_requirements() {
     local mem_total=$(grep MemTotal /proc/meminfo 2>/dev/null | awk '{print $2}' || echo "0")
 
     if [[ "$mem_total" =~ ^[0-9]+$ ]] && [[ $mem_total -gt 0 ]]; then
-        local mem_gb=$((mem_total / 1024 / 1024))
+        local mem_mb=$((mem_total / 1024))
 
-        if [[ $mem_gb -lt 1 ]]; then
-            warning "Low memory detected: ${mem_gb}GB. MediaButler recommends at least 1GB RAM for optimal performance."
+        if [[ $mem_mb -lt 300 ]]; then
+            warning "Low memory detected: ${mem_mb}MB. MediaButler requires at least 300MB RAM for deployment."
             warning "Deployment will continue with reduced memory limits."
             # Adjust memory limits for low-memory systems
             MEMORY_LIMIT_API="100m"
             MEMORY_LIMIT_WEB="75m"
             MEMORY_LIMIT_PROXY="15m"
         else
-            success "Memory check passed: ${mem_gb}GB available"
+            success "Memory check passed: ${mem_mb}MB available"
         fi
     else
         warning "Unable to determine system memory. Proceeding with conservative memory limits."
@@ -141,31 +141,9 @@ check_requirements() {
     export DOCKER_PLATFORM
     export DOCKER_ARCH
 
-    # Check available disk space (with proper error handling)
-    # First ensure the install path directory exists or can be created
+    # Ensure the install path directory exists or can be created
     if ! mkdir -p "$(dirname "$INSTALL_PATH")" 2>/dev/null; then
         error "Cannot create installation directory: $INSTALL_PATH"
-    fi
-
-    # Check disk space on the parent directory if install path doesn't exist yet
-    local check_path="$INSTALL_PATH"
-    if [[ ! -d "$INSTALL_PATH" ]]; then
-        check_path="$(dirname "$INSTALL_PATH")"
-    fi
-
-    local available_space=$(df "$check_path" 2>/dev/null | tail -1 | awk '{print $4}' || echo "0")
-
-    if [[ "$available_space" =~ ^[0-9]+$ ]] && [[ $available_space -gt 0 ]]; then
-        local space_gb=$((available_space / 1024 / 1024))
-
-        if [[ $space_gb -lt 2 ]]; then
-            warning "Low disk space detected: ${space_gb}GB available. MediaButler recommends at least 2GB."
-            warning "Deployment will continue but may fail if space runs out during build."
-        else
-            success "Disk space check passed: ${space_gb}GB available"
-        fi
-    else
-        warning "Unable to determine available disk space for $check_path. Proceeding with deployment."
     fi
 
     # Check internet connectivity

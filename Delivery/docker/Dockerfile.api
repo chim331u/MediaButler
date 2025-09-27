@@ -1,18 +1,9 @@
-# MediaButler API - Production Dockerfile for QNAP NAS
-# Optimized for ARM32/ARM64 with 1GB RAM constraint
+# MediaButler API - Cross-platform build for ARM32 NAS
+# Uses AMD64 build environment to avoid ARM32 memory constraints
 # Target memory footprint: ~150MB
 
-FROM mcr.microsoft.com/dotnet/sdk:8.0-alpine AS build
+FROM --platform=linux/amd64 mcr.microsoft.com/dotnet/sdk:8.0-alpine AS build
 WORKDIR /source
-
-# Install build dependencies for cross-compilation
-RUN apk add --no-cache \
-    clang \
-    build-base \
-    zlib-dev \
-    openssl-dev \
-    krb5-dev \
-    icu-dev
 
 # Copy project files for dependency restoration (layer caching optimization)
 COPY src/MediaButler.API/*.csproj src/MediaButler.API/
@@ -21,30 +12,19 @@ COPY src/MediaButler.Data/*.csproj src/MediaButler.Data/
 COPY src/MediaButler.ML/*.csproj src/MediaButler.ML/
 COPY src/MediaButler.Services/*.csproj src/MediaButler.Services/
 
-# Determine runtime identifier based on target architecture
-ARG TARGETARCH
-RUN case "${TARGETARCH}" in \
-        "amd64") echo "linux-musl-x64" > /tmp/rid ;; \
-        "arm64") echo "linux-musl-arm64" > /tmp/rid ;; \
-        "arm") echo "linux-musl-arm" > /tmp/rid ;; \
-        *) echo "linux-musl-x64" > /tmp/rid ;; \
-    esac
-
-# Restore dependencies (cached layer if project files unchanged)
-RUN dotnet restore src/MediaButler.API/MediaButler.API.csproj \
-    /p:MaxCpuCount=1
+# Restore dependencies for framework-dependent deployment
+RUN dotnet restore src/MediaButler.API/MediaButler.API.csproj
 
 # Copy entire source code
 COPY . .
 
-# Build and publish with minimal memory usage (framework-dependent)
+# Build and publish with framework-dependent deployment (platform-agnostic)
 RUN dotnet publish src/MediaButler.API/MediaButler.API.csproj \
     --configuration Release \
     --output /app \
     --self-contained false \
     --verbosity normal \
-    /p:InvariantGlobalization=true \
-    /p:MaxCpuCount=1
+    /p:InvariantGlobalization=true
 
 # =============================================================================
 # RUNTIME STAGE - .NET Runtime for ARM32
