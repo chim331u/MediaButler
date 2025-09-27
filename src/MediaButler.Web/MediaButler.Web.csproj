@@ -12,6 +12,9 @@
     <RunCodeAnalysis>false</RunCodeAnalysis>
     <PublishTrimmed>false</PublishTrimmed>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <!-- Disable WebAssembly runtime pack resolution for ARM32 compatibility -->
+    <WasmRuntimeAssetsLocation></WasmRuntimeAssetsLocation>
+    <SkipWasmBuildApp>true</SkipWasmBuildApp>
   </PropertyGroup>
 
   <ItemGroup>
