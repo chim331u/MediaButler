@@ -1,0 +1,113 @@
+# MediaButler Blazor Server - .NET 9 ARM32 Build
+# Blazor Server avoids WebAssembly runtime pack issues on ARM32
+# Target memory footprint: ~120MB
+
+FROM mcr.microsoft.com/dotnet/sdk:9.0-alpine AS build
+WORKDIR /source
+
+# Set memory-conscious environment variables for build
+ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+    DOTNET_NOLOGO=1 \
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1 \
+    DOTNET_GCServer=0 \
+    DOTNET_gcConcurrent=false \
+    DOTNET_GCHeapHardLimit=150000000
+
+# Copy project files for dependency restoration
+COPY src/MediaButler.Web/MediaButler.Web.csproj src/MediaButler.Web/
+COPY src/MediaButler.Core/MediaButler.Core.csproj src/MediaButler.Core/
+
+# Restore dependencies with minimal memory usage
+RUN dotnet restore src/MediaButler.Web/MediaButler.Web.csproj \
+    --no-cache \
+    --disable-parallel \
+    /p:RestoreNoCache=true \
+    /p:MaxCpuCount=1
+
+# Copy source code
+COPY src/ src/
+
+# Build with ARM32 compatibility settings
+RUN dotnet publish src/MediaButler.Web/MediaButler.Web.csproj \
+    --configuration Release \
+    --output /app \
+    --self-contained false \
+    --no-restore \
+    --verbosity normal \
+    /p:MaxCpuCount=1 \
+    /p:BuildInParallel=false
+
+# =============================================================================
+# RUNTIME STAGE - ASP.NET Core Runtime for Blazor Server
+# =============================================================================
+
+FROM mcr.microsoft.com/dotnet/aspnet:9.0-alpine
+LABEL maintainer="MediaButler Team"
+LABEL description="MediaButler Blazor Server - QNAP NAS Optimized"
+LABEL version="1.0.0"
+
+# Install minimal runtime dependencies
+RUN apk add --no-cache \
+    ca-certificates \
+    tzdata \
+    && addgroup -g 1000 mediabutler \
+    && adduser -D -s /bin/sh -u 1000 -G mediabutler mediabutler \
+    && update-ca-certificates
+
+# Set working directory
+WORKDIR /app
+
+# Copy published application
+COPY --from=build /app ./
+
+# Create required directories with proper permissions
+RUN mkdir -p logs \
+    && chown -R mediabutler:mediabutler logs/ \
+    && chmod -R 755 logs/
+
+# Switch to non-root user
+USER mediabutler
+
+# Expose HTTP port
+EXPOSE 3000
+
+# Environment variables for 1GB RAM optimization
+ENV \
+    # .NET Runtime optimizations
+    DOTNET_EnableDiagnostics=0 \
+    DOTNET_gcServer=0 \
+    DOTNET_gcConcurrent=false \
+    DOTNET_GCHeapHardLimit=90000000 \
+    DOTNET_GCHighMemPercent=75 \
+    DOTNET_GCConserveMemory=9 \
+    DOTNET_ThreadPool_ForceMinWorkerThreads=2 \
+    DOTNET_ThreadPool_ForceMaxWorkerThreads=4 \
+    # ASP.NET Core optimizations
+    ASPNETCORE_ENVIRONMENT=Production \
+    ASPNETCORE_URLS=http://+:3000 \
+    ASPNETCORE_HOSTINGSTARTUPASSEMBLIES= \
+    ASPNETCORE_LOGGING__CONSOLE__DISABLECOLORS=true \
+    # Blazor Server optimizations
+    Blazor__SignalR__MaxReceiveSize=32768 \
+    Blazor__Server__CircuitOptions__MaxRetainedDisconnectedCircuits=5 \
+    Blazor__Server__CircuitOptions__DisconnectedCircuitRetentionPeriod=00:01:00 \
+    # Timezone
+    TZ=UTC
+
+# Health check for container orchestration
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1
+
+# Signal handling for graceful shutdown
+STOPSIGNAL SIGTERM
+
+# Start the application
+ENTRYPOINT ["dotnet", "MediaButler.Web.dll"]
+
+# Add metadata labels
+LABEL org.opencontainers.image.title="MediaButler Blazor Server"
+LABEL org.opencontainers.image.description="Intelligent TV series file organization Web UI (Blazor Server) optimized for QNAP NAS"
+LABEL org.opencontainers.image.version="1.0.0"
+LABEL org.opencontainers.image.vendor="MediaButler"
+LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.source="https://github.com/chim331u/MediaButler"
