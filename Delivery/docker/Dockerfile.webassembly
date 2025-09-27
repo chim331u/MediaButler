@@ -27,14 +27,13 @@ RUN dotnet restore src/MediaButler.Web/MediaButler.Web.csproj \
 # Copy source code
 COPY src/ src/
 
-# Build with simplified WebAssembly settings for ARM32 compatibility
+# Build with ARM32 compatibility settings from project file
 RUN dotnet publish src/MediaButler.Web/MediaButler.Web.csproj \
     --configuration Release \
     --output /app \
     --self-contained false \
     --no-restore \
     --verbosity normal \
-    /p:InvariantGlobalization=true \
     /p:MaxCpuCount=1 \
     /p:BuildInParallel=false
 
