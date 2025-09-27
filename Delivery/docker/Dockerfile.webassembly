@@ -17,33 +17,26 @@ ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 \
 COPY src/MediaButler.Web/MediaButler.Web.csproj src/MediaButler.Web/
 COPY src/MediaButler.Core/MediaButler.Core.csproj src/MediaButler.Core/
 
-# Restore dependencies with minimal memory usage and skip WebAssembly workloads
+# Restore dependencies with minimal memory usage
 RUN dotnet restore src/MediaButler.Web/MediaButler.Web.csproj \
     --no-cache \
     --disable-parallel \
     /p:RestoreNoCache=true \
-    /p:MaxCpuCount=1 \
-    /p:SkipWebAssemblyWorkload=true
+    /p:MaxCpuCount=1
 
 # Copy source code
 COPY src/ src/
 
-# Build with ARM32 WebAssembly compatibility settings
+# Build with simplified WebAssembly settings for ARM32 compatibility
 RUN dotnet publish src/MediaButler.Web/MediaButler.Web.csproj \
     --configuration Release \
     --output /app \
     --self-contained false \
     --no-restore \
-    --verbosity quiet \
+    --verbosity normal \
     /p:InvariantGlobalization=true \
     /p:MaxCpuCount=1 \
-    /p:BuildInParallel=false \
-    /p:UseSharedCompilation=false \
-    /p:RunAOTCompilation=false \
-    /p:WasmEnableWebcil=false \
-    /p:BlazorEnableTimeZoneSupport=false \
-    /p:SkipWebAssemblyWorkload=true \
-    /p:DisableWebAssemblyTrimming=true
+    /p:BuildInParallel=false
 
 # =============================================================================
 # RUNTIME STAGE - Nginx for static file serving
