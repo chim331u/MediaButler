@@ -29,7 +29,7 @@ RUN dotnet restore src/MediaButler.Web/MediaButler.Web.csproj \
 # Copy source code
 COPY src/ src/
 
-# Build with extreme memory conservation
+# Build with extreme memory conservation for Blazor Server ARM32
 RUN dotnet publish src/MediaButler.Web/MediaButler.Web.csproj \
     --configuration Release \
     --output /app \
@@ -39,7 +39,8 @@ RUN dotnet publish src/MediaButler.Web/MediaButler.Web.csproj \
     /p:InvariantGlobalization=true \
     /p:MaxCpuCount=1 \
     /p:BuildInParallel=false \
-    /p:UseSharedCompilation=false
+    /p:UseSharedCompilation=false \
+    /p:RunCodeAnalysis=false
 
 # =============================================================================
 # RUNTIME STAGE - .NET Runtime for ARM32
