@@ -1,9 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
-# MediaButler QNAP NAS Deployment Script
+# MediaButler QNAP NAS Deployment Script - Orchestrator
 # Optimized for 1GB RAM ARM32/ARM64 NAS systems
-# Version: 1.0.1
+# Version: 2.0.0 - Separated API and WEB deployment
 # Author: MediaButler Team
 
 # =============================================================================
@@ -11,15 +11,16 @@ set -euo pipefail
 # =============================================================================
 
 # Default Configuration (can be overridden via environment variables)
-GITHUB_REPO_URL="${GITHUB_REPO_URL:-https://github.com/chim331u/MediaButler}"
+GITHUB_REPO_URL="${GITHUB_REPO_URL:-https://github.com/chim331u/MediaButler.git}"
 GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
 API_PORT="${API_PORT:-30129}"
 WEB_PORT="${WEB_PORT:-30139}"
-PROXY_PORT="${PROXY_PORT:-8080}"
 INSTALL_PATH="${INSTALL_PATH:-/share/Container/mediabutler}"
-MEMORY_LIMIT_API="${MEMORY_LIMIT_API:-150m}"
-MEMORY_LIMIT_WEB="${MEMORY_LIMIT_WEB:-100m}"
-MEMORY_LIMIT_PROXY="${MEMORY_LIMIT_PROXY:-20m}"
+
+# Deployment Options
+DEPLOY_API="${DEPLOY_API:-true}"
+DEPLOY_WEB="${DEPLOY_WEB:-true}"
+SKIP_HEALTH_CHECK="${SKIP_HEALTH_CHECK:-false}"
 
 # Advanced Configuration
 DOCKER_REGISTRY="${DOCKER_REGISTRY:-}"
@@ -28,6 +29,11 @@ SSL_CERT_PATH="${SSL_CERT_PATH:-}"
 SSL_KEY_PATH="${SSL_KEY_PATH:-}"
 BACKUP_ENABLED="${BACKUP_ENABLED:-true}"
 MONITORING_ENABLED="${MONITORING_ENABLED:-true}"
+
+# Script Paths
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+API_DEPLOY_SCRIPT="${SCRIPT_DIR}/deploy-mediabutler-api.sh"
+WEB_DEPLOY_SCRIPT="${SCRIPT_DIR}/deploy-mediabutler-web.sh"
 
 # =============================================================================
 # LOGGING AND OUTPUT
@@ -101,17 +107,24 @@ check_requirements() {
     DOCKER_VERSION=$(docker --version | cut -d' ' -f3 | cut -d',' -f1)
     success "Docker found: $DOCKER_VERSION"
 
-    # Check Docker Compose (modern Docker includes compose as a plugin)
-    if docker compose version >/dev/null 2>&1; then
-        COMPOSE_CMD="docker compose"
-        COMPOSE_VERSION=$(docker compose version --short 2>/dev/null || docker compose version | grep -o 'v[0-9]\+\.[0-9]\+\.[0-9]\+' | head -1)
-        success "Docker Compose (plugin) found: $COMPOSE_VERSION"
-    elif command -v docker-compose >/dev/null 2>&1; then
-        COMPOSE_CMD="docker-compose"
-        COMPOSE_VERSION=$(docker-compose --version | cut -d' ' -f3 | cut -d',' -f1)
-        success "Docker Compose (standalone) found: $COMPOSE_VERSION"
-    else
-        error "Docker Compose not found. Please install Container Station first."
+    # Check if individual deployment scripts exist
+    if [[ "$DEPLOY_API" == "true" && ! -f "$API_DEPLOY_SCRIPT" ]]; then
+        error "API deployment script not found: $API_DEPLOY_SCRIPT"
+    fi
+
+    if [[ "$DEPLOY_WEB" == "true" && ! -f "$WEB_DEPLOY_SCRIPT" ]]; then
+        error "WEB deployment script not found: $WEB_DEPLOY_SCRIPT"
+    fi
+
+    # Make scripts executable
+    if [[ "$DEPLOY_API" == "true" ]]; then
+        chmod +x "$API_DEPLOY_SCRIPT" || warning "Failed to make API script executable"
+        success "API deployment script found: $API_DEPLOY_SCRIPT"
+    fi
+
+    if [[ "$DEPLOY_WEB" == "true" ]]; then
+        chmod +x "$WEB_DEPLOY_SCRIPT" || warning "Failed to make WEB script executable"
+        success "WEB deployment script found: $WEB_DEPLOY_SCRIPT"
     fi
 
     # Check architecture
@@ -140,6 +153,333 @@ check_requirements() {
     esac
     export DOCKER_PLATFORM
     export DOCKER_ARCH
+
+    info "System requirements check completed successfully"
+}
+
+#############################################################################
+# DEPLOYMENT FUNCTIONS
+#############################################################################
+
+deploy_api() {
+    step "Deploying MediaButler API"
+
+    if [[ "$DEPLOY_API" != "true" ]]; then
+        info "API deployment skipped (DEPLOY_API=false)"
+        return 0
+    fi
+
+    log "Starting API deployment using separate script..."
+
+    # Set environment variables for API deployment
+    export GITHUB_REPO="$GITHUB_REPO_URL"
+    export GIT_BRANCH="$GITHUB_BRANCH"
+    export HOST_PORT="$API_PORT"
+    export CONTAINER_NAME="mediabutler_api"
+
+    # Run API deployment script
+    if ! "$API_DEPLOY_SCRIPT"; then
+        error "API deployment failed"
+        return 1
+    fi
+
+    success "API deployment completed successfully"
+}
+
+deploy_web() {
+    step "Deploying MediaButler WEB"
+
+    if [[ "$DEPLOY_WEB" != "true" ]]; then
+        info "WEB deployment skipped (DEPLOY_WEB=false)"
+        return 0
+    fi
+
+    log "Starting WEB deployment using separate script..."
+
+    # Set environment variables for WEB deployment
+    export GITHUB_REPO="$GITHUB_REPO_URL"
+    export GIT_BRANCH="$GITHUB_BRANCH"
+    export HOST_PORT="$WEB_PORT"
+    export CONTAINER_NAME="mediabutler_web"
+    export API_BASE_URL="http://localhost:${API_PORT}/"
+
+    # Run WEB deployment script
+    if ! "$WEB_DEPLOY_SCRIPT"; then
+        error "WEB deployment failed"
+        return 1
+    fi
+
+    success "WEB deployment completed successfully"
+}
+
+verify_deployment() {
+    step "Verifying deployment"
+
+    local api_healthy=false
+    local web_healthy=false
+
+    if [[ "$SKIP_HEALTH_CHECK" == "true" ]]; then
+        warning "Health check skipped (SKIP_HEALTH_CHECK=true)"
+        return 0
+    fi
+
+    # Check API health
+    if [[ "$DEPLOY_API" == "true" ]]; then
+        log "Checking API health..."
+        local api_url="http://localhost:${API_PORT}/health"
+
+        if command -v curl >/dev/null 2>&1; then
+            for i in {1..5}; do
+                if curl -f -s "$api_url" >/dev/null 2>&1; then
+                    success "API is responding at $api_url"
+                    api_healthy=true
+                    break
+                else
+                    warning "API health check attempt $i/5 failed, retrying in 10s..."
+                    sleep 10
+                fi
+            done
+
+            if [[ "$api_healthy" != "true" ]]; then
+                warning "API health check failed after 5 attempts"
+                log "Check API logs: docker logs mediabutler_api"
+            fi
+        else
+            warning "curl not available for API health check"
+        fi
+    fi
+
+    # Check WEB health
+    if [[ "$DEPLOY_WEB" == "true" ]]; then
+        log "Checking WEB health..."
+        local web_url="http://localhost:${WEB_PORT}/"
+
+        if command -v curl >/dev/null 2>&1; then
+            for i in {1..3}; do
+                if curl -f -s "$web_url" >/dev/null 2>&1; then
+                    success "WEB is responding at $web_url"
+                    web_healthy=true
+                    break
+                else
+                    warning "WEB health check attempt $i/3 failed, retrying in 5s..."
+                    sleep 5
+                fi
+            done
+
+            if [[ "$web_healthy" != "true" ]]; then
+                warning "WEB health check failed after 3 attempts"
+                log "Check WEB logs: docker logs mediabutler_web"
+            fi
+        else
+            warning "curl not available for WEB health check"
+        fi
+    fi
+
+    # Overall health status
+    if [[ "$DEPLOY_API" == "true" && "$api_healthy" != "true" ]]; then
+        warning "API deployment may have issues"
+    fi
+
+    if [[ "$DEPLOY_WEB" == "true" && "$web_healthy" != "true" ]]; then
+        warning "WEB deployment may have issues"
+    fi
+
+    success "Deployment verification completed"
+}
+
+#############################################################################
+# MAIN DEPLOYMENT PROCESS
+#############################################################################
+
+print_banner() {
+    echo
+    echo "============================================================================="
+    echo "  MediaButler QNAP NAS Deployment - Orchestrator Script"
+    echo "============================================================================="
+    echo "Repository: $GITHUB_REPO_URL"
+    echo "Branch: $GITHUB_BRANCH"
+    echo "API Port: $API_PORT"
+    echo "WEB Port: $WEB_PORT"
+    echo ""
+    echo "Deployment Options:"
+    echo "  Deploy API: $DEPLOY_API"
+    echo "  Deploy WEB: $DEPLOY_WEB"
+    echo "  Skip Health Check: $SKIP_HEALTH_CHECK"
+    echo ""
+    echo "Architecture: $(uname -m)"
+    echo "============================================================================="
+}
+
+print_summary() {
+    echo ""
+    echo "============================================================================="
+    echo "  MEDIABUTLER DEPLOYMENT COMPLETED"
+    echo "============================================================================="
+
+    if [[ "$DEPLOY_API" == "true" ]]; then
+        echo "API URL: http://localhost:${API_PORT}"
+        echo "API Health: http://localhost:${API_PORT}/health"
+        echo "API Swagger: http://localhost:${API_PORT}/swagger"
+    fi
+
+    if [[ "$DEPLOY_WEB" == "true" ]]; then
+        echo "WEB URL: http://localhost:${WEB_PORT}"
+    fi
+
+    echo ""
+    echo "Useful commands:"
+    if [[ "$DEPLOY_API" == "true" ]]; then
+        echo "  docker logs mediabutler_api              # View API logs"
+        echo "  docker restart mediabutler_api           # Restart API"
+        echo "  docker stats mediabutler_api             # View API resource usage"
+    fi
+
+    if [[ "$DEPLOY_WEB" == "true" ]]; then
+        echo "  docker logs mediabutler_web              # View WEB logs"
+        echo "  docker restart mediabutler_web           # Restart WEB"
+        echo "  docker stats mediabutler_web             # View WEB resource usage"
+    fi
+
+    echo ""
+    echo "Next steps:"
+    echo "  1. Configure your watch folders and library paths"
+    echo "  2. Access the web interface to start organizing your media"
+    echo "  3. Monitor logs for any issues"
+    echo "============================================================================="
+}
+
+show_help() {
+    cat << EOF
+MediaButler QNAP NAS Deployment Script - Orchestrator
+============================================================================
+
+DESCRIPTION:
+    This orchestrator script deploys MediaButler components (API and/or WEB)
+    on QNAP ARM32/ARM64 NAS systems using separate optimized deployment scripts.
+
+USAGE:
+    $0 [OPTIONS]
+
+OPTIONS:
+    -h, --help              Show this help message
+    --api-only              Deploy only the API component
+    --web-only              Deploy only the WEB component
+    --skip-health-check     Skip health check verification
+    -r, --repo URL          Git repository URL
+    -b, --branch NAME       Git branch name (default: main)
+    --api-port PORT         API port (default: 30129)
+    --web-port PORT         WEB port (default: 30139)
+
+ENVIRONMENT VARIABLES:
+    DEPLOY_API              Deploy API component (default: true)
+    DEPLOY_WEB              Deploy WEB component (default: true)
+    SKIP_HEALTH_CHECK       Skip health verification (default: false)
+    GITHUB_REPO_URL         Repository URL
+    GITHUB_BRANCH           Branch to deploy
+    API_PORT                API port number
+    WEB_PORT                WEB port number
+
+EXAMPLES:
+    # Deploy both API and WEB (default)
+    $0
+
+    # Deploy only API
+    $0 --api-only
+
+    # Deploy only WEB (requires API to be already running)
+    $0 --web-only
+
+    # Deploy with custom ports
+    $0 --api-port 8080 --web-port 8081
+
+    # Deploy from different branch
+    $0 -b develop
+
+REQUIREMENTS:
+    - QNAP NAS with Container Station enabled
+    - deploy-mediabutler-api.sh script (for API deployment)
+    - deploy-mediabutler-web.sh script (for WEB deployment)
+    - Docker available via Container Station
+
+ARCHITECTURE:
+    This script acts as an orchestrator that calls specialized deployment
+    scripts for each component, following "Simple Made Easy" principles
+    by composing independent deployment tasks.
+
+EOF
+}
+
+parse_arguments() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -h|--help)
+                show_help
+                exit 0
+                ;;
+            --api-only)
+                DEPLOY_API="true"
+                DEPLOY_WEB="false"
+                shift
+                ;;
+            --web-only)
+                DEPLOY_API="false"
+                DEPLOY_WEB="true"
+                shift
+                ;;
+            --skip-health-check)
+                SKIP_HEALTH_CHECK="true"
+                shift
+                ;;
+            -r|--repo)
+                GITHUB_REPO_URL="$2"
+                shift 2
+                ;;
+            -b|--branch)
+                GITHUB_BRANCH="$2"
+                shift 2
+                ;;
+            --api-port)
+                API_PORT="$2"
+                shift 2
+                ;;
+            --web-port)
+                WEB_PORT="$2"
+                shift 2
+                ;;
+            *)
+                error "Unknown option: $1"
+                show_help
+                exit 1
+                ;;
+        esac
+    done
+}
+
+main() {
+    parse_arguments "$@"
+    print_banner
+
+    # Pre-deployment checks
+    check_requirements
+
+    # Deployment process
+    if [[ "$DEPLOY_API" == "true" ]]; then
+        deploy_api
+    fi
+
+    if [[ "$DEPLOY_WEB" == "true" ]]; then
+        deploy_web
+    fi
+
+    # Verification
+    verify_deployment
+
+    print_summary
+    success "MediaButler deployment orchestration completed!"
+}
+
+# Execute main function with all arguments
+main "$@"
 
     # Ensure the install path directory exists or can be created
     if ! mkdir -p "$(dirname "$INSTALL_PATH")" 2>/dev/null; then

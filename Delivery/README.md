@@ -1,36 +1,34 @@
 # MediaButler QNAP Deployment Package
 
-🚀 **Complete deployment solution for MediaButler on QNAP NAS systems**
+🚀 **Separated deployment solution for MediaButler on QNAP NAS systems**
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)]()
-[![Platform](https://img.shields.io/badge/platform-QNAP%20NAS-green.svg)]()
+[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)]()
+[![Platform](https://img.shields.io/badge/platform-QNAP%20ARM32%20|%20ARM64-green.svg)]()
 [![Memory](https://img.shields.io/badge/memory-<300MB-orange.svg)]()
 [![Docker](https://img.shields.io/badge/docker-required-blue.svg)]()
 
 ## 🎯 Overview
 
-This package provides a complete, production-ready deployment solution for MediaButler on QNAP NAS systems. It's specifically optimized for resource-constrained environments with 1GB RAM and includes automated deployment, monitoring, backup, and maintenance scripts.
+This package provides optimized, component-based deployment scripts for MediaButler on QNAP NAS systems. Following "Simple Made Easy" principles, each component can be deployed independently for better reliability and debugging.
 
 ### **What's Included**
 
-- ✅ **Automated Deployment Script** - One-command installation
-- ✅ **Optimized Docker Containers** - ARM32/ARM64/x64 compatible
-- ✅ **Health Monitoring** - Automated monitoring and recovery
-- ✅ **Backup & Restore** - Complete data protection
-- ✅ **Rolling Updates** - Zero-downtime updates with rollback
-- ✅ **Comprehensive Documentation** - User guides and troubleshooting
+- ✅ **Separated Deployment Scripts** - API and WEB deployed independently
+- ✅ **Multiple Dockerfile Variants** - Optimized, simple, and minimal builds
+- ✅ **Robust Error Handling** - Fallback mechanisms and comprehensive validation
+- ✅ **ARM32 Optimizations** - Specifically tuned for 1GB RAM systems
+- ✅ **Flexible Orchestration** - Deploy components together or separately
 
-### **Architecture**
+### **New Architecture (v2.0.0)**
 
 ```
-┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
-│   Nginx Proxy   │  │  MediaButler    │  │  MediaButler    │
-│   (~20MB RAM)   │  │     API         │  │     Web UI      │
-│   Port: 80/443  │  │   (~150MB RAM)  │  │   (~100MB RAM)  │
-└─────────────────┘  └─────────────────┘  └─────────────────┘
-         │                     │                     │
-         └─────────────────────┼─────────────────────┘
-                               │
+Individual Components (Independent Deployment)
+┌─────────────────┐  ┌─────────────────┐
+│  MediaButler    │  │  MediaButler    │
+│      API        │  │   Web UI        │
+│  (~150MB RAM)   │  │  (~100MB RAM)   │
+│  Port: 30129    │  │  Port: 30139    │
+└─────────────────┘  └─────────────────┘
                     ┌─────────────────┐
                     │  Shared Storage │
                     │   - Database    │
@@ -44,20 +42,21 @@ This package provides a complete, production-ready deployment solution for Media
 ```
 MediaButler/Delivery/
 ├── scripts/
-│   ├── deploy-mediabutler-qnap.sh    # Main deployment script
+│   ├── deploy-mediabutler-qnap.sh    # Orchestrator script
+│   ├── deploy-mediabutler-api.sh     # API-only deployment
+│   ├── deploy-mediabutler-web.sh     # WEB-only deployment
 │   ├── monitor-mediabutler.sh        # Health monitoring
 │   ├── backup-mediabutler.sh         # Backup & restore
 │   └── update-mediabutler.sh         # Update management
 ├── docker/
-│   ├── Dockerfile.api               # Optimized API container
-│   └── Dockerfile.web               # Optimized Web container
-├── config/
-│   ├── docker-compose.template.yml  # Container orchestration
-│   └── nginx.template.conf          # Reverse proxy config
-└── docs/
-    ├── DEPLOYMENT_GUIDE.md         # Complete deployment guide
-    ├── USER_GUIDE.md               # User manual
-    └── TROUBLESHOOTING.md          # Problem resolution
+│   ├── Dockerfile.api                # Standard API container
+│   ├── Dockerfile.web                # Standard Web container
+│   ├── api-minimal.dockerfile        # Fast build variant
+│   ├── api-simple.dockerfile         # Balanced variant
+│   └── api-optimized.dockerfile      # Production variant
+└── config/
+    ├── docker-compose.template.yml   # Legacy compatibility
+    └── nginx.template.conf           # Nginx configuration
 ```
 
 ## 🚀 Quick Start
@@ -97,20 +96,24 @@ export WATCH_FOLDER_PATH="/share/Downloads/Complete"
 ### **3. Deploy MediaButler**
 
 ```bash
-# Make deployment script executable
-chmod +x scripts/deploy-mediabutler-qnap.sh
+# Make deployment scripts executable
+chmod +x scripts/*.sh
 
-# Run deployment
+# Deploy both API and WEB (default)
 ./scripts/deploy-mediabutler-qnap.sh
+
+# Or deploy components separately:
+# ./scripts/deploy-mediabutler-api.sh    # API only
+# ./scripts/deploy-mediabutler-web.sh    # WEB only
 ```
 
 ### **4. Access Your Installation**
 
 After deployment completes (5-15 minutes):
 
-- **Web Interface**: `http://your-qnap-ip:80`
-- **API Documentation**: `http://your-qnap-ip:80/swagger`
-- **Health Status**: `http://your-qnap-ip:80/health`
+- **Web Interface**: `http://your-qnap-ip:30139`
+- **API Documentation**: `http://your-qnap-ip:30129/swagger`
+- **API Health Status**: `http://your-qnap-ip:30129/health`
 
 ## 📊 System Requirements
 
@@ -144,13 +147,15 @@ After deployment completes (5-15 minutes):
 
 ```bash
 # Repository and source
-export GITHUB_REPO_URL="https://github.com/your-username/mediabutler"
+export GITHUB_REPO_URL="https://github.com/chim331u/MediaButler.git"
 export GITHUB_BRANCH="main"
 
 # Network configuration
-export PROXY_PORT="80"              # Main web interface port
-export API_PORT="5000"              # Internal API port
-export WEB_PORT="3000"              # Internal web port
+export API_PORT="30129"             # API service port
+export WEB_PORT="30139"             # Web interface port
+# Deployment options
+export DEPLOY_API="true"            # Deploy API component
+export DEPLOY_WEB="true"            # Deploy WEB component
 
 # Installation paths
 export INSTALL_PATH="/share/Container/mediabutler"
