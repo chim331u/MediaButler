@@ -1,8 +1,8 @@
-# MediaButler Blazor WebAssembly - ARM32 Compatible Build
-# Special build process to avoid WebAssembly runtime pack issues on ARM32
+# MediaButler Blazor WebAssembly - .NET 9 ARM32 Build
+# .NET 9 resolves WebAssembly runtime pack issues on ARM32
 # Target memory footprint: ~100MB
 
-FROM mcr.microsoft.com/dotnet/sdk:8.0-alpine AS build
+FROM mcr.microsoft.com/dotnet/sdk:9.0-alpine AS build
 WORKDIR /source
 
 # Set memory-conscious environment variables for build
