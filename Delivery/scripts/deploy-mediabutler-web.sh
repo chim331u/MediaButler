@@ -6,7 +6,7 @@
 #
 # This script performs:
 # 1. Git clone from specified repository and branch
-# 2. Docker build optimized for ARM32 (.NET 9 Blazor Server)
+# 2. Docker build optimized for ARM32 (.NET 9 Blazor WebAssembly + Nginx)
 # 3. Docker run with configurable parameters and nginx static file serving
 #############################################################################
 
@@ -39,7 +39,7 @@ warning() {
 #############################################################################
 # CONFIGURATION PARAMETERS
 # These can be modified or set via environment variables
-# Based on MediaButler architecture - adapted for .NET 9 Blazor Server
+# Based on MediaButler architecture - adapted for .NET 9 Blazor WebAssembly
 #############################################################################
 
 # Git Repository Configuration
@@ -53,12 +53,12 @@ DOCKER_IMAGE_TAG="${DOCKER_IMAGE_TAG:-latest}"
 CONTAINER_NAME="${CONTAINER_NAME:-mediabutler_web}"
 
 # Docker Build Configuration
-DOCKERFILE_PATH="${DOCKERFILE_PATH:-Delivery/docker/Dockerfile.blazorserver}"
+DOCKERFILE_PATH="${DOCKERFILE_PATH:-Delivery/docker/Dockerfile.webassembly}"
 BUILD_CONTEXT="${BUILD_CONTEXT:-.}"
 
 # Container Runtime Configuration
 HOST_PORT="${HOST_PORT:-30139}"
-CONTAINER_PORT="${CONTAINER_PORT:-3000}"
+CONTAINER_PORT="${CONTAINER_PORT:-80}"
 HOST_HTTPS_PORT="${HOST_HTTPS_PORT:-30443}"
 CONTAINER_HTTPS_PORT="${CONTAINER_HTTPS_PORT:-443}"
 
@@ -349,9 +349,7 @@ clone_repository() {
     # Search for Dockerfile in multiple possible locations (order matters - most optimized first)
     POSSIBLE_DOCKERFILES=(
         "$DOCKERFILE_PATH"
-        "Delivery/docker/Dockerfile.blazorserver"
         "Delivery/docker/Dockerfile.webassembly"
-        "docker/Dockerfile.blazorserver"
         "docker/Dockerfile.webassembly"
         "web.dockerfile"
         "Dockerfile.web"
@@ -371,8 +369,8 @@ clone_repository() {
     if [[ -z "$FOUND_DOCKERFILE" ]]; then
         log "Dockerfile not found in expected locations, searching recursively..."
 
-        # Search for blazorserver dockerfile anywhere in the repository
-        RECURSIVE_SEARCH=$(find . -name "Dockerfile.blazorserver" -type f | head -1)
+        # Search for webassembly dockerfile anywhere in the repository
+        RECURSIVE_SEARCH=$(find . -name "Dockerfile.webassembly" -type f | head -1)
         if [[ -n "$RECURSIVE_SEARCH" ]]; then
             FOUND_DOCKERFILE="$RECURSIVE_SEARCH"
             log "Found Dockerfile recursively at: $RECURSIVE_SEARCH"
@@ -453,7 +451,7 @@ EOF
 #############################################################################
 
 build_docker_image() {
-    log "Building Docker image for .NET 9 Blazor Server..."
+    log "Building Docker image for .NET 9 Blazor WebAssembly with nginx..."
 
     cd "$LOCAL_REPO_DIR"
 
