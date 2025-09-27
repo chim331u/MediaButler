@@ -6,7 +6,7 @@
 #
 # This script performs:
 # 1. Git clone from specified repository and branch
-# 2. Docker build optimized for ARM32 (Blazor WebAssembly + Nginx)
+# 2. Docker build optimized for ARM32 (.NET 9 Blazor WebAssembly + Nginx)
 # 3. Docker run with configurable parameters and nginx static file serving
 #############################################################################
 
@@ -39,7 +39,7 @@ warning() {
 #############################################################################
 # CONFIGURATION PARAMETERS
 # These can be modified or set via environment variables
-# Based on MediaButler architecture - adapted for Blazor WebAssembly
+# Based on MediaButler architecture - adapted for .NET 9 Blazor WebAssembly
 #############################################################################
 
 # Git Repository Configuration
@@ -350,9 +350,7 @@ clone_repository() {
     POSSIBLE_DOCKERFILES=(
         "$DOCKERFILE_PATH"
         "Delivery/docker/Dockerfile.webassembly"
-        "Delivery/docker/Dockerfile.web"
         "docker/Dockerfile.webassembly"
-        "docker/Dockerfile.web"
         "web.dockerfile"
         "Dockerfile.web"
         "Dockerfile"
@@ -371,8 +369,8 @@ clone_repository() {
     if [[ -z "$FOUND_DOCKERFILE" ]]; then
         log "Dockerfile not found in expected locations, searching recursively..."
 
-        # Search for web.dockerfile anywhere in the repository
-        RECURSIVE_SEARCH=$(find . -name "Dockerfile.web" -type f | head -1)
+        # Search for webassembly dockerfile anywhere in the repository
+        RECURSIVE_SEARCH=$(find . -name "Dockerfile.webassembly" -type f | head -1)
         if [[ -n "$RECURSIVE_SEARCH" ]]; then
             FOUND_DOCKERFILE="$RECURSIVE_SEARCH"
             log "Found Dockerfile recursively at: $RECURSIVE_SEARCH"
@@ -453,7 +451,7 @@ EOF
 #############################################################################
 
 build_docker_image() {
-    log "Building Docker image for ARM32 Blazor WebAssembly with nginx..."
+    log "Building Docker image for .NET 9 Blazor WebAssembly with nginx..."
 
     cd "$LOCAL_REPO_DIR"
 
