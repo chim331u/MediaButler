@@ -29,19 +29,23 @@ RUN case "${TARGETARCH}" in \
 
 # Restore dependencies (cached layer if project files unchanged)
 RUN dotnet restore src/MediaButler.Web/MediaButler.Web.csproj \
-    --runtime $(cat /tmp/rid)
+    --runtime $(cat /tmp/rid) \
+    /p:MaxCpuCount=1
 
 # Copy entire source code
 COPY . .
 
-# Build and publish with minimal ARM32-safe optimizations
+# Build and publish with ARM32-safe single-threaded optimizations
 RUN dotnet publish src/MediaButler.Web/MediaButler.Web.csproj \
     --configuration Release \
     --output /app \
     --self-contained true \
     --runtime $(cat /tmp/rid) \
     --verbosity normal \
-    /p:InvariantGlobalization=true
+    /p:InvariantGlobalization=true \
+    /p:ConcurrentGarbageCollection=false \
+    /p:ServerGarbageCollection=false \
+    /p:MaxCpuCount=1
 
 # =============================================================================
 # RUNTIME STAGE - Ultra-minimal Alpine Linux
