@@ -1,26 +1,21 @@
 <Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <InvariantGlobalization>true</InvariantGlobalization>
-    <!-- ARM32 WebAssembly optimizations -->
+    <!-- .NET 9 WebAssembly optimizations -->
     <RunAOTCompilation>false</RunAOTCompilation>
-    <WasmEnableWebcil>false</WasmEnableWebcil>
-    <BlazorEnableTimeZoneSupport>false</BlazorEnableTimeZoneSupport>
     <RunCodeAnalysis>false</RunCodeAnalysis>
     <PublishTrimmed>false</PublishTrimmed>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
-    <!-- Disable WebAssembly runtime pack resolution for ARM32 compatibility -->
-    <WasmRuntimeAssetsLocation></WasmRuntimeAssetsLocation>
-    <SkipWasmBuildApp>true</SkipWasmBuildApp>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="8.0.8" />
-    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="8.0.8" PrivateAssets="all" />
-    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.8" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="9.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="9.0.0" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="9.0.0" />
     <PackageReference Include="Radzen.Blazor" Version="7.3.5" />
   </ItemGroup>
