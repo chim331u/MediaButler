@@ -32,40 +32,33 @@ RUN case "${TARGETARCH}" in \
 
 # Restore dependencies (cached layer if project files unchanged)
 RUN dotnet restore src/MediaButler.API/MediaButler.API.csproj \
-    --runtime $(cat /tmp/rid) \
     /p:MaxCpuCount=1
 
 # Copy entire source code
 COPY . .
 
-# Build and publish with ARM32-safe single-threaded optimizations
+# Build and publish with minimal memory usage (framework-dependent)
 RUN dotnet publish src/MediaButler.API/MediaButler.API.csproj \
     --configuration Release \
     --output /app \
-    --self-contained true \
-    --runtime $(cat /tmp/rid) \
+    --self-contained false \
     --verbosity normal \
     /p:InvariantGlobalization=true \
-    /p:ConcurrentGarbageCollection=false \
-    /p:ServerGarbageCollection=false \
     /p:MaxCpuCount=1
 
 # =============================================================================
-# RUNTIME STAGE - Ultra-minimal Alpine Linux
+# RUNTIME STAGE - .NET Runtime for ARM32
 # =============================================================================
 
-FROM alpine:3.18
+FROM mcr.microsoft.com/dotnet/aspnet:8.0-alpine
 LABEL maintainer="MediaButler Team"
 LABEL description="MediaButler API - QNAP NAS Optimized"
 LABEL version="1.0.0"
 
-# Install minimal runtime dependencies
+# Install additional dependencies
 RUN apk add --no-cache \
     ca-certificates \
-    tzdata \
-    && addgroup -g 1000 mediabutler \
-    && adduser -D -s /bin/sh -u 1000 -G mediabutler mediabutler \
-    && update-ca-certificates
+    tzdata
 
 # Set working directory
 WORKDIR /app
@@ -79,42 +72,7 @@ RUN mkdir -p \
     logs \
     models \
     configs \
-    && chown -R mediabutler:mediabutler \
-        data/ \
-        logs/ \
-        models/ \
-        configs/ \
-    && chmod -R 755 \
-        data/ \
-        logs/ \
-        models/ \
-        configs/
-
-# Back to main image - simplified without optional file copying
-FROM alpine:3.18
-LABEL maintainer="MediaButler Team"
-LABEL description="MediaButler API - QNAP NAS Optimized"
-LABEL version="1.0.0"
-
-# Install minimal runtime dependencies
-RUN apk add --no-cache \
-    ca-certificates \
-    tzdata \
-    && addgroup -g 1000 mediabutler \
-    && adduser -D -s /bin/sh -u 1000 -G mediabutler mediabutler \
-    && update-ca-certificates
-
-# Set working directory
-WORKDIR /app
-
-# Copy published application
-COPY --from=build /app ./
-
-# Create required directories with proper permissions
-RUN mkdir -p \
-    data/{library,watch,temp,processing} \
-    logs \
-    && chown -R mediabutler:mediabutler \
+    && chown -R $APP_UID:$APP_UID \
         data/ \
         logs/ \
         models/ \
@@ -126,7 +84,7 @@ RUN mkdir -p \
         configs/
 
 # Switch to non-root user
-USER mediabutler
+USER $APP_UID
 
 # Expose API port
 EXPOSE 8080
@@ -163,7 +121,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
 STOPSIGNAL SIGTERM
 
 # Start the application
-ENTRYPOINT ["./MediaButler.API"]
+ENTRYPOINT ["dotnet", "MediaButler.API.dll"]
 
 # Add metadata labels
 LABEL org.opencontainers.image.title="MediaButler API"

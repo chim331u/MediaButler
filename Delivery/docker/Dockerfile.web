@@ -29,29 +29,25 @@ RUN case "${TARGETARCH}" in \
 
 # Restore dependencies (cached layer if project files unchanged)
 RUN dotnet restore src/MediaButler.Web/MediaButler.Web.csproj \
-    --runtime $(cat /tmp/rid) \
     /p:MaxCpuCount=1
 
 # Copy entire source code
 COPY . .
 
-# Build and publish with ARM32-safe single-threaded optimizations
+# Build and publish with minimal memory usage (framework-dependent)
 RUN dotnet publish src/MediaButler.Web/MediaButler.Web.csproj \
     --configuration Release \
     --output /app \
-    --self-contained true \
-    --runtime $(cat /tmp/rid) \
+    --self-contained false \
     --verbosity normal \
     /p:InvariantGlobalization=true \
-    /p:ConcurrentGarbageCollection=false \
-    /p:ServerGarbageCollection=false \
     /p:MaxCpuCount=1
 
 # =============================================================================
-# RUNTIME STAGE - Ultra-minimal Alpine Linux
+# RUNTIME STAGE - .NET Runtime for ARM32
 # =============================================================================
 
-FROM alpine:3.18
+FROM mcr.microsoft.com/dotnet/aspnet:8.0-alpine
 LABEL maintainer="MediaButler Team"
 LABEL description="MediaButler Web UI - QNAP NAS Optimized"
 LABEL version="1.0.0"
@@ -112,7 +108,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
 STOPSIGNAL SIGTERM
 
 # Start the application
-ENTRYPOINT ["./MediaButler.Web"]
+ENTRYPOINT ["dotnet", "MediaButler.Web.dll"]
 
 # Add metadata labels
 LABEL org.opencontainers.image.title="MediaButler Web UI"
