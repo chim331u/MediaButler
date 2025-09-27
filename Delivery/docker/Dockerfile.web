@@ -13,6 +13,9 @@ ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 \
     DOTNET_gcConcurrent=false \
     DOTNET_GCHeapHardLimit=150000000
 
+# Install WebAssembly workload
+RUN dotnet workload install wasm-tools
+
 # Copy project files for dependency restoration
 COPY src/MediaButler.Web/MediaButler.Web.csproj src/MediaButler.Web/
 COPY src/MediaButler.Core/MediaButler.Core.csproj src/MediaButler.Core/
