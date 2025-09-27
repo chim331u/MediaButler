@@ -1,30 +1,48 @@
-# MediaButler API - Cross-platform build for ARM32 NAS
-# Uses AMD64 build environment to avoid ARM32 memory constraints
+# MediaButler API - Ultra-minimal ARM32 build
+# Extreme memory optimization for 1GB RAM constraint
 # Target memory footprint: ~150MB
 
-FROM --platform=linux/amd64 mcr.microsoft.com/dotnet/sdk:8.0-alpine AS build
+FROM mcr.microsoft.com/dotnet/sdk:8.0-alpine AS build
 WORKDIR /source
 
-# Copy project files for dependency restoration (layer caching optimization)
-COPY src/MediaButler.API/*.csproj src/MediaButler.API/
-COPY src/MediaButler.Core/*.csproj src/MediaButler.Core/
+# Set memory-conscious environment variables for build
+ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+    DOTNET_NOLOGO=1 \
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1 \
+    DOTNET_GCServer=0 \
+    DOTNET_gcConcurrent=false \
+    DOTNET_GCHeapHardLimit=200000000
+
+# Copy only essential project files first
+COPY src/MediaButler.API/MediaButler.API.csproj src/MediaButler.API/
+COPY src/MediaButler.Core/MediaButler.Core.csproj src/MediaButler.Core/
+
+# Restore only core dependencies first (minimal memory usage)
+RUN dotnet restore src/MediaButler.API/MediaButler.API.csproj \
+    --no-cache \
+    --disable-parallel \
+    /p:RestoreNoCache=true \
+    /p:MaxCpuCount=1
+
+# Copy remaining project files
 COPY src/MediaButler.Data/*.csproj src/MediaButler.Data/
 COPY src/MediaButler.ML/*.csproj src/MediaButler.ML/
 COPY src/MediaButler.Services/*.csproj src/MediaButler.Services/
 
-# Restore dependencies for framework-dependent deployment
-RUN dotnet restore src/MediaButler.API/MediaButler.API.csproj
+# Copy source code
+COPY src/ src/
 
-# Copy entire source code
-COPY . .
-
-# Build and publish with framework-dependent deployment (platform-agnostic)
+# Build with extreme memory conservation
 RUN dotnet publish src/MediaButler.API/MediaButler.API.csproj \
     --configuration Release \
     --output /app \
     --self-contained false \
-    --verbosity normal \
-    /p:InvariantGlobalization=true
+    --no-restore \
+    --verbosity quiet \
+    /p:InvariantGlobalization=true \
+    /p:MaxCpuCount=1 \
+    /p:BuildInParallel=false \
+    /p:UseSharedCompilation=false
 
 # =============================================================================
 # RUNTIME STAGE - .NET Runtime for ARM32
