@@ -37,15 +37,13 @@ RUN dotnet restore src/MediaButler.API/MediaButler.API.csproj \
 # Copy entire source code
 COPY . .
 
-# Build and publish with ARM32-compatible optimizations
+# Build and publish with minimal ARM32-safe optimizations
 RUN dotnet publish src/MediaButler.API/MediaButler.API.csproj \
     --configuration Release \
     --output /app \
     --self-contained true \
     --runtime $(cat /tmp/rid) \
     --verbosity normal \
-    /p:PublishSingleFile=true \
-    /p:IncludeNativeLibrariesForSelfExtract=true \
     /p:InvariantGlobalization=true
 
 # =============================================================================
