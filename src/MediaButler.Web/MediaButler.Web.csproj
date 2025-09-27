@@ -7,6 +7,9 @@
     <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
     <RunAOTCompilation>false</RunAOTCompilation>
     <WasmMainJSPath>main.js</WasmMainJSPath>
+    <WasmEnableWebcil>false</WasmEnableWebcil>
+    <BlazorEnableTimeZoneSupport>false</BlazorEnableTimeZoneSupport>
+    <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
 
   <ItemGroup>
@@ -14,6 +17,7 @@
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="8.0.8" PrivateAssets="all" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.8" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.8" />
+    <PackageReference Include="Microsoft.NET.Sdk.WebAssembly.Pack" Version="8.0.8" />
     <PackageReference Include="Radzen.Blazor" Version="7.3.5" />
   </ItemGroup>
 
