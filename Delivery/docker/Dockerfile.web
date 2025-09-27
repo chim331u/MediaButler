@@ -1,55 +1,49 @@
-# MediaButler Web UI - Production Dockerfile for QNAP NAS
-# Optimized for ARM32/ARM64 with 1GB RAM constraint
+# MediaButler Web UI - Ultra-minimal ARM32 build
+# Extreme memory optimization for 1GB RAM constraint
 # Target memory footprint: ~100MB
 
 FROM mcr.microsoft.com/dotnet/sdk:8.0-alpine AS build
 WORKDIR /source
 
-# Install build dependencies
-RUN apk add --no-cache \
-    nodejs \
-    npm \
-    clang \
-    build-base \
-    zlib-dev \
-    openssl-dev \
-    krb5-dev \
-    icu-dev
+# Set memory-conscious environment variables for build
+ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+    DOTNET_NOLOGO=1 \
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1 \
+    DOTNET_GCServer=0 \
+    DOTNET_gcConcurrent=false \
+    DOTNET_GCHeapHardLimit=150000000
 
 # Copy project files for dependency restoration
-COPY src/MediaButler.Web/*.csproj src/MediaButler.Web/
-COPY src/MediaButler.Core/*.csproj src/MediaButler.Core/
+COPY src/MediaButler.Web/MediaButler.Web.csproj src/MediaButler.Web/
+COPY src/MediaButler.Core/MediaButler.Core.csproj src/MediaButler.Core/
 
-# Restore .NET dependencies
+# Restore dependencies with minimal memory usage
 RUN dotnet restore src/MediaButler.Web/MediaButler.Web.csproj \
-    --runtime linux-musl-x64 \
-    --configfile NuGet.Config
+    --no-cache \
+    --disable-parallel \
+    /p:RestoreNoCache=true \
+    /p:MaxCpuCount=1
 
 # Copy source code
-COPY . .
+COPY src/ src/
 
-# Build and publish with optimizations
+# Build with extreme memory conservation
 RUN dotnet publish src/MediaButler.Web/MediaButler.Web.csproj \
     --configuration Release \
     --output /app \
-    --self-contained true \
-    --runtime linux-musl-x64 \
-    --verbosity minimal \
-    /p:PublishSingleFile=true \
-    /p:PublishTrimmed=true \
-    /p:TrimMode=link \
-    /p:EnableCompressionInSingleFile=true \
-    /p:DebuggerSupport=false \
-    /p:EnableUnsafeBinaryFormatterSerialization=false \
-    /p:EnableUnsafeUTF7Encoding=false \
+    --self-contained false \
+    --no-restore \
+    --verbosity quiet \
     /p:InvariantGlobalization=true \
-    /p:BlazorWebAssemblyLoadBootResource=false
+    /p:MaxCpuCount=1 \
+    /p:BuildInParallel=false \
+    /p:UseSharedCompilation=false
 
 # =============================================================================
-# RUNTIME STAGE - Ultra-minimal Alpine Linux
+# RUNTIME STAGE - .NET Runtime for ARM32
 # =============================================================================
 
-FROM alpine:3.18
+FROM mcr.microsoft.com/dotnet/aspnet:8.0-alpine
 LABEL maintainer="MediaButler Team"
 LABEL description="MediaButler Web UI - QNAP NAS Optimized"
 LABEL version="1.0.0"
@@ -58,15 +52,9 @@ LABEL version="1.0.0"
 RUN apk add --no-cache \
     ca-certificates \
     tzdata \
-    libgcc \
-    libstdc++ \
-    libintl \
-    icu-libs \
+    && addgroup -g 1000 mediabutler \
+    && adduser -D -s /bin/sh -u 1000 -G mediabutler mediabutler \
     && update-ca-certificates
-
-# Create non-root user for security
-RUN addgroup -g 1000 mediabutler \
-    && adduser -D -s /bin/sh -u 1000 -G mediabutler mediabutler
 
 # Set working directory
 WORKDIR /app
@@ -74,16 +62,10 @@ WORKDIR /app
 # Copy published application
 COPY --from=build /app ./
 
-# Create required directories
-RUN mkdir -p \
-    logs \
-    wwwroot \
-    && chown -R mediabutler:mediabutler \
-        logs/ \
-        wwwroot/ \
-    && chmod -R 755 \
-        logs/ \
-        wwwroot/
+# Create required directories with proper permissions
+RUN mkdir -p logs \
+    && chown -R mediabutler:mediabutler logs/ \
+    && chmod -R 755 logs/
 
 # Switch to non-root user
 USER mediabutler
@@ -109,14 +91,12 @@ ENV \
     ASPNETCORE_LOGGING__CONSOLE__DISABLECOLORS=true \
     # Blazor optimizations
     Blazor__SignalR__MaxReceiveSize=32768 \
-    Blazor__Server__CircuitOptions__MaxRetainedDisconnectedCircuits=10 \
+    Blazor__Server__CircuitOptions__MaxRetainedDisconnectedCircuits=5 \
     Blazor__Server__CircuitOptions__DisconnectedCircuitRetentionPeriod=00:01:00 \
-    # MediaButler Web specific
-    API_BASE_URL=http://mediabutler-api:5000 \
     # Timezone
     TZ=UTC
 
-# Health check
+# Health check for container orchestration
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1
 
@@ -124,12 +104,12 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
 STOPSIGNAL SIGTERM
 
 # Start the application
-ENTRYPOINT ["./MediaButler.Web"]
+ENTRYPOINT ["dotnet", "MediaButler.Web.dll"]
 
 # Add metadata labels
 LABEL org.opencontainers.image.title="MediaButler Web UI"
-LABEL org.opencontainers.image.description="Modern web interface for MediaButler optimized for QNAP NAS"
+LABEL org.opencontainers.image.description="Intelligent TV series file organization Web UI optimized for QNAP NAS"
 LABEL org.opencontainers.image.version="1.0.0"
 LABEL org.opencontainers.image.vendor="MediaButler"
 LABEL org.opencontainers.image.licenses="MIT"
-LABEL org.opencontainers.image.source="https://github.com/luca/mediabutler"
+LABEL org.opencontainers.image.source="https://github.com/chim331u/MediaButler"

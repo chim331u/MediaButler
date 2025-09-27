@@ -13,11 +13,11 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.api
-      platforms:
-        - ${DOCKER_PLATFORM:-linux/amd64}
       args:
         - BUILDKIT_INLINE_CACHE=1
+        - TARGETARCH=${DOCKER_ARCH:-amd64}
     image: mediabutler/api:latest
+    platform: ${DOCKER_PLATFORM:-linux/amd64}
     container_name: mediabutler-api
     restart: unless-stopped
     ports:
@@ -104,11 +104,11 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.web
-      platforms:
-        - ${DOCKER_PLATFORM:-linux/amd64}
       args:
         - BUILDKIT_INLINE_CACHE=1
+        - TARGETARCH=${DOCKER_ARCH:-amd64}
     image: mediabutler/web:latest
+    platform: ${DOCKER_PLATFORM:-linux/amd64}
     container_name: mediabutler-web
     restart: unless-stopped
     ports:
@@ -122,7 +122,7 @@ services:
       - ASPNETCORE_LOGGING__LOGLEVEL__DEFAULT=Warning
 
       # API Connection
-      - API_BASE_URL=http://mediabutler-api:5000
+      - API_BASE_URL=http://mediabutler-api:8080
 
       # Blazor Configuration
       - Blazor__SignalR__MaxReceiveSize=32768
@@ -174,8 +174,8 @@ services:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - ./logs/nginx:/var/log/nginx
       # SSL certificates (if enabled)
-      - ${SSL_CERT_PATH:-/dev/null}:/etc/nginx/ssl/cert.pem:ro
-      - ${SSL_KEY_PATH:-/dev/null}:/etc/nginx/ssl/key.pem:ro
+      - "${SSL_CERT_PATH:-/dev/null}:/etc/nginx/ssl/cert.pem:ro"
+      - "${SSL_KEY_PATH:-/dev/null}:/etc/nginx/ssl/key.pem:ro"
     environment:
       - NGINX_HOST=${NGINX_HOST:-_}
       - NGINX_PORT=80
@@ -271,7 +271,7 @@ networks:
 # =============================================================================
 
 # Extension for development overrides
-# Use: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+# Use: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 # This allows for development-specific settings without modifying production config
 
 # Extension for SSL/HTTPS configuration

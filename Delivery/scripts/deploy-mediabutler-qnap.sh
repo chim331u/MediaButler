@@ -1,9 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
-# MediaButler QNAP NAS Deployment Script
+# MediaButler QNAP NAS Deployment Script - Orchestrator
 # Optimized for 1GB RAM ARM32/ARM64 NAS systems
-# Version: 1.0.0
+# Version: 2.0.0 - Separated API and WEB deployment
 # Author: MediaButler Team
 
 # =============================================================================
@@ -11,15 +11,16 @@ set -euo pipefail
 # =============================================================================
 
 # Default Configuration (can be overridden via environment variables)
-GITHUB_REPO_URL="${GITHUB_REPO_URL:-https://github.com/chim331u/MediaButler}"
+GITHUB_REPO_URL="${GITHUB_REPO_URL:-https://github.com/chim331u/MediaButler.git}"
 GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
 API_PORT="${API_PORT:-30129}"
 WEB_PORT="${WEB_PORT:-30139}"
-PROXY_PORT="${PROXY_PORT:-8080}"
 INSTALL_PATH="${INSTALL_PATH:-/share/Container/mediabutler}"
-MEMORY_LIMIT_API="${MEMORY_LIMIT_API:-150m}"
-MEMORY_LIMIT_WEB="${MEMORY_LIMIT_WEB:-100m}"
-MEMORY_LIMIT_PROXY="${MEMORY_LIMIT_PROXY:-20m}"
+
+# Deployment Options
+DEPLOY_API="${DEPLOY_API:-true}"
+DEPLOY_WEB="${DEPLOY_WEB:-true}"
+SKIP_HEALTH_CHECK="${SKIP_HEALTH_CHECK:-false}"
 
 # Advanced Configuration
 DOCKER_REGISTRY="${DOCKER_REGISTRY:-}"
@@ -28,6 +29,11 @@ SSL_CERT_PATH="${SSL_CERT_PATH:-}"
 SSL_KEY_PATH="${SSL_KEY_PATH:-}"
 BACKUP_ENABLED="${BACKUP_ENABLED:-true}"
 MONITORING_ENABLED="${MONITORING_ENABLED:-true}"
+
+# Script Paths
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+API_DEPLOY_SCRIPT="${SCRIPT_DIR}/deploy-mediabutler-api.sh"
+WEB_DEPLOY_SCRIPT="${SCRIPT_DIR}/deploy-mediabutler-web.sh"
 
 # =============================================================================
 # LOGGING AND OUTPUT
@@ -48,119 +54,453 @@ success() { echo -e "${GREEN}✅ [SUCCESS]${NC} $1"; }
 warning() { echo -e "${YELLOW}⚠️  [WARNING]${NC} $1"; }
 error() { echo -e "${RED}❌ [ERROR]${NC} $1"; exit 1; }
 info() { echo -e "${CYAN}ℹ️  [INFO]${NC} $1"; }
-step() { echo -e "${PURPLE}🔄 [STEP]${NC} $1"; }
 
-# Create log file
-LOG_FILE="${INSTALL_PATH}/deployment.log"
-exec > >(tee -a "$LOG_FILE") 2>&1
-
-# =============================================================================
-# UTILITY FUNCTIONS
-# =============================================================================
-
-show_banner() {
-    echo -e "${CYAN}"
-    cat << 'EOF'
-╔══════════════════════════════════════════════════════════════════════════════╗
-║                     📺 MediaButler QNAP Deployment                          ║
-║                        Automated Docker Deployment                          ║
-║                          Optimized for 1GB RAM                              ║
-╚══════════════════════════════════════════════════════════════════════════════╝
-EOF
-    echo -e "${NC}"
+# Step counter for progress tracking
+STEP_COUNT=0
+step() {
+    STEP_COUNT=$((STEP_COUNT + 1))
     echo
+    echo -e "${PURPLE}==============================================================================${NC}"
+    echo -e "${PURPLE}STEP $STEP_COUNT: $1${NC}"
+    echo -e "${PURPLE}==============================================================================${NC}"
 }
 
-validate_parameters() {
-    step "Validating deployment parameters..."
-
-    # Required parameters
-    if [[ -z "$GITHUB_REPO_URL" ]]; then
-        error "GITHUB_REPO_URL parameter is required"
-    fi
-
-    # Validate ports
-    if ! [[ "$API_PORT" =~ ^[0-9]+$ ]] || [[ "$API_PORT" -lt 1 ]] || [[ "$API_PORT" -gt 65535 ]]; then
-        error "Invalid API_PORT: $API_PORT (must be 1-65535)"
-    fi
-
-    if ! [[ "$WEB_PORT" =~ ^[0-9]+$ ]] || [[ "$WEB_PORT" -lt 1 ]] || [[ "$WEB_PORT" -gt 65535 ]]; then
-        error "Invalid WEB_PORT: $WEB_PORT (must be 1-65535)"
-    fi
-
-    if ! [[ "$PROXY_PORT" =~ ^[0-9]+$ ]] || [[ "$PROXY_PORT" -lt 1 ]] || [[ "$PROXY_PORT" -gt 65535 ]]; then
-        error "Invalid PROXY_PORT: $PROXY_PORT (must be 1-65535)"
-    fi
-
-    # Validate memory limits
-    if ! [[ "$MEMORY_LIMIT_API" =~ ^[0-9]+[mMgG]$ ]]; then
-        error "Invalid MEMORY_LIMIT_API format: $MEMORY_LIMIT_API (use format like 150m or 1g)"
-    fi
-
-    success "Parameters validated successfully"
-}
+# =============================================================================
+# SYSTEM REQUIREMENTS CHECK
+# =============================================================================
 
 check_requirements() {
-    step "Checking QNAP system requirements..."
+    step "Checking system requirements..."
 
-    # Check if running on QNAP (optional)
-    if [[ -f /etc/init.d/container-station.sh ]]; then
-        success "QNAP Container Station detected"
+    # Check if running as root (optional but recommended)
+    if [[ $EUID -eq 0 ]]; then
+        warning "Running as root. Consider using a regular user with sudo privileges."
+    fi
+
+    # Check available memory (with proper error handling)
+    local mem_total=$(grep MemTotal /proc/meminfo 2>/dev/null | awk '{print $2}' || echo "0")
+
+    if [[ "$mem_total" =~ ^[0-9]+$ ]] && [[ $mem_total -gt 0 ]]; then
+        local mem_mb=$((mem_total / 1024))
+
+        if [[ $mem_mb -lt 300 ]]; then
+            warning "Low memory detected: ${mem_mb}MB. MediaButler requires at least 300MB RAM for deployment."
+            warning "Deployment will continue with reduced memory limits."
+            # Adjust memory limits for low-memory systems
+            MEMORY_LIMIT_API="100m"
+            MEMORY_LIMIT_WEB="75m"
+            MEMORY_LIMIT_PROXY="15m"
+        else
+            success "Memory check passed: ${mem_mb}MB available"
+        fi
     else
-        warning "QNAP Container Station not detected - proceeding anyway"
+        warning "Unable to determine system memory. Proceeding with conservative memory limits."
+        MEMORY_LIMIT_API="100m"
+        MEMORY_LIMIT_WEB="75m"
+        MEMORY_LIMIT_PROXY="15m"
     fi
-
-    # Check available memory
-    AVAILABLE_RAM=$(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo "unknown")
-    if [[ "$AVAILABLE_RAM" != "unknown" ]] && [[ $AVAILABLE_RAM -lt 400 ]]; then
-        error "Insufficient RAM: ${AVAILABLE_RAM}MB available, need at least 400MB"
-    fi
-    success "RAM check passed: ${AVAILABLE_RAM}MB available"
 
     # Check Docker
     if ! command -v docker >/dev/null 2>&1; then
-        error "Docker not found. Please install Container Station first."
+        error "Docker is not installed. Please install Container Station first."
     fi
     DOCKER_VERSION=$(docker --version | cut -d' ' -f3 | cut -d',' -f1)
     success "Docker found: $DOCKER_VERSION"
 
-    # Check Docker Compose (modern Docker includes compose as a plugin)
-    if docker compose version >/dev/null 2>&1; then
-        COMPOSE_CMD="docker compose"
-        COMPOSE_VERSION=$(docker compose version --short 2>/dev/null || docker compose version | grep -o 'v[0-9]\+\.[0-9]\+\.[0-9]\+' | head -1)
-        success "Docker Compose (plugin) found: $COMPOSE_VERSION"
-    elif command -v docker-compose >/dev/null 2>&1; then
-        COMPOSE_CMD="docker-compose"
-        COMPOSE_VERSION=$(docker-compose --version | cut -d' ' -f3 | cut -d',' -f1)
-        success "Docker Compose (standalone) found: $COMPOSE_VERSION"
-    else
-        error "Docker Compose not found. Please install Container Station first."
+    # Check if individual deployment scripts exist
+    if [[ "$DEPLOY_API" == "true" && ! -f "$API_DEPLOY_SCRIPT" ]]; then
+        error "API deployment script not found: $API_DEPLOY_SCRIPT"
+    fi
+
+    if [[ "$DEPLOY_WEB" == "true" && ! -f "$WEB_DEPLOY_SCRIPT" ]]; then
+        error "WEB deployment script not found: $WEB_DEPLOY_SCRIPT"
+    fi
+
+    # Make scripts executable
+    if [[ "$DEPLOY_API" == "true" ]]; then
+        chmod +x "$API_DEPLOY_SCRIPT" || warning "Failed to make API script executable"
+        success "API deployment script found: $API_DEPLOY_SCRIPT"
+    fi
+
+    if [[ "$DEPLOY_WEB" == "true" ]]; then
+        chmod +x "$WEB_DEPLOY_SCRIPT" || warning "Failed to make WEB script executable"
+        success "WEB deployment script found: $WEB_DEPLOY_SCRIPT"
     fi
 
     # Check architecture
     ARCH=$(uname -m)
     case "$ARCH" in
-        armv7l) DOCKER_PLATFORM="linux/arm/v7"; success "Architecture: ARM32 (armv7l)" ;;
-        aarch64) DOCKER_PLATFORM="linux/arm64"; success "Architecture: ARM64 (aarch64)" ;;
-        x86_64) DOCKER_PLATFORM="linux/amd64"; success "Architecture: x86_64" ;;
-        *) warning "Unsupported architecture: $ARCH - proceeding anyway" ;;
+        "x86_64")
+            DOCKER_PLATFORM="linux/amd64"
+            DOCKER_ARCH="amd64"
+            success "Architecture: x86_64 (AMD64)"
+            ;;
+        "aarch64"|"arm64")
+            DOCKER_PLATFORM="linux/arm64"
+            DOCKER_ARCH="arm64"
+            success "Architecture: ARM64"
+            ;;
+        "armv7l"|"armv6l")
+            DOCKER_PLATFORM="linux/arm/v7"
+            DOCKER_ARCH="arm"
+            success "Architecture: ARM32"
+            ;;
+        *)
+            warning "Unknown architecture: $ARCH. Defaulting to linux/amd64"
+            DOCKER_PLATFORM="linux/amd64"
+            DOCKER_ARCH="amd64"
+            ;;
     esac
+    export DOCKER_PLATFORM
+    export DOCKER_ARCH
 
-    # Check disk space
-    AVAILABLE_DISK=$(df -h "$INSTALL_PATH" 2>/dev/null | awk 'NR==2 {print $4}' || echo "unknown")
-    info "Available disk space: $AVAILABLE_DISK"
-
-    # Check network connectivity
-    if ping -c 1 github.com >/dev/null 2>&1; then
-        success "Network connectivity verified"
-    else
-        error "No internet connection - cannot download source code"
-    fi
+    info "System requirements check completed successfully"
 }
 
-cleanup_deployment() {
-    step "Cleaning up previous deployment..."
+#############################################################################
+# DEPLOYMENT FUNCTIONS
+#############################################################################
 
+deploy_api() {
+    step "Deploying MediaButler API"
+
+    if [[ "$DEPLOY_API" != "true" ]]; then
+        info "API deployment skipped (DEPLOY_API=false)"
+        return 0
+    fi
+
+    log "Starting API deployment using separate script..."
+
+    # Set environment variables for API deployment
+    export GITHUB_REPO="$GITHUB_REPO_URL"
+    export GIT_BRANCH="$GITHUB_BRANCH"
+    export HOST_PORT="$API_PORT"
+    export CONTAINER_NAME="mediabutler_api"
+
+    # Run API deployment script
+    if ! "$API_DEPLOY_SCRIPT"; then
+        error "API deployment failed"
+        return 1
+    fi
+
+    success "API deployment completed successfully"
+}
+
+deploy_web() {
+    step "Deploying MediaButler WEB"
+
+    if [[ "$DEPLOY_WEB" != "true" ]]; then
+        info "WEB deployment skipped (DEPLOY_WEB=false)"
+        return 0
+    fi
+
+    log "Starting WEB deployment using separate script..."
+
+    # Set environment variables for WEB deployment
+    export GITHUB_REPO="$GITHUB_REPO_URL"
+    export GIT_BRANCH="$GITHUB_BRANCH"
+    export HOST_PORT="$WEB_PORT"
+    export CONTAINER_NAME="mediabutler_web"
+    export API_BASE_URL="http://localhost:${API_PORT}/"
+
+    # Run WEB deployment script
+    if ! "$WEB_DEPLOY_SCRIPT"; then
+        error "WEB deployment failed"
+        return 1
+    fi
+
+    success "WEB deployment completed successfully"
+}
+
+verify_deployment() {
+    step "Verifying deployment"
+
+    local api_healthy=false
+    local web_healthy=false
+
+    if [[ "$SKIP_HEALTH_CHECK" == "true" ]]; then
+        warning "Health check skipped (SKIP_HEALTH_CHECK=true)"
+        return 0
+    fi
+
+    # Check API health
+    if [[ "$DEPLOY_API" == "true" ]]; then
+        log "Checking API health..."
+        local api_url="http://localhost:${API_PORT}/health"
+
+        if command -v curl >/dev/null 2>&1; then
+            for i in {1..5}; do
+                if curl -f -s "$api_url" >/dev/null 2>&1; then
+                    success "API is responding at $api_url"
+                    api_healthy=true
+                    break
+                else
+                    warning "API health check attempt $i/5 failed, retrying in 10s..."
+                    sleep 10
+                fi
+            done
+
+            if [[ "$api_healthy" != "true" ]]; then
+                warning "API health check failed after 5 attempts"
+                log "Check API logs: docker logs mediabutler_api"
+            fi
+        else
+            warning "curl not available for API health check"
+        fi
+    fi
+
+    # Check WEB health
+    if [[ "$DEPLOY_WEB" == "true" ]]; then
+        log "Checking WEB health..."
+        local web_url="http://localhost:${WEB_PORT}/"
+
+        if command -v curl >/dev/null 2>&1; then
+            for i in {1..3}; do
+                if curl -f -s "$web_url" >/dev/null 2>&1; then
+                    success "WEB is responding at $web_url"
+                    web_healthy=true
+                    break
+                else
+                    warning "WEB health check attempt $i/3 failed, retrying in 5s..."
+                    sleep 5
+                fi
+            done
+
+            if [[ "$web_healthy" != "true" ]]; then
+                warning "WEB health check failed after 3 attempts"
+                log "Check WEB logs: docker logs mediabutler_web"
+            fi
+        else
+            warning "curl not available for WEB health check"
+        fi
+    fi
+
+    # Overall health status
+    if [[ "$DEPLOY_API" == "true" && "$api_healthy" != "true" ]]; then
+        warning "API deployment may have issues"
+    fi
+
+    if [[ "$DEPLOY_WEB" == "true" && "$web_healthy" != "true" ]]; then
+        warning "WEB deployment may have issues"
+    fi
+
+    success "Deployment verification completed"
+}
+
+#############################################################################
+# MAIN DEPLOYMENT PROCESS
+#############################################################################
+
+print_banner() {
+    echo
+    echo "============================================================================="
+    echo "  MediaButler QNAP NAS Deployment - Orchestrator Script"
+    echo "============================================================================="
+    echo "Repository: $GITHUB_REPO_URL"
+    echo "Branch: $GITHUB_BRANCH"
+    echo "API Port: $API_PORT"
+    echo "WEB Port: $WEB_PORT"
+    echo ""
+    echo "Deployment Options:"
+    echo "  Deploy API: $DEPLOY_API"
+    echo "  Deploy WEB: $DEPLOY_WEB"
+    echo "  Skip Health Check: $SKIP_HEALTH_CHECK"
+    echo ""
+    echo "Architecture: $(uname -m)"
+    echo "============================================================================="
+}
+
+print_summary() {
+    echo ""
+    echo "============================================================================="
+    echo "  MEDIABUTLER DEPLOYMENT COMPLETED"
+    echo "============================================================================="
+
+    if [[ "$DEPLOY_API" == "true" ]]; then
+        echo "API URL: http://localhost:${API_PORT}"
+        echo "API Health: http://localhost:${API_PORT}/health"
+        echo "API Swagger: http://localhost:${API_PORT}/swagger"
+    fi
+
+    if [[ "$DEPLOY_WEB" == "true" ]]; then
+        echo "WEB URL: http://localhost:${WEB_PORT}"
+    fi
+
+    echo ""
+    echo "Useful commands:"
+    if [[ "$DEPLOY_API" == "true" ]]; then
+        echo "  docker logs mediabutler_api              # View API logs"
+        echo "  docker restart mediabutler_api           # Restart API"
+        echo "  docker stats mediabutler_api             # View API resource usage"
+    fi
+
+    if [[ "$DEPLOY_WEB" == "true" ]]; then
+        echo "  docker logs mediabutler_web              # View WEB logs"
+        echo "  docker restart mediabutler_web           # Restart WEB"
+        echo "  docker stats mediabutler_web             # View WEB resource usage"
+    fi
+
+    echo ""
+    echo "Next steps:"
+    echo "  1. Configure your watch folders and library paths"
+    echo "  2. Access the web interface to start organizing your media"
+    echo "  3. Monitor logs for any issues"
+    echo "============================================================================="
+}
+
+show_help() {
+    cat << EOF
+MediaButler QNAP NAS Deployment Script - Orchestrator
+============================================================================
+
+DESCRIPTION:
+    This orchestrator script deploys MediaButler components (API and/or WEB)
+    on QNAP ARM32/ARM64 NAS systems using separate optimized deployment scripts.
+
+USAGE:
+    $0 [OPTIONS]
+
+OPTIONS:
+    -h, --help              Show this help message
+    --api-only              Deploy only the API component
+    --web-only              Deploy only the WEB component
+    --skip-health-check     Skip health check verification
+    -r, --repo URL          Git repository URL
+    -b, --branch NAME       Git branch name (default: main)
+    --api-port PORT         API port (default: 30129)
+    --web-port PORT         WEB port (default: 30139)
+
+ENVIRONMENT VARIABLES:
+    DEPLOY_API              Deploy API component (default: true)
+    DEPLOY_WEB              Deploy WEB component (default: true)
+    SKIP_HEALTH_CHECK       Skip health verification (default: false)
+    GITHUB_REPO_URL         Repository URL
+    GITHUB_BRANCH           Branch to deploy
+    API_PORT                API port number
+    WEB_PORT                WEB port number
+
+EXAMPLES:
+    # Deploy both API and WEB (default)
+    $0
+
+    # Deploy only API
+    $0 --api-only
+
+    # Deploy only WEB (requires API to be already running)
+    $0 --web-only
+
+    # Deploy with custom ports
+    $0 --api-port 8080 --web-port 8081
+
+    # Deploy from different branch
+    $0 -b develop
+
+REQUIREMENTS:
+    - QNAP NAS with Container Station enabled
+    - deploy-mediabutler-api.sh script (for API deployment)
+    - deploy-mediabutler-web.sh script (for WEB deployment)
+    - Docker available via Container Station
+
+ARCHITECTURE:
+    This script acts as an orchestrator that calls specialized deployment
+    scripts for each component, following "Simple Made Easy" principles
+    by composing independent deployment tasks.
+
+EOF
+}
+
+parse_arguments() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -h|--help)
+                show_help
+                exit 0
+                ;;
+            --api-only)
+                DEPLOY_API="true"
+                DEPLOY_WEB="false"
+                shift
+                ;;
+            --web-only)
+                DEPLOY_API="false"
+                DEPLOY_WEB="true"
+                shift
+                ;;
+            --skip-health-check)
+                SKIP_HEALTH_CHECK="true"
+                shift
+                ;;
+            -r|--repo)
+                GITHUB_REPO_URL="$2"
+                shift 2
+                ;;
+            -b|--branch)
+                GITHUB_BRANCH="$2"
+                shift 2
+                ;;
+            --api-port)
+                API_PORT="$2"
+                shift 2
+                ;;
+            --web-port)
+                WEB_PORT="$2"
+                shift 2
+                ;;
+            *)
+                error "Unknown option: $1"
+                show_help
+                exit 1
+                ;;
+        esac
+    done
+}
+
+main() {
+    parse_arguments "$@"
+    print_banner
+
+    # Pre-deployment checks
+    check_requirements
+
+    # Deployment process
+    if [[ "$DEPLOY_API" == "true" ]]; then
+        deploy_api
+    fi
+
+    if [[ "$DEPLOY_WEB" == "true" ]]; then
+        deploy_web
+    fi
+
+    # Verification
+    verify_deployment
+
+    print_summary
+    success "MediaButler deployment orchestration completed!"
+}
+
+# Execute main function with all arguments
+main "$@"
+
+    # Ensure the install path directory exists or can be created
+    if ! mkdir -p "$(dirname "$INSTALL_PATH")" 2>/dev/null; then
+        error "Cannot create installation directory: $INSTALL_PATH"
+    fi
+
+    # Check internet connectivity
+    if ! curl -s --max-time 10 https://github.com >/dev/null; then
+        error "No internet connectivity. Cannot download MediaButler source."
+    fi
+    success "Internet connectivity verified"
+}
+
+# =============================================================================
+# CLEANUP PREVIOUS INSTALLATION
+# =============================================================================
+
+cleanup_previous() {
+    step "Cleaning up previous installation..."
+
+    # Change to install directory if it exists
     if [[ -d "$INSTALL_PATH" ]]; then
         cd "$INSTALL_PATH" || true
 
@@ -171,486 +511,211 @@ cleanup_deployment() {
         fi
 
         # Remove old images (keep last version as backup)
-        docker image prune -f 2>/dev/null || true
+        local old_images=$(docker images --filter "reference=mediabutler/*" --format "{{.Repository}}:{{.Tag}}" | grep -v "latest" | head -5)
+        if [[ -n "$old_images" ]]; then
+            echo "$old_images" | xargs docker rmi 2>/dev/null || true
+            success "Cleaned up old Docker images"
+        fi
 
-        # Clean build cache
-        docker builder prune -f 2>/dev/null || true
-
-        success "Cleanup completed"
-    else
-        info "No previous deployment found"
+        # Create backup of current configuration
+        if [[ -f ".env" ]]; then
+            cp .env ".env.backup.$(date +%Y%m%d_%H%M%S)" 2>/dev/null || true
+            success "Backed up existing configuration"
+        fi
     fi
+
+    # Create installation directory
+    mkdir -p "$INSTALL_PATH"/{data,logs,models,configs,temp}
+    chmod 755 "$INSTALL_PATH"
+    success "Prepared installation directory: $INSTALL_PATH"
 }
+
+# =============================================================================
+# DOWNLOAD SOURCE CODE
+# =============================================================================
 
 download_source() {
     step "Downloading MediaButler source code..."
 
-    # Create installation directory
-    mkdir -p "$INSTALL_PATH"
-    cd "$INSTALL_PATH"
+    cd "$INSTALL_PATH" || error "Cannot access install directory"
 
-    # Download source code
-    DOWNLOAD_URL="${GITHUB_REPO_URL}/archive/refs/heads/${GITHUB_BRANCH}.zip"
-    log "Downloading from: $DOWNLOAD_URL"
+    # Download source as ZIP (more reliable than git clone)
+    local download_url="${GITHUB_REPO_URL}/archive/refs/heads/${GITHUB_BRANCH}.zip"
+    local temp_file="/tmp/mediabutler-source.zip"
 
-    if ! wget --progress=bar:force -O mediabutler.zip "$DOWNLOAD_URL" 2>&1; then
+    log "Downloading from: $download_url"
+
+    if ! curl -L -o "$temp_file" "$download_url"; then
         error "Failed to download source code from GitHub"
     fi
 
     # Extract source code
-    if ! unzip -q mediabutler.zip; then
-        error "Failed to extract source code"
+    log "Extracting source code..."
+    if ! unzip -q "$temp_file" -d /tmp/; then
+        error "Failed to extract source archive"
     fi
 
-    # Move contents to current directory
-    EXTRACTED_DIR=$(find . -maxdepth 1 -type d -name "*mediabutler*" -o -name "*MediaButler*" | head -1)
-    if [[ -n "$EXTRACTED_DIR" ]]; then
-        mv "$EXTRACTED_DIR"/* ./ 2>/dev/null || true
-        mv "$EXTRACTED_DIR"/.* ./ 2>/dev/null || true
-        rmdir "$EXTRACTED_DIR" 2>/dev/null || true
+    # Move source files to installation directory
+    local source_dir="/tmp/MediaButler-${GITHUB_BRANCH}"
+    if [[ -d "$source_dir" ]]; then
+        # Copy source files
+        cp -r "$source_dir"/src ./
+
+        # Copy Docker configuration files
+        mkdir -p docker config
+        [[ -d "$source_dir/Delivery/docker" ]] && cp -r "$source_dir"/Delivery/docker/* ./docker/
+        [[ -d "$source_dir/Delivery/config" ]] && cp -r "$source_dir"/Delivery/config/* ./config/
+
+        # Create missing directories and files
+        mkdir -p models configs
+
+        # Create empty model directory structure
+        touch models/.gitkeep
+        touch configs/.gitkeep
+
+        # Copy project files to build context
+        [[ -f "$source_dir/global.json" ]] && cp "$source_dir/global.json" ./
+        [[ -f "$source_dir/NuGet.Config" ]] && cp "$source_dir/NuGet.Config" ./
+        [[ -f "$source_dir/Directory.Build.props" ]] && cp "$source_dir/Directory.Build.props" ./
+
+        success "Source code extracted successfully"
+    else
+        error "Source directory not found after extraction"
     fi
 
     # Cleanup
-    rm -f mediabutler.zip
-
-    success "Source code downloaded to $INSTALL_PATH"
+    rm -f "$temp_file"
+    rm -rf "/tmp/MediaButler-${GITHUB_BRANCH}"
 }
 
-create_docker_files() {
-    step "Creating optimized Docker configuration..."
+# =============================================================================
+# CONFIGURATION SETUP
+# =============================================================================
 
-    mkdir -p docker
-
-    # Create API Dockerfile
-    cat > docker/Dockerfile.api << 'EOF'
-# MediaButler API - Optimized for ARM32/ARM64 QNAP NAS
-FROM mcr.microsoft.com/dotnet/sdk:8.0-alpine AS build
-WORKDIR /source
-
-# Install dependencies for ARM cross-compilation
-RUN apk add --no-cache clang build-base zlib-dev
-
-# Copy project files for dependency restoration
-COPY src/MediaButler.API/*.csproj src/MediaButler.API/
-COPY src/MediaButler.Core/*.csproj src/MediaButler.Core/
-COPY src/MediaButler.Data/*.csproj src/MediaButler.Data/
-COPY src/MediaButler.ML/*.csproj src/MediaButler.ML/
-COPY src/MediaButler.Services/*.csproj src/MediaButler.Services/
-
-# Restore dependencies
-RUN dotnet restore src/MediaButler.API/MediaButler.API.csproj
-
-# Copy source code
-COPY . .
-
-# Build and publish with optimizations
-RUN dotnet publish src/MediaButler.API/MediaButler.API.csproj \
-    -c Release \
-    -o /app \
-    --self-contained true \
-    --runtime linux-musl-x64 \
-    -p:PublishSingleFile=true \
-    -p:IncludeNativeLibrariesForSelfExtract=true \
-    -p:PublishTrimmed=true \
-    -p:TrimMode=link \
-    -p:EnableCompressionInSingleFile=true
-
-# Runtime stage - Ultra-minimal Alpine
-FROM alpine:3.18
-RUN apk add --no-cache \
-    ca-certificates \
-    tzdata \
-    && addgroup -g 1000 mediabutler \
-    && adduser -D -s /bin/sh -u 1000 -G mediabutler mediabutler
-
-WORKDIR /app
-COPY --from=build /app .
-COPY --chown=mediabutler:mediabutler models/ ./models/ 2>/dev/null || true
-
-# Create required directories
-RUN mkdir -p data/{library,watch,temp} logs && \
-    chown -R mediabutler:mediabutler data/ logs/
-
-USER mediabutler
-EXPOSE 5000
-
-# Environment optimization for 1GB RAM constraint
-ENV DOTNET_EnableDiagnostics=0 \
-    DOTNET_gcServer=0 \
-    DOTNET_gcConcurrent=false \
-    DOTNET_GCHeapHardLimit=140000000 \
-    DOTNET_GCHighMemPercent=75 \
-    DOTNET_GCConserveMemory=9 \
-    ASPNETCORE_ENVIRONMENT=Production \
-    ASPNETCORE_URLS=http://+:5000
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
-
-ENTRYPOINT ["./MediaButler.API"]
-EOF
-
-    # Create Web Dockerfile
-    cat > docker/Dockerfile.web << 'EOF'
-# MediaButler Web - Optimized for ARM32/ARM64 QNAP NAS
-FROM mcr.microsoft.com/dotnet/sdk:8.0-alpine AS build
-WORKDIR /source
-
-# Install dependencies
-RUN apk add --no-cache nodejs npm clang build-base
-
-# Copy project files
-COPY src/MediaButler.Web/*.csproj src/MediaButler.Web/
-COPY src/MediaButler.Core/*.csproj src/MediaButler.Core/
-
-# Restore dependencies
-RUN dotnet restore src/MediaButler.Web/MediaButler.Web.csproj
-
-# Copy source code
-COPY . .
-
-# Build and publish
-RUN dotnet publish src/MediaButler.Web/MediaButler.Web.csproj \
-    -c Release \
-    -o /app \
-    --self-contained true \
-    --runtime linux-musl-x64 \
-    -p:PublishSingleFile=true \
-    -p:PublishTrimmed=true \
-    -p:TrimMode=link \
-    -p:EnableCompressionInSingleFile=true
-
-# Runtime stage
-FROM alpine:3.18
-RUN apk add --no-cache \
-    ca-certificates \
-    tzdata \
-    && addgroup -g 1000 mediabutler \
-    && adduser -D -s /bin/sh -u 1000 -G mediabutler mediabutler
-
-WORKDIR /app
-COPY --from=build /app .
-
-# Create required directories
-RUN mkdir -p logs && chown -R mediabutler:mediabutler logs/
-
-USER mediabutler
-EXPOSE 3000
-
-# Environment optimization
-ENV DOTNET_EnableDiagnostics=0 \
-    DOTNET_gcServer=0 \
-    DOTNET_GCHeapHardLimit=90000000 \
-    DOTNET_GCHighMemPercent=75 \
-    DOTNET_GCConserveMemory=9 \
-    ASPNETCORE_ENVIRONMENT=Production \
-    ASPNETCORE_URLS=http://+:3000
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1
-
-ENTRYPOINT ["./MediaButler.Web"]
-EOF
-
-    success "Docker files created"
-}
-
-create_compose_config() {
-    step "Creating Docker Compose configuration..."
-
-    # Create docker-compose.yml
-    cat > docker-compose.yml << EOF
-version: '3.8'
-
-services:
-  mediabutler-api:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.api
-      platforms:
-        - ${DOCKER_PLATFORM:-linux/amd64}
-    container_name: mediabutler-api
-    restart: unless-stopped
-    ports:
-      - "${API_PORT}:5000"
-    volumes:
-      - ./data:/app/data
-      - ./models:/app/models:ro
-      - ./configs:/app/configs:ro
-      - ./logs/api:/app/logs
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Production
-      - ASPNETCORE_URLS=http://+:5000
-      - MediaButler__Paths__MediaLibrary=/app/data/library
-      - MediaButler__Paths__WatchFolder=/app/data/watch
-      - MediaButler__Paths__PendingReview=/app/data/temp
-      - Serilog__WriteTo__1__Args__path=/app/logs/api-.log
-    deploy:
-      resources:
-        limits:
-          memory: ${MEMORY_LIMIT_API}
-          cpus: '0.5'
-        reservations:
-          memory: 100m
-          cpus: '0.2'
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    networks:
-      - mediabutler
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  mediabutler-web:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.web
-      platforms:
-        - ${DOCKER_PLATFORM:-linux/amd64}
-    container_name: mediabutler-web
-    restart: unless-stopped
-    ports:
-      - "${WEB_PORT}:3000"
-    volumes:
-      - ./logs/web:/app/logs
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Production
-      - ASPNETCORE_URLS=http://+:3000
-      - API_BASE_URL=http://mediabutler-api:5000
-    deploy:
-      resources:
-        limits:
-          memory: ${MEMORY_LIMIT_WEB}
-          cpus: '0.3'
-        reservations:
-          memory: 70m
-          cpus: '0.1'
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    depends_on:
-      mediabutler-api:
-        condition: service_healthy
-    networks:
-      - mediabutler
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  nginx-proxy:
-    image: nginx:alpine
-    container_name: mediabutler-proxy
-    restart: unless-stopped
-    ports:
-      - "${PROXY_PORT}:80"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./logs/nginx:/var/log/nginx
-    deploy:
-      resources:
-        limits:
-          memory: ${MEMORY_LIMIT_PROXY}
-          cpus: '0.1'
-        reservations:
-          memory: 10m
-          cpus: '0.05'
-    depends_on:
-      - mediabutler-api
-      - mediabutler-web
-    networks:
-      - mediabutler
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "5m"
-        max-file: "2"
-
-volumes:
-  mediabutler-data:
-    driver: local
-
-networks:
-  mediabutler:
-    driver: bridge
-    driver_opts:
-      com.docker.network.driver.mtu: 1500
-EOF
-
-    # Create Nginx configuration
-    cat > nginx.conf << 'EOF'
-# MediaButler Nginx Configuration - Optimized for QNAP NAS
-worker_processes auto;
-worker_rlimit_nofile 1024;
-
-events {
-    worker_connections 512;
-    use epoll;
-    multi_accept on;
-}
-
-http {
-    include /etc/nginx/mime.types;
-    default_type application/octet-stream;
-
-    # Logging
-    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
-                    '$status $body_bytes_sent "$http_referer" '
-                    '"$http_user_agent" "$http_x_forwarded_for"';
-
-    access_log /var/log/nginx/access.log main;
-    error_log /var/log/nginx/error.log warn;
-
-    # Performance optimization
-    sendfile on;
-    tcp_nopush on;
-    tcp_nodelay on;
-    keepalive_timeout 65;
-    types_hash_max_size 2048;
-    client_max_body_size 100M;
-
-    # Gzip compression
-    gzip on;
-    gzip_vary on;
-    gzip_comp_level 6;
-    gzip_types
-        text/plain
-        text/css
-        text/xml
-        text/javascript
-        application/json
-        application/javascript
-        application/xml+rss
-        application/atom+xml
-        image/svg+xml;
-
-    # Upstream servers
-    upstream api {
-        server mediabutler-api:5000 max_fails=3 fail_timeout=30s;
-        keepalive 8;
-    }
-
-    upstream web {
-        server mediabutler-web:3000 max_fails=3 fail_timeout=30s;
-        keepalive 8;
-    }
-
-    server {
-        listen 80;
-        server_name _;
-
-        # Security headers
-        add_header X-Frame-Options "SAMEORIGIN" always;
-        add_header X-Content-Type-Options "nosniff" always;
-        add_header X-XSS-Protection "1; mode=block" always;
-
-        # API routes
-        location /api/ {
-            proxy_pass http://api;
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection 'upgrade';
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_cache_bypass $http_upgrade;
-            proxy_read_timeout 300s;
-            proxy_connect_timeout 75s;
-        }
-
-        # Health check endpoint
-        location /health {
-            proxy_pass http://api;
-            proxy_http_version 1.1;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-
-        # SignalR hub
-        location /notifications {
-            proxy_pass http://api;
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "upgrade";
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-
-        # Web UI (default)
-        location / {
-            proxy_pass http://web;
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection 'upgrade';
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_cache_bypass $http_upgrade;
-        }
-
-        # Static file caching
-        location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
-            proxy_pass http://web;
-            expires 1y;
-            add_header Cache-Control "public, immutable";
-        }
-    }
-}
-EOF
-
-    success "Docker Compose configuration created"
-}
-
-setup_directories() {
-    step "Setting up directory structure..."
-
-    # Create required directories
-    mkdir -p {data/{library,watch,temp},models,configs,logs/{api,web,nginx},backups}
-
-    # Set proper permissions for QNAP
-    if command -v chown >/dev/null 2>&1; then
-        chown -R admin:administrators data/ models/ configs/ logs/ backups/ 2>/dev/null || true
-    fi
-    chmod -R 755 data/ models/ configs/ logs/ backups/
+setup_configuration() {
+    step "Setting up configuration files..."
 
     # Create .env file
     cat > .env << EOF
-# MediaButler Environment Configuration
-COMPOSE_PROJECT_NAME=mediabutler
-API_PORT=${API_PORT}
-WEB_PORT=${WEB_PORT}
-PROXY_PORT=${PROXY_PORT}
-MEMORY_LIMIT_API=${MEMORY_LIMIT_API}
-MEMORY_LIMIT_WEB=${MEMORY_LIMIT_WEB}
-MEMORY_LIMIT_PROXY=${MEMORY_LIMIT_PROXY}
-DOCKER_PLATFORM=${DOCKER_PLATFORM:-linux/amd64}
+# MediaButler QNAP Deployment Configuration
+# Generated on $(date)
+
+# Network Configuration
+API_PORT=$API_PORT
+WEB_PORT=$WEB_PORT
+PROXY_PORT=$PROXY_PORT
+PROXY_SSL_PORT=443
+
+# Paths
+INSTALL_PATH=$INSTALL_PATH
+
+# Resource Limits (optimized for 1GB RAM)
+MEMORY_LIMIT_API=$MEMORY_LIMIT_API
+MEMORY_LIMIT_WEB=$MEMORY_LIMIT_WEB
+MEMORY_LIMIT_PROXY=$MEMORY_LIMIT_PROXY
+
+# Docker Platform
+DOCKER_PLATFORM=$DOCKER_PLATFORM
+
+# SSL Configuration
+SSL_ENABLED=$SSL_ENABLED
+SSL_CERT_PATH=$SSL_CERT_PATH
+SSL_KEY_PATH=$SSL_KEY_PATH
+
+# Nginx Configuration
+NGINX_HOST=_
+
 EOF
 
-    success "Directory structure created"
+    success "Environment configuration created"
+
+    # Create docker-compose.yml from template
+    if [[ -f "config/docker-compose.template.yml" ]]; then
+        # Check if envsubst is available, otherwise use a simpler sed-based approach
+        if command -v envsubst >/dev/null 2>&1; then
+            envsubst < config/docker-compose.template.yml > docker-compose.yml
+        else
+            # Fallback to manual substitution using a safer approach
+            cp config/docker-compose.template.yml docker-compose.yml
+
+            # Use a more robust substitution method to avoid sed escaping issues
+            cat > substitute_vars.py << 'PYTHON_SCRIPT'
+import sys
+import os
+
+# Read the template file
+with open('docker-compose.yml', 'r') as f:
+    content = f.read()
+
+# Get environment variables
+substitutions = {
+    'API_PORT': os.environ.get('API_PORT', '30129'),
+    'WEB_PORT': os.environ.get('WEB_PORT', '30139'),
+    'PROXY_PORT': os.environ.get('PROXY_PORT', '8080'),
+    'MEMORY_LIMIT_API': os.environ.get('MEMORY_LIMIT_API', '150m'),
+    'MEMORY_LIMIT_WEB': os.environ.get('MEMORY_LIMIT_WEB', '100m'),
+    'MEMORY_LIMIT_PROXY': os.environ.get('MEMORY_LIMIT_PROXY', '20m'),
+    'DOCKER_PLATFORM': os.environ.get('DOCKER_PLATFORM', 'linux/amd64'),
+    'DOCKER_ARCH': os.environ.get('DOCKER_ARCH', 'amd64'),
+    'INSTALL_PATH': os.environ.get('INSTALL_PATH', '/tmp'),
+    'PROXY_SSL_PORT': os.environ.get('PROXY_SSL_PORT', '443'),
+    'SSL_ENABLED': os.environ.get('SSL_ENABLED', 'false'),
+    'SSL_CERT_PATH': os.environ.get('SSL_CERT_PATH', '/dev/null'),
+    'SSL_KEY_PATH': os.environ.get('SSL_KEY_PATH', '/dev/null'),
+    'NGINX_HOST': os.environ.get('NGINX_HOST', '_')
 }
 
-build_and_deploy() {
-    step "Building and deploying MediaButler containers..."
+# Apply substitutions
+for var, value in substitutions.items():
+    content = content.replace(f'${{{var}}}', value)
 
-    # Set build arguments based on architecture
+# Write back
+with open('docker-compose.yml', 'w') as f:
+    f.write(content)
+
+print("Variable substitution completed")
+PYTHON_SCRIPT
+
+            python3 substitute_vars.py 2>/dev/null && rm -f substitute_vars.py || {
+                # Python fallback failed, use simple sed with different delimiter
+                rm -f substitute_vars.py
+                sed -i "s|\${API_PORT}|$API_PORT|g" docker-compose.yml
+                sed -i "s|\${WEB_PORT}|$WEB_PORT|g" docker-compose.yml
+                sed -i "s|\${PROXY_PORT}|$PROXY_PORT|g" docker-compose.yml
+                sed -i "s|\${PROXY_SSL_PORT}|${PROXY_SSL_PORT:-443}|g" docker-compose.yml
+                sed -i "s|\${MEMORY_LIMIT_API}|$MEMORY_LIMIT_API|g" docker-compose.yml
+                sed -i "s|\${MEMORY_LIMIT_WEB}|$MEMORY_LIMIT_WEB|g" docker-compose.yml
+                sed -i "s|\${MEMORY_LIMIT_PROXY}|$MEMORY_LIMIT_PROXY|g" docker-compose.yml
+                sed -i "s|\${DOCKER_PLATFORM}|$DOCKER_PLATFORM|g" docker-compose.yml
+                sed -i "s|\${DOCKER_ARCH}|$DOCKER_ARCH|g" docker-compose.yml
+                sed -i "s|\${SSL_ENABLED}|${SSL_ENABLED}|g" docker-compose.yml
+                sed -i "s|\${SSL_CERT_PATH}|${SSL_CERT_PATH:-/dev/null}|g" docker-compose.yml
+                sed -i "s|\${SSL_KEY_PATH}|${SSL_KEY_PATH:-/dev/null}|g" docker-compose.yml
+                sed -i "s|\${NGINX_HOST}|${NGINX_HOST:-_}|g" docker-compose.yml
+                sed -i "s|\${INSTALL_PATH}|$INSTALL_PATH|g" docker-compose.yml
+            }
+        fi
+        success "Docker Compose configuration generated"
+    else
+        error "Docker Compose template not found"
+    fi
+
+    # Copy Nginx configuration if it exists
+    [[ -f "config/nginx.template.conf" ]] && cp config/nginx.template.conf nginx.conf
+
+    success "Configuration setup completed"
+}
+
+# =============================================================================
+# BUILD AND DEPLOY
+# =============================================================================
+
+build_and_deploy() {
+    step "Building and deploying MediaButler..."
+
+    cd "$INSTALL_PATH" || error "Cannot access install directory"
+
+    # Enable BuildKit for better performance
     export DOCKER_BUILDKIT=1
     export COMPOSE_DOCKER_CLI_BUILD=1
 
@@ -674,7 +739,18 @@ build_and_deploy() {
     fi
 
     # Wait for services to become healthy
+    wait_for_health
+
+    success "MediaButler deployed successfully!"
+}
+
+# =============================================================================
+# HEALTH MONITORING
+# =============================================================================
+
+wait_for_health() {
     log "Waiting for services to become healthy..."
+
     local max_attempts=60
     local attempt=1
 
@@ -701,220 +777,48 @@ build_and_deploy() {
     $COMPOSE_CMD logs --tail=20
 }
 
-create_monitoring() {
-    step "Setting up monitoring and maintenance..."
+# =============================================================================
+# MAIN EXECUTION
+# =============================================================================
 
-    # Create monitoring script
-    cat > monitor-mediabutler.sh << 'EOF'
-#!/bin/bash
-# MediaButler Health Monitor for QNAP NAS
-# This script monitors container health and resource usage
-
-set -euo pipefail
-
-INSTALL_PATH="$(dirname "$(readlink -f "$0")")"
-LOG_FILE="$INSTALL_PATH/logs/monitor.log"
-MAX_LOG_SIZE_MB=10
-
-cd "$INSTALL_PATH"
-
-# Logging function
-log_monitor() {
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
-}
-
-# Rotate logs if they get too large
-rotate_logs() {
-    if [[ -f "$LOG_FILE" ]] && [[ $(stat -f%z "$LOG_FILE" 2>/dev/null || stat -c%s "$LOG_FILE" 2>/dev/null || echo 0) -gt $((MAX_LOG_SIZE_MB * 1024 * 1024)) ]]; then
-        mv "$LOG_FILE" "${LOG_FILE}.old"
-        touch "$LOG_FILE"
-        log_monitor "Log rotated due to size limit"
-    fi
-}
-
-# Check container health
-check_containers() {
-    local failed_services=()
-
-    # Check if all services are running
-    local running_count=$($COMPOSE_CMD ps --filter status=running | grep -c "Up" || echo 0)
-    if [[ $running_count -lt 3 ]]; then
-        log_monitor "WARNING: Not all services running ($running_count/3)"
-        failed_services+=("containers_not_running")
-    fi
-
-    # Check health status
-    local unhealthy=$($COMPOSE_CMD ps --filter health=unhealthy | grep -v "^Name" | wc -l)
-    if [[ $unhealthy -gt 0 ]]; then
-        log_monitor "WARNING: $unhealthy unhealthy containers detected"
-        failed_services+=("unhealthy_containers")
-    fi
-
-    return ${#failed_services[@]}
-}
-
-# Check resource usage
-check_resources() {
-    # Memory usage check
-    local memory_usage=$(docker stats --no-stream --format "{{.MemUsage}}" | sed 's/MiB.*//' | awk '{sum+=$1} END {print int(sum)}')
-    if [[ $memory_usage -gt 300 ]]; then
-        log_monitor "WARNING: High memory usage: ${memory_usage}MB"
-        return 1
-    fi
-
-    # Disk usage check
-    local disk_usage=$(df -h "$INSTALL_PATH" | awk 'NR==2 {print $5}' | sed 's/%//')
-    if [[ $disk_usage -gt 85 ]]; then
-        log_monitor "WARNING: High disk usage: ${disk_usage}%"
-        return 1
-    fi
-
-    log_monitor "INFO: Resource usage normal (Memory: ${memory_usage}MB, Disk: ${disk_usage}%)"
-    return 0
-}
-
-# Check service endpoints
-check_endpoints() {
-    local failed=0
-
-    # Check API health endpoint
-    if ! curl -sf "http://localhost:$(grep API_PORT .env | cut -d= -f2)/health" >/dev/null 2>&1; then
-        log_monitor "ERROR: API health check failed"
-        ((failed++))
-    fi
-
-    # Check Web endpoint
-    if ! curl -sf "http://localhost:$(grep WEB_PORT .env | cut -d= -f2)" >/dev/null 2>&1; then
-        log_monitor "ERROR: Web health check failed"
-        ((failed++))
-    fi
-
-    # Check Proxy endpoint
-    if ! curl -sf "http://localhost:$(grep PROXY_PORT .env | cut -d= -f2)/health" >/dev/null 2>&1; then
-        log_monitor "ERROR: Proxy health check failed"
-        ((failed++))
-    fi
-
-    if [[ $failed -eq 0 ]]; then
-        log_monitor "INFO: All endpoints responding"
-    fi
-
-    return $failed
-}
-
-# Restart unhealthy services
-restart_unhealthy() {
-    log_monitor "INFO: Attempting to restart unhealthy services"
-
-    # Get unhealthy containers
-    local unhealthy_containers=$($COMPOSE_CMD ps --filter health=unhealthy --format "{{.Name}}")
-
-    if [[ -n "$unhealthy_containers" ]]; then
-        for container in $unhealthy_containers; do
-            log_monitor "INFO: Restarting unhealthy container: $container"
-            $COMPOSE_CMD restart "$(echo "$container" | sed 's/^mediabutler-//')" || true
-        done
-    else
-        # If no specific unhealthy containers, restart all
-        log_monitor "INFO: Restarting all services"
-        $COMPOSE_CMD restart
-    fi
-}
-
-# Main monitoring function
 main() {
-    rotate_logs
-
-    local issues=0
-
-    # Run checks
-    check_containers || ((issues++))
-    check_resources || ((issues++))
-    check_endpoints || ((issues++))
-
-    # If there are issues, attempt restart
-    if [[ $issues -gt 0 ]]; then
-        log_monitor "ALERT: $issues issues detected, attempting restart"
-        restart_unhealthy
-
-        # Wait and recheck
-        sleep 30
-        if check_endpoints; then
-            log_monitor "SUCCESS: Services recovered after restart"
-        else
-            log_monitor "ERROR: Services still unhealthy after restart - manual intervention required"
-        fi
-    else
-        log_monitor "INFO: All services healthy"
-    fi
-}
-
-# Run monitoring
-main
-EOF
-
-    chmod +x monitor-mediabutler.sh
-
-    # Create backup script
-    cat > backup-mediabutler.sh << 'EOF'
-#!/bin/bash
-# MediaButler Backup Script for QNAP NAS
-
-set -euo pipefail
-
-INSTALL_PATH="$(dirname "$(readlink -f "$0")")"
-BACKUP_DIR="$INSTALL_PATH/backups"
-TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-BACKUP_FILE="mediabutler_backup_$TIMESTAMP.tar.gz"
-
-cd "$INSTALL_PATH"
-
-echo "Creating backup: $BACKUP_FILE"
-
-# Create backup
-tar -czf "$BACKUP_DIR/$BACKUP_FILE" \
-    --exclude='./backups' \
-    --exclude='./logs' \
-    --exclude='./.git' \
-    ./
-
-# Keep only last 5 backups
-cd "$BACKUP_DIR"
-ls -t mediabutler_backup_*.tar.gz | tail -n +6 | xargs rm -f 2>/dev/null || true
-
-echo "Backup completed: $BACKUP_DIR/$BACKUP_FILE"
-echo "Available backups:"
-ls -lah mediabutler_backup_*.tar.gz 2>/dev/null || echo "No backups found"
-EOF
-
-    chmod +x backup-mediabutler.sh
-
-    # Add monitoring to crontab if possible
-    if command -v crontab >/dev/null 2>&1; then
-        local cron_job="*/5 * * * * cd $INSTALL_PATH && ./monitor-mediabutler.sh >/dev/null 2>&1"
-        local backup_job="0 2 * * 0 cd $INSTALL_PATH && ./backup-mediabutler.sh >/dev/null 2>&1"
-
-        (crontab -l 2>/dev/null | grep -v "monitor-mediabutler\|backup-mediabutler"; echo "$cron_job"; echo "$backup_job") | crontab - 2>/dev/null || warning "Could not add monitoring to crontab"
-        success "Monitoring configured (runs every 5 minutes)"
-        success "Weekly backups configured (runs Sundays at 2 AM)"
-    else
-        warning "Crontab not available - manual monitoring setup required"
-    fi
-}
-
-show_deployment_info() {
-    local host_ip=$(hostname -I | awk '{print $1}' || echo "localhost")
-
     echo
-    success "🎉 MediaButler deployment completed successfully!"
+    echo -e "${BLUE}╔══════════════════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}║                    MediaButler QNAP NAS Deployment                          ║${NC}"
+    echo -e "${BLUE}║                         Optimized for 1GB RAM                               ║${NC}"
+    echo -e "${BLUE}╚══════════════════════════════════════════════════════════════════════════════╝${NC}"
     echo
-    echo "📋 Deployment Information:"
+
+    # Configuration summary
+    info "Deployment Configuration:"
+    echo "  📍 Installation Path: $INSTALL_PATH"
+    echo "  🌐 API Port: $API_PORT"
+    echo "  🖥️  Web Port: $WEB_PORT"
+    echo "  🔗 Proxy Port: $PROXY_PORT"
+    echo "  🏗️  Architecture: ${DOCKER_PLATFORM:-auto-detect}"
+    echo "  💾 Memory Limits: API=${MEMORY_LIMIT_API}, Web=${MEMORY_LIMIT_WEB}, Proxy=${MEMORY_LIMIT_PROXY}"
+    echo
+
+    # Execute deployment steps
+    check_requirements
+    cleanup_previous
+    download_source
+    setup_configuration
+    build_and_deploy
+
+    # Final status report
+    echo
+    echo -e "${GREEN}╔══════════════════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${GREEN}║                          DEPLOYMENT COMPLETED                               ║${NC}"
+    echo -e "${GREEN}╚══════════════════════════════════════════════════════════════════════════════╝${NC}"
+    echo
+    echo "🎉 MediaButler has been successfully deployed!"
+    echo
+    echo "🌐 Access URLs:"
     echo "════════════════════════════════════════════════════════════════"
-    echo "🌐 Web Interface:     http://${host_ip}:${PROXY_PORT}"
-    echo "🔌 API Endpoint:      http://${host_ip}:${PROXY_PORT}/api"
-    echo "📁 Installation Path: ${INSTALL_PATH}"
-    echo "💾 Memory Limits:     API:${MEMORY_LIMIT_API}, Web:${MEMORY_LIMIT_WEB}, Proxy:${MEMORY_LIMIT_PROXY}"
-    echo "🏗️  Architecture:      ${DOCKER_PLATFORM:-linux/amd64}"
+    echo "📱 Web UI:            http://$(hostname -I | awk '{print $1}'):${PROXY_PORT}"
+    echo "🔗 API Endpoint:      http://$(hostname -I | awk '{print $1}'):${API_PORT}"
+    echo "📊 API Direct:        http://$(hostname -I | awk '{print $1}'):${API_PORT}/swagger"
     echo
     echo "🛠️  Management Commands:"
     echo "════════════════════════════════════════════════════════════════"
@@ -922,9 +826,6 @@ show_deployment_info() {
     echo "📜 View logs:         cd ${INSTALL_PATH} && $COMPOSE_CMD logs -f"
     echo "🔄 Restart services:  cd ${INSTALL_PATH} && $COMPOSE_CMD restart"
     echo "⏹️  Stop services:     cd ${INSTALL_PATH} && $COMPOSE_CMD down"
-    echo "🗂️  Manual backup:     cd ${INSTALL_PATH} && ./backup-mediabutler.sh"
-    echo "🔍 Check health:      cd ${INSTALL_PATH} && ./monitor-mediabutler.sh"
-    echo "🆙 Update:            Re-run deployment script with same parameters"
     echo
     echo "📊 Current Container Status:"
     echo "════════════════════════════════════════════════════════════════"
@@ -932,46 +833,12 @@ show_deployment_info() {
     echo
     echo "📈 Resource Usage:"
     echo "════════════════════════════════════════════════════════════════"
-    docker stats --no-stream --format "table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}\t{{.BlockIO}}"
-    echo
-    info "🔗 Access your MediaButler instance at: http://${host_ip}:${PROXY_PORT}"
+    docker stats --no-stream --format "table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}\t{{.BlockIO}}" 2>/dev/null || echo "Resource stats unavailable"
     echo
 }
 
-# =============================================================================
-# MAIN EXECUTION
-# =============================================================================
+# Handle script interruption
+trap 'echo; error "Deployment interrupted by user"' INT TERM
 
-main() {
-    show_banner
-
-    # Validate inputs
-    validate_parameters
-
-    # Deployment steps
-    check_requirements
-    cleanup_deployment
-    download_source
-    create_docker_files
-    create_compose_config
-    setup_directories
-    build_and_deploy
-    create_monitoring
-    show_deployment_info
-
-    success "🚀 MediaButler QNAP deployment completed successfully!"
-
-    # Log completion
-    log "Deployment completed at $(date)"
-    log "Installation path: $INSTALL_PATH"
-    log "Configuration: API:$API_PORT, Web:$WEB_PORT, Proxy:$PROXY_PORT"
-}
-
-# Error handling
-trap 'error "💥 Deployment failed at line $LINENO - Check logs at $LOG_FILE"' ERR
-
-# Ensure log directory exists
-mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
-
-# Execute main function
+# Run main function
 main "$@"
