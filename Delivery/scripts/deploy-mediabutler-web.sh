@@ -44,7 +44,7 @@ warning() {
 
 # Git Repository Configuration
 GITHUB_REPO="${GITHUB_REPO:-https://github.com/chim331u/MediaButler.git}"
-GIT_BRANCH="${GIT_BRANCH:-main}"  # Default branch for MediaButler
+GIT_BRANCH="${GIT_BRANCH:-delploy}"  # Default branch for MediaButler (current: delploy)
 LOCAL_REPO_DIR="${LOCAL_REPO_DIR:-/tmp/MediaButler_Web}"
 
 # Docker Configuration

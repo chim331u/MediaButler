@@ -12,7 +12,7 @@ set -euo pipefail
 
 # Default Configuration (can be overridden via environment variables)
 GITHUB_REPO_URL="${GITHUB_REPO_URL:-https://github.com/chim331u/MediaButler.git}"
-GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
+GITHUB_BRANCH="${GITHUB_BRANCH:-delploy}"
 API_PORT="${API_PORT:-30129}"
 WEB_PORT="${WEB_PORT:-30139}"
 INSTALL_PATH="${INSTALL_PATH:-/share/Container/mediabutler}"

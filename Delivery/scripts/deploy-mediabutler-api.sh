@@ -44,7 +44,7 @@ warning() {
 
 # Git Repository Configuration
 GITHUB_REPO="${GITHUB_REPO:-https://github.com/chim331u/MediaButler.git}"
-GIT_BRANCH="${GIT_BRANCH:-deploy}"  # Default branch for MediaButler: main
+GIT_BRANCH="${GIT_BRANCH:-delploy}"  # Default branch for MediaButler (current: delploy)
 LOCAL_REPO_DIR="${LOCAL_REPO_DIR:-/tmp/MediaButler}"
 
 # Docker Configuration
@@ -53,7 +53,7 @@ DOCKER_IMAGE_TAG="${DOCKER_IMAGE_TAG:-latest}"
 CONTAINER_NAME="${CONTAINER_NAME:-mediabutler_api}"
 
 # Docker Build Configuration
-DOCKERFILE_PATH="${DOCKERFILE_PATH:-Delivery/docker/api-minimal.dockerfile}"
+DOCKERFILE_PATH="${DOCKERFILE_PATH:-Delivery/docker/api-optimized.dockerfile}"
 BUILD_CONTEXT="${BUILD_CONTEXT:-.}"
 
 # Container Runtime Configuration
@@ -64,7 +64,7 @@ CONTAINER_PORT="${CONTAINER_PORT:-8080}"
 # Customize these paths according to your QNAP NAS setup
 DATA_VOLUME="${DATA_VOLUME:-/share/CACHEDEV2_DATA/Storage/Docker/mediabutler:/data}"
 WATCH_VOLUME="${WATCH_VOLUME:-/share/Download/Incoming:/watch}"
-LIBRARY_VOLUME="${LIBRARY_VOLUME:-/share/Video/MediaButler:/library}"
+LIBRARY_VOLUME="${LIBRARY_VOLUME:-/share/Video/Serie:/library}"
 LOGS_VOLUME="${LOGS_VOLUME:-/share/CACHEDEV2_DATA/Storage/Docker/mediabutler/logs:/app/logs}"
 
 # Application Environment Variables

@@ -148,7 +148,7 @@ After deployment completes (5-15 minutes):
 ```bash
 # Repository and source
 export GITHUB_REPO_URL="https://github.com/chim331u/MediaButler.git"
-export GITHUB_BRANCH="main"
+export GITHUB_BRANCH="delploy"
 
 # Network configuration
 export API_PORT="30129"             # API service port
