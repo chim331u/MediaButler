@@ -21,11 +21,11 @@ var isDevelopment = builder.HostEnvironment.IsDevelopment() ||
                    builder.HostEnvironment.BaseAddress.Contains("127.0.0.1");
 
 // Register ApiSettings configuration
-builder.Services.Configure<ApiSettings>(builder.Configuration.GetSection("ApiSettings"));
+builder.Services.Configure<ApiSettings>(builder.Configuration.GetSection("MediaButlerApi"));
 
 // Simple HttpClient registration following "Simple Made Easy" principles
 // One named client per service boundary - no complex configurations braided together
-var apiBaseUrl = builder.Configuration["ApiSettings:BaseUrl"] ?? "http://localhost:5000/";
+var apiBaseUrl = builder.Configuration["MediaButlerApi:BaseUrl"] ?? "http://localhost:5000/";
 
 Console.WriteLine($"Environment: {environment}, IsDevelopment: {isDevelopment}, API URL: {apiBaseUrl}");
 
