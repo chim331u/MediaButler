@@ -304,21 +304,33 @@ build_locally() {
     log "Building project with .NET SDK..."
     log "Project: src/MediaButler.Web/MediaButler.Web.csproj"
 
-    # Build the project locally (this should work on macOS even if Docker WebAssembly fails)
+    # First, try to restore packages explicitly
+    log "Restoring NuGet packages..."
+    if ! dotnet restore src/MediaButler.Web/MediaButler.Web.csproj; then
+        error "Package restore failed"
+        exit 1
+    fi
+
+    # Build the project locally with explicit WebAssembly settings
+    log "Building with WebAssembly configuration..."
     if ! dotnet publish src/MediaButler.Web/MediaButler.Web.csproj \
         --configuration Release \
         --output "$DIST_DIR" \
-        --verbosity normal; then
+        --verbosity normal \
+        --no-restore \
+        /p:PublishProfile=FolderProfile; then
 
         error "Local .NET build failed"
-        log "Attempting fallback build with simplified settings..."
+        log "Attempting fallback build with minimal WebAssembly features..."
 
-        # Fallback: try with simpler settings
+        # Fallback: try with disabled features
         if ! dotnet publish src/MediaButler.Web/MediaButler.Web.csproj \
             --configuration Release \
             --output "$DIST_DIR" \
-            --no-self-contained \
-            --verbosity minimal; then
+            --verbosity normal \
+            --no-restore \
+            /p:RunAOTCompilation=false \
+            /p:WasmEnableWebcil=false; then
 
             error "Local .NET build failed with fallback settings"
             exit 1
@@ -344,7 +356,20 @@ build_locally() {
     ls -la "$DIST_DIR/wwwroot/" | head -10
     if [[ -d "$DIST_DIR/wwwroot/_framework" ]]; then
         log "_framework directory contents:"
-        ls -la "$DIST_DIR/wwwroot/_framework/" | head -5
+        ls -la "$DIST_DIR/wwwroot/_framework/" | head -10
+
+        # Check for any files with fingerprint patterns
+        log "Checking for files with fingerprint patterns:"
+        find "$DIST_DIR/wwwroot/_framework" -name "*fingerprint*" -o -name "*#*" | head -5
+    fi
+
+    # Check the index.html for template issues
+    if [[ -f "$DIST_DIR/wwwroot/index.html" ]]; then
+        log "Checking index.html for template patterns:"
+        grep -n "fingerprint\|#\[" "$DIST_DIR/wwwroot/index.html" | head -3 || log "No template patterns found in index.html"
+
+        log "First 20 lines of index.html:"
+        head -20 "$DIST_DIR/wwwroot/index.html"
     fi
 
     success "Local build completed successfully"

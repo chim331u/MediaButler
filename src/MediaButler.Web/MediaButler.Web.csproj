@@ -10,6 +10,9 @@
     <RunCodeAnalysis>false</RunCodeAnalysis>
     <PublishTrimmed>false</PublishTrimmed>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <!-- Ensure WebAssembly build completes properly -->
+    <WasmBuildNative>false</WasmBuildNative>
+    <BlazorWebAssemblyPreserveCollationData>false</BlazorWebAssemblyPreserveCollationData>
   </PropertyGroup>
 
   <ItemGroup>
