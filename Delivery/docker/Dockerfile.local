@@ -118,22 +118,37 @@ http { \
         add_header X-Content-Type-Options "nosniff" always; \
         add_header Referrer-Policy "no-referrer-when-downgrade" always; \
         \
-        # Cache static assets \
-        location ~* \.(css|js|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ { \
+        # Cache static assets (excluding JS and WASM which are handled separately) \
+        location ~* \.(css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ { \
             expires 1y; \
             add_header Cache-Control "public, immutable"; \
         } \
         \
-        # Special handling for WebAssembly files \
+        # Handle _framework files specifically \
+        location /_framework/ { \
+            try_files $uri =404; \
+            add_header Cache-Control "public, max-age=31536000, immutable"; \
+        } \
+        \
+        # Handle WebAssembly files \
         location ~* \.wasm$ { \
             add_header Content-Type "application/wasm"; \
-            expires 1y; \
-            add_header Cache-Control "public, immutable"; \
+            add_header Cache-Control "public, max-age=31536000, immutable"; \
         } \
         \
-        # Handle client-side routing for SPA \
+        # Handle JavaScript files \
+        location ~* \.js$ { \
+            add_header Content-Type "application/javascript"; \
+            add_header Cache-Control "public, max-age=31536000, immutable"; \
+        } \
+        \
+        # Handle client-side routing for SPA (only for non-static files) \
         location / { \
-            try_files $uri $uri/ /index.html; \
+            try_files $uri $uri/ @fallback; \
+        } \
+        \
+        location @fallback { \
+            rewrite ^.*$ /index.html last; \
         } \
         \
         # Health check endpoint \

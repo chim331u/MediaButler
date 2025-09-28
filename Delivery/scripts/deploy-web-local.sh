@@ -339,6 +339,14 @@ build_locally() {
     log "WebAssembly output size: $WWWROOT_SIZE"
     log "Output location: $DIST_DIR/wwwroot"
 
+    # Debug: Show the structure of the build output
+    log "Build output structure:"
+    ls -la "$DIST_DIR/wwwroot/" | head -10
+    if [[ -d "$DIST_DIR/wwwroot/_framework" ]]; then
+        log "_framework directory contents:"
+        ls -la "$DIST_DIR/wwwroot/_framework/" | head -5
+    fi
+
     success "Local build completed successfully"
 }
 
