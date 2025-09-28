@@ -143,6 +143,7 @@ EXAMPLES:
 
 REQUIREMENTS:
     - Docker Desktop installed and running
+    - .NET 8+ SDK (project currently uses .NET 9)
     - MediaButler API running (locally or remotely)
     - Current directory should be MediaButler project root
 
@@ -170,14 +171,19 @@ validate_environment() {
     # Check if .NET SDK is available for local builds
     if [[ "$USE_LOCAL_BUILD" == "true" ]]; then
         if ! command -v dotnet >/dev/null 2>&1; then
-            error ".NET SDK not found. Please install .NET 9 SDK or set USE_LOCAL_BUILD=false"
+            error ".NET SDK not found. Please install .NET 8+ SDK or set USE_LOCAL_BUILD=false"
             exit 1
         fi
 
         # Check .NET version
         DOTNET_VERSION=$(dotnet --version 2>/dev/null | cut -d'.' -f1)
         if [[ "$DOTNET_VERSION" -lt 8 ]]; then
-            warning ".NET version $DOTNET_VERSION detected. .NET 8+ recommended for building WebAssembly projects"
+            error ".NET version $DOTNET_VERSION detected. .NET 8+ required for building WebAssembly projects"
+            exit 1
+        elif [[ "$DOTNET_VERSION" -eq 8 ]]; then
+            log ".NET $DOTNET_VERSION detected - WebAssembly supported"
+        elif [[ "$DOTNET_VERSION" -ge 9 ]]; then
+            log ".NET $DOTNET_VERSION detected - Full WebAssembly features supported"
         fi
     fi
 
@@ -311,26 +317,29 @@ build_locally() {
         exit 1
     fi
 
-    # Build the project locally with explicit WebAssembly settings
-    log "Building with WebAssembly configuration..."
+    # Build the project locally with explicit WebAssembly settings for .NET 9
+    log "Building with .NET 9 WebAssembly configuration..."
+
+    # First try with .NET 9 optimized settings
     if ! dotnet publish src/MediaButler.Web/MediaButler.Web.csproj \
         --configuration Release \
         --output "$DIST_DIR" \
         --verbosity normal \
         --no-restore \
-        /p:PublishProfile=FolderProfile; then
+        /p:OverrideHtmlAssetPlaceholders=true; then
 
-        error "Local .NET build failed"
+        error "Primary .NET 9 build failed"
         log "Attempting fallback build with minimal WebAssembly features..."
 
-        # Fallback: try with disabled features
+        # Fallback: try with disabled features (for compatibility)
         if ! dotnet publish src/MediaButler.Web/MediaButler.Web.csproj \
             --configuration Release \
             --output "$DIST_DIR" \
             --verbosity normal \
             --no-restore \
             /p:RunAOTCompilation=false \
-            /p:WasmEnableWebcil=false; then
+            /p:WasmEnableWebcil=false \
+            /p:OverrideHtmlAssetPlaceholders=true; then
 
             error "Local .NET build failed with fallback settings"
             exit 1
@@ -366,10 +375,22 @@ build_locally() {
     # Check the index.html for template issues
     if [[ -f "$DIST_DIR/wwwroot/index.html" ]]; then
         log "Checking index.html for template patterns:"
-        grep -n "fingerprint\|#\[" "$DIST_DIR/wwwroot/index.html" | head -3 || log "No template patterns found in index.html"
+        if grep -n "fingerprint\|#\[" "$DIST_DIR/wwwroot/index.html" >/dev/null 2>&1; then
+            warning "Found unprocessed template patterns in index.html:"
+            grep -n "fingerprint\|#\[" "$DIST_DIR/wwwroot/index.html" | head -3
+        else
+            success "No unprocessed template patterns found in index.html"
+        fi
 
         log "First 20 lines of index.html:"
         head -20 "$DIST_DIR/wwwroot/index.html"
+
+        # Verify blazor.webassembly.js reference
+        if grep -q "blazor.webassembly.js" "$DIST_DIR/wwwroot/index.html"; then
+            success "Found standard blazor.webassembly.js reference"
+        else
+            warning "Standard blazor.webassembly.js reference not found"
+        fi
     fi
 
     success "Local build completed successfully"
