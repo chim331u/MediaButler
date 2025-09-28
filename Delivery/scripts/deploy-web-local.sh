@@ -60,10 +60,10 @@ DIST_DIR="${DIST_DIR:-dist}"
 
 # Container Runtime Configuration
 HOST_PORT="${HOST_PORT:-3019}"
-CONTAINER_PORT="${CONTAINER_PORT:-80}"
+CONTAINER_PORT="${CONTAINER_PORT:-8080}"
 
 # API Configuration - IMPORTANT: Configure this for your setup
-API_BASE_URL="${API_BASE_URL:-http://your-server-ip:30129/}"
+API_BASE_URL="${API_BASE_URL:-http://192.168.1.5:30129/}"
 API_TIMEOUT="${API_TIMEOUT:-30}"
 
 # Development settings
