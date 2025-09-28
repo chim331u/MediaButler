@@ -51,8 +51,12 @@ DOCKER_IMAGE_TAG="${DOCKER_IMAGE_TAG:-dev}"
 CONTAINER_NAME="${CONTAINER_NAME:-mediabutler-web-local}"
 
 # Docker Build Configuration
-DOCKERFILE_PATH="${DOCKERFILE_PATH:-Delivery/docker/Dockerfile.webassembly}"
+DOCKERFILE_PATH="${DOCKERFILE_PATH:-Delivery/docker/Dockerfile.local}"
 BUILD_CONTEXT="${BUILD_CONTEXT:-.}"
+
+# Local Build Configuration
+USE_LOCAL_BUILD="${USE_LOCAL_BUILD:-true}"
+DIST_DIR="${DIST_DIR:-dist}"
 
 # Container Runtime Configuration
 HOST_PORT="${HOST_PORT:-3019}"
@@ -163,6 +167,20 @@ validate_environment() {
         exit 1
     fi
 
+    # Check if .NET SDK is available for local builds
+    if [[ "$USE_LOCAL_BUILD" == "true" ]]; then
+        if ! command -v dotnet >/dev/null 2>&1; then
+            error ".NET SDK not found. Please install .NET 9 SDK or set USE_LOCAL_BUILD=false"
+            exit 1
+        fi
+
+        # Check .NET version
+        DOTNET_VERSION=$(dotnet --version 2>/dev/null | cut -d'.' -f1)
+        if [[ "$DOTNET_VERSION" -lt 8 ]]; then
+            warning ".NET version $DOTNET_VERSION detected. .NET 8+ recommended for building WebAssembly projects"
+        fi
+    fi
+
     # Check Docker
     if ! command -v docker >/dev/null 2>&1; then
         error "Docker not found. Please install Docker Desktop."
@@ -240,8 +258,17 @@ clone_repository() {
 
     # Check Dockerfile exists
     if [[ ! -f "$DOCKERFILE_PATH" ]]; then
-        error "Dockerfile not found at: $DOCKERFILE_PATH"
-        exit 1
+        # Try fallback Dockerfiles
+        if [[ -f "Delivery/docker/Dockerfile.local" ]]; then
+            DOCKERFILE_PATH="Delivery/docker/Dockerfile.local"
+            log "Using fallback Dockerfile: $DOCKERFILE_PATH"
+        elif [[ -f "Delivery/docker/Dockerfile.webassembly" ]]; then
+            DOCKERFILE_PATH="Delivery/docker/Dockerfile.webassembly"
+            warning "Using WebAssembly Dockerfile (may fail on macOS): $DOCKERFILE_PATH"
+        else
+            error "No suitable Dockerfile found"
+            exit 1
+        fi
     fi
 
     success "Repository cloned successfully"
@@ -250,6 +277,69 @@ clone_repository() {
     CURRENT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null)
     CURRENT_BRANCH=$(git branch --show-current 2>/dev/null)
     log "Current commit: $CURRENT_COMMIT on branch: $CURRENT_BRANCH"
+}
+
+#############################################################################
+# LOCAL BUILD OPERATIONS
+#############################################################################
+
+build_locally() {
+    log "Building Blazor WebAssembly project locally..."
+
+    # Change to repository directory
+    cd "$LOCAL_REPO_DIR"
+
+    # Generate application configuration first
+    generate_appsettings
+
+    # Clean previous build output
+    if [[ -d "$DIST_DIR" ]]; then
+        log "Cleaning previous build output: $DIST_DIR"
+        rm -rf "$DIST_DIR"
+    fi
+
+    # Create dist directory
+    mkdir -p "$DIST_DIR"
+
+    log "Building project with .NET SDK..."
+    log "Project: src/MediaButler.Web/MediaButler.Web.csproj"
+
+    # Build the project locally (this should work on macOS even if Docker WebAssembly fails)
+    if ! dotnet publish src/MediaButler.Web/MediaButler.Web.csproj \
+        --configuration Release \
+        --output "$DIST_DIR" \
+        --verbosity normal; then
+
+        error "Local .NET build failed"
+        log "Attempting fallback build with simplified settings..."
+
+        # Fallback: try with simpler settings
+        if ! dotnet publish src/MediaButler.Web/MediaButler.Web.csproj \
+            --configuration Release \
+            --output "$DIST_DIR" \
+            --no-self-contained \
+            --verbosity minimal; then
+
+            error "Local .NET build failed with fallback settings"
+            exit 1
+        fi
+    fi
+
+    # Verify build output
+    if [[ ! -d "$DIST_DIR/wwwroot" ]]; then
+        error "Build completed but wwwroot directory not found in $DIST_DIR"
+        log "Build output contents:"
+        ls -la "$DIST_DIR"
+        exit 1
+    fi
+
+    # Show build output info
+    WWWROOT_SIZE=$(du -sh "$DIST_DIR/wwwroot" | cut -f1)
+    log "Build completed successfully"
+    log "WebAssembly output size: $WWWROOT_SIZE"
+    log "Output location: $DIST_DIR/wwwroot"
+
+    success "Local build completed successfully"
 }
 
 #############################################################################
@@ -311,20 +401,24 @@ EOF
 }
 
 build_docker_image() {
-    log "Building Docker image for local development..."
+    log "Building Docker image with pre-built WebAssembly files..."
 
     # Change to repository directory
     cd "$LOCAL_REPO_DIR"
 
     local image_full_name="${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
 
-    # Generate application configuration
-    generate_appsettings
+    # Verify pre-built files exist
+    if [[ ! -d "$DIST_DIR/wwwroot" ]]; then
+        error "Pre-built files not found at $DIST_DIR/wwwroot. Run local build first."
+        exit 1
+    fi
 
     log "Building image: $image_full_name"
     log "Dockerfile: $DOCKERFILE_PATH"
     log "Build context: $BUILD_CONTEXT"
     log "Platform: $DOCKER_PLATFORM"
+    log "Using pre-built files from: $DIST_DIR/wwwroot"
 
     # Build Docker image with platform specification
     if ! docker build \
@@ -502,6 +596,11 @@ main() {
 
     # Repository operations
     clone_repository
+
+    # Local build operations
+    if [[ "$USE_LOCAL_BUILD" == "true" ]]; then
+        build_locally
+    fi
 
     # Deployment process
     cleanup_existing
