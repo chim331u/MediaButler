@@ -30,9 +30,13 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowAll", builder =>
     {
         builder.WithOrigins(
+                "http://localhost:3019",   // Docker containerized Web app port
                 "http://localhost:5109",   // Default Web app port
                 "http://localhost:5110",   // Alternative Web app port
-                "https://localhost:5111")  // HTTPS Web app port
+                "https://localhost:5111",  // HTTPS Web app port
+                "http://host.docker.internal:3019", // Docker Desktop host access
+                "http://192.168.1.5:3019", // LAN access to containerized Web app
+                "http://192.168.65.1:3019") // Docker bridge network access
             .AllowAnyMethod()
             .AllowAnyHeader()
             .AllowCredentials(); // Required for SignalR
@@ -176,15 +180,20 @@ app.UseGlobalExceptionHandler();
 app.UseHttpsRedirection();
 app.UseRouting();
 
-// Add CORS configuration for future UI
-// app.UseCors(policy =>
-// {
-//     policy.AllowAnyOrigin()
-//           .AllowAnyMethod()
-//           .AllowAnyHeader();
-// });
-
-app.UseCors("AllowAll");
+// Configure CORS based on environment
+if (app.Environment.IsDevelopment())
+{
+    app.UseCors(policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader();
+    });
+}
+else
+{
+    app.UseCors("AllowAll");
+}
 
 // Map controllers
 app.MapControllers();
