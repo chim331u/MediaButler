@@ -320,13 +320,12 @@ build_locally() {
     # Build the project locally with explicit WebAssembly settings for .NET 9
     log "Building with .NET 9 WebAssembly configuration..."
 
-    # First try with .NET 9 optimized settings
+    # Build with .NET 9 WebAssembly settings
     if ! dotnet publish src/MediaButler.Web/MediaButler.Web.csproj \
         --configuration Release \
         --output "$DIST_DIR" \
         --verbosity normal \
-        --no-restore \
-        /p:OverrideHtmlAssetPlaceholders=true; then
+        --no-restore; then
 
         error "Primary .NET 9 build failed"
         log "Attempting fallback build with minimal WebAssembly features..."
@@ -338,8 +337,7 @@ build_locally() {
             --verbosity normal \
             --no-restore \
             /p:RunAOTCompilation=false \
-            /p:WasmEnableWebcil=false \
-            /p:OverrideHtmlAssetPlaceholders=true; then
+            /p:WasmEnableWebcil=false; then
 
             error "Local .NET build failed with fallback settings"
             exit 1
@@ -372,7 +370,7 @@ build_locally() {
         find "$DIST_DIR/wwwroot/_framework" -name "*fingerprint*" -o -name "*#*" | head -5
     fi
 
-    # Check the index.html for template issues
+    # Check and fix index.html for WebAssembly fingerprinting
     if [[ -f "$DIST_DIR/wwwroot/index.html" ]]; then
         log "Checking index.html for template patterns:"
         if grep -n "fingerprint\|#\[" "$DIST_DIR/wwwroot/index.html" >/dev/null 2>&1; then
@@ -382,15 +380,25 @@ build_locally() {
             success "No unprocessed template patterns found in index.html"
         fi
 
+        # Fix blazor.webassembly.js reference with fingerprinted version
+        if grep -q "blazor.webassembly.js" "$DIST_DIR/wwwroot/index.html"; then
+            # Find the actual fingerprinted blazor file
+            local blazor_file=$(find "$DIST_DIR/wwwroot/_framework" -name "blazor.webassembly.*.js" -not -name "*.gz" -not -name "*.br" | head -1)
+            if [[ -n "$blazor_file" ]]; then
+                local blazor_filename=$(basename "$blazor_file")
+                log "Updating index.html to reference fingerprinted blazor file: $blazor_filename"
+                sed -i.bak "s|blazor.webassembly.js|$blazor_filename|g" "$DIST_DIR/wwwroot/index.html"
+                rm -f "$DIST_DIR/wwwroot/index.html.bak"
+                success "Updated blazor.webassembly.js reference to $blazor_filename"
+            else
+                warning "Could not find fingerprinted blazor.webassembly file"
+            fi
+        else
+            log "blazor.webassembly.js reference not found (may already be fingerprinted)"
+        fi
+
         log "First 20 lines of index.html:"
         head -20 "$DIST_DIR/wwwroot/index.html"
-
-        # Verify blazor.webassembly.js reference
-        if grep -q "blazor.webassembly.js" "$DIST_DIR/wwwroot/index.html"; then
-            success "Found standard blazor.webassembly.js reference"
-        else
-            warning "Standard blazor.webassembly.js reference not found"
-        fi
     fi
 
     success "Local build completed successfully"
