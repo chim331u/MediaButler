@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Microsoft.Data.Sqlite;
 using System.IO;
 using System.Security.Cryptography;
@@ -7,8 +8,35 @@ using System.Text;
 using System.Threading.Tasks;
 
 /// <summary>
-/// Migration tool to import data from FileCat.db to MediaButler database
-/// Usage: dotnet run FileCatMigrationTool.cs
+/// FileCat to MediaButler Migration Tool
+///
+/// This tool migrates data from the legacy FileCat database to the new MediaButler system.
+/// It maps FileCat's file tracking data to MediaButler's enhanced tracking structure with audit trails.
+///
+/// USAGE:
+///   # Dry run (shows what would be migrated, no changes made)
+///   dotnet run --project MigrationTool.csproj --dry-run
+///
+///   # Live migration (performs actual data migration)
+///   dotnet run --project MigrationTool.csproj --live
+///
+/// FEATURES:
+/// - Safe dry-run mode for preview
+/// - Transaction-based migration with rollback support
+/// - Status mapping from FileCat flags to MediaButler workflow states
+/// - Category normalization to UPPERCASE format
+/// - File path and naming convention alignment
+/// - Audit trail preservation (CreatedDate, LastUpdateDate)
+///
+/// STATUS MAPPING:
+/// - IsNotToMove = true → Status.Ignored (8)
+/// - IsToCategorize = false + has category → Status.Classified (2)
+/// - All other files → Status.Moved (5)
+///
+/// REQUIREMENTS:
+/// - Source: FileCat.db with FilesDetail table
+/// - Target: MediaButler database with TrackedFiles table
+/// - Both databases must exist before running
 /// </summary>
 public class FileCatMigrationTool
 {
@@ -25,8 +53,8 @@ public class FileCatMigrationTool
 
     public static async Task Main(string[] args)
     {
-        var sourcePath = "/Users/luca/GitHub/mediabutler/MediaButler/temp/Import/FileCat.db";
-        var targetPath = "/Users/luca/GitHub/mediabutler/MediaButler/temp/mediabutler.dev.db";
+        var sourcePath = "/Users/luca/temp/MediaButler/temp/Import/FileCat.db";
+        var targetPath = "/Users/luca/temp/MediaButler/temp/mediabutler.dev.db";
         var dryRun = args.Length > 0 && args[0].ToLower() == "--dry-run";
 
         var migrator = new FileCatMigrationTool(sourcePath, targetPath, dryRun);
