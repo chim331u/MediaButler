@@ -25,7 +25,7 @@ builder.Services.Configure<ApiSettings>(builder.Configuration.GetSection("MediaB
 
 // Simple HttpClient registration following "Simple Made Easy" principles
 // One named client per service boundary - no complex configurations braided together
-var apiBaseUrl = builder.Configuration["MediaButlerApi:BaseUrl"] ?? "http://localhost:5000/";
+var apiBaseUrl = builder.Configuration["MediaButlerApi:BaseUrl"] ?? "http://192.168.1.5:30139/";// "http://localhost:5271/"; // 
 
 Console.WriteLine($"Environment: {environment}, IsDevelopment: {isDevelopment}, API URL: {apiBaseUrl}");
 

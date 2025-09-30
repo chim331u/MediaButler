@@ -1251,8 +1251,8 @@
         try
         {
             // Add to categories list
-            _categories = _categories.Append(_newCategory.ToUpper());
-            item.FileCategory = _newCategory.ToUpper();
+            _categories = _categories.Append(_newCategory);
+            item.FileCategory = _newCategory;
 
             WriteConsole($"Added new category: {_newCategory}");
 

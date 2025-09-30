@@ -5,5 +5,5 @@ namespace MediaButler.Web.Models;
 /// </summary>
 public class ApiSettings
 {
-    public string BaseUrl { get; set; } = "http://localhost:5000/";
+    public string BaseUrl { get; set; } = "http://192.168.1.5:30139/"; // "http://localhost:5271/"; 
 }
