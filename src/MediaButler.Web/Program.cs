@@ -20,18 +20,28 @@ var isDevelopment = builder.HostEnvironment.IsDevelopment() ||
                    builder.HostEnvironment.BaseAddress.Contains("localhost") ||
                    builder.HostEnvironment.BaseAddress.Contains("127.0.0.1");
 
-// Register ApiSettings configuration
-builder.Services.Configure<ApiSettings>(builder.Configuration.GetSection("MediaButlerApi"));
+// Register and validate ApiSettings configuration
+var apiSettingsSection = builder.Configuration.GetSection("ApiSettings");
+builder.Services.Configure<ApiSettings>(apiSettingsSection);
+
+// Get ApiSettings and validate configuration
+var apiSettings = new ApiSettings();
+apiSettingsSection.Bind(apiSettings);
+
+if (!apiSettings.IsValid)
+{
+    throw new InvalidOperationException(
+        $"Invalid API configuration. Please ensure 'ApiSettings:BaseUrl' is properly configured in appsettings.json. " +
+        $"Current value: '{apiSettings.BaseUrl}'");
+}
+
+Console.WriteLine($"Environment: {environment}, IsDevelopment: {isDevelopment}, API URL: {apiSettings.BaseUrl}");
 
 // Simple HttpClient registration following "Simple Made Easy" principles
 // One named client per service boundary - no complex configurations braided together
-var apiBaseUrl = builder.Configuration["MediaButlerApi:BaseUrl"] ?? "http://192.168.1.5:30139/";// "http://localhost:5271/"; // 
-
-Console.WriteLine($"Environment: {environment}, IsDevelopment: {isDevelopment}, API URL: {apiBaseUrl}");
-
 builder.Services.AddHttpClient<IHttpClientService, HttpClientService>(client =>
 {
-    client.BaseAddress = new Uri(apiBaseUrl);
+    client.BaseAddress = new Uri(apiSettings.BaseUrl);
     client.Timeout = TimeSpan.FromSeconds(30);
     client.DefaultRequestHeaders.Add("Accept", "application/json");
 });
