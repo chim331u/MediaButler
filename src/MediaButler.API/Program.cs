@@ -17,6 +17,7 @@ using Serilog;
 using Serilog.Events;
 using FluentValidation;
 using FluentValidation.AspNetCore;
+using MediaButler.API.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -24,22 +25,45 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseSerilog((context, configuration) => 
     configuration.ReadFrom.Configuration(context.Configuration));
 
-// Add CORS with SignalR support
+// Configure CORS settings from appsettings.json
+var corsSettingsSection = builder.Configuration.GetSection(CorsSettings.SectionName);
+builder.Services.Configure<CorsSettings>(corsSettingsSection);
+
+// Get CORS settings and validate configuration
+var corsSettings = new CorsSettings();
+corsSettingsSection.Bind(corsSettings);
+
+// Validate CORS configuration
+var corsValidationErrors = corsSettings.Validate().ToList();
+if (corsValidationErrors.Any())
+{
+    var errorMessages = string.Join("; ", corsValidationErrors.Select(e => e.ErrorMessage));
+    throw new InvalidOperationException($"Invalid CORS configuration: {errorMessages}");
+}
+
+// Add CORS with configuration-based policy
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", builder =>
+    options.AddPolicy("ConfigurablePolicy", policyBuilder =>
     {
-        builder.WithOrigins(
-                "http://localhost:3019",   // Docker containerized Web app port
-                "http://localhost:5109",   // Default Web app port
-                "http://localhost:5110",   // Alternative Web app port
-                "https://localhost:5111",  // HTTPS Web app port
-                "http://host.docker.internal:3019", // Docker Desktop host access
-                "http://192.168.1.5:3019", // LAN access to containerized Web app
-                "http://192.168.65.1:3019") // Docker bridge network access
-            .AllowAnyMethod()
-            .AllowAnyHeader()
-            .AllowCredentials(); // Required for SignalR
+        // Configure origin validation with wildcard support
+        policyBuilder.SetIsOriginAllowed(origin => corsSettings.IsOriginAllowed(origin));
+
+        // Configure methods
+        if (corsSettings.AllowedMethods.Any())
+            policyBuilder.WithMethods(corsSettings.AllowedMethods.ToArray());
+        else
+            policyBuilder.AllowAnyMethod();
+
+        // Configure headers
+        if (corsSettings.AllowedHeaders.Any())
+            policyBuilder.WithHeaders(corsSettings.AllowedHeaders.ToArray());
+        else
+            policyBuilder.AllowAnyHeader();
+
+        // Configure credentials
+        if (corsSettings.AllowCredentials)
+            policyBuilder.AllowCredentials();
     });
 });
 
@@ -180,20 +204,8 @@ app.UseGlobalExceptionHandler();
 app.UseHttpsRedirection();
 app.UseRouting();
 
-// Configure CORS based on environment
-if (app.Environment.IsDevelopment())
-{
-    app.UseCors(policy =>
-    {
-        policy.AllowAnyOrigin()
-              .AllowAnyMethod()
-              .AllowAnyHeader();
-    });
-}
-else
-{
-    app.UseCors("AllowAll");
-}
+// Use configurable CORS policy for all environments
+app.UseCors("ConfigurablePolicy");
 
 // Map controllers
 app.MapControllers();
