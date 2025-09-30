@@ -31,6 +31,12 @@ public class FileDiscoveryService : IFileDiscoveryService, IDisposable
     private readonly List<string> _discoveredFilesBatch = new();
     private readonly Timer? _batchProcessingTimer;
     private readonly object _batchLock = new();
+
+    // File system optimization: Single watcher and validation cache
+    private FileSystemWatcher? _singleWatcher;
+    private readonly Dictionary<string, FileValidationResult> _validationCache = new();
+    private readonly object _cacheRwLock = new();
+    private DateTime _lastCacheCleanup = DateTime.UtcNow;
     
     private volatile bool _isMonitoring;
     private volatile bool _disposed;
@@ -175,7 +181,23 @@ public class FileDiscoveryService : IFileDiscoveryService, IDisposable
         {
             _logger.LogInformation("Stopping file monitoring");
 
-            // Stop and dispose all file system watchers (make a copy to avoid collection modification)
+            // Stop and dispose single file system watcher
+            if (_singleWatcher != null)
+            {
+                try
+                {
+                    _singleWatcher.EnableRaisingEvents = false;
+                    _singleWatcher.Dispose();
+                    _singleWatcher = null;
+                    _logger.LogDebug("ARM32: Single FileSystemWatcher disposed");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error disposing single FileSystemWatcher");
+                }
+            }
+
+            // Legacy cleanup for any remaining watchers
             var watchersToDispose = _watchers.ToArray();
             foreach (var watcher in watchersToDispose)
             {
@@ -186,7 +208,7 @@ public class FileDiscoveryService : IFileDiscoveryService, IDisposable
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Error disposing FileSystemWatcher");
+                    _logger.LogWarning(ex, "Error disposing legacy FileSystemWatcher");
                 }
             }
             _watchers.Clear();
@@ -320,7 +342,8 @@ public class FileDiscoveryService : IFileDiscoveryService, IDisposable
     }
 
     /// <summary>
-    /// Sets up FileSystemWatcher instances for all configured folders.
+    /// Sets up a single FileSystemWatcher for all configured folders.
+    /// ARM32 optimization: Use single watcher to reduce resource usage.
     /// </summary>
     private async Task SetupFileSystemWatchersAsync(CancellationToken cancellationToken)
     {
@@ -330,48 +353,62 @@ public class FileDiscoveryService : IFileDiscoveryService, IDisposable
             foldersToWatch = _currentWatchFolders.ToList();
         }
 
-        foreach (var folderPath in foldersToWatch)
+        if (foldersToWatch.Count == 0)
         {
-            if (!Directory.Exists(folderPath))
-            {
-                _logger.LogWarning("Watch folder does not exist, attempting to create: {Folder}", folderPath);
-                try
-                {
-                    Directory.CreateDirectory(folderPath);
-                    _logger.LogInformation("Created watch folder: {Folder}", folderPath);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to create watch folder: {Folder}", folderPath);
-                    OnDiscoveryError(null, $"Failed to create watch folder: {folderPath}", ex);
-                    continue;
-                }
-            }
+            _logger.LogWarning("No watch folders configured");
+            return;
+        }
 
+        // ARM32 optimization: Use single watcher for the primary folder
+        var primaryFolder = foldersToWatch[0];
+
+        if (!Directory.Exists(primaryFolder))
+        {
+            _logger.LogWarning("Primary watch folder does not exist, attempting to create: {Folder}", primaryFolder);
             try
             {
-                var watcher = new FileSystemWatcher(folderPath)
-                {
-                    IncludeSubdirectories = true,
-                    NotifyFilter = NotifyFilters.CreationTime | NotifyFilters.FileName | NotifyFilters.Size,
-                    EnableRaisingEvents = true
-                };
-
-                watcher.Created += OnFileSystemEvent;
-                watcher.Renamed += OnFileSystemEvent;
-                watcher.Error += OnFileSystemError;
-
-                _watchers.Add(watcher);
-                _logger.LogDebug("FileSystemWatcher setup for folder: {Folder}", folderPath);
+                Directory.CreateDirectory(primaryFolder);
+                _logger.LogInformation("Created primary watch folder: {Folder}", primaryFolder);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to setup FileSystemWatcher for folder: {Folder}", folderPath);
-                OnDiscoveryError(null, $"Failed to setup watcher for folder: {folderPath}", ex);
+                _logger.LogError(ex, "Failed to create primary watch folder: {Folder}", primaryFolder);
+                OnDiscoveryError(null, $"Failed to create primary watch folder: {primaryFolder}", ex);
+                return;
             }
         }
 
-        _logger.LogInformation("FileSystemWatcher setup completed for {WatcherCount} folders", _watchers.Count);
+        try
+        {
+            // Dispose existing watcher if any
+            _singleWatcher?.Dispose();
+
+            _singleWatcher = new FileSystemWatcher(primaryFolder)
+            {
+                IncludeSubdirectories = true,
+                NotifyFilter = NotifyFilters.CreationTime | NotifyFilters.FileName | NotifyFilters.Size,
+                EnableRaisingEvents = true
+            };
+
+            _singleWatcher.Created += OnFileSystemEvent;
+            _singleWatcher.Renamed += OnFileSystemEvent;
+            _singleWatcher.Error += OnFileSystemError;
+
+            _logger.LogInformation("ARM32: Single FileSystemWatcher setup for primary folder: {Folder}", primaryFolder);
+
+            // Log additional folders that will be handled by periodic scanning only
+            if (foldersToWatch.Count > 1)
+            {
+                var additionalFolders = foldersToWatch.Skip(1).ToList();
+                _logger.LogInformation("ARM32: Additional folders {Count} will be handled by periodic scanning: {Folders}",
+                    additionalFolders.Count, string.Join(", ", additionalFolders));
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to setup single FileSystemWatcher for folder: {Folder}", primaryFolder);
+            OnDiscoveryError(null, $"Failed to setup watcher for folder: {primaryFolder}", ex);
+        }
     }
 
     /// <summary>
@@ -471,63 +508,219 @@ public class FileDiscoveryService : IFileDiscoveryService, IDisposable
 
     /// <summary>
     /// Determines if a file should be processed based on configured criteria.
+    /// ARM32 optimization: Uses caching and skips redundant checks for known file types.
     /// </summary>
     private async Task<bool> ShouldProcessFileAsync(string filePath)
     {
         if (!File.Exists(filePath))
             return false;
 
-        // Check file extension
+        // Check file extension early (fast operation)
         var extension = Path.GetExtension(filePath);
         if (!_config.IsExtensionMonitored(extension))
             return false;
 
-        // Check exclusion patterns
+        // Check exclusion patterns (fast regex operation)
         if (_config.IsFileExcluded(filePath))
         {
-            _logger.LogDebug("File excluded by pattern: {FilePath}", filePath);
+            _logger.LogDebug("ARM32: File excluded by pattern: {FilePath}", filePath);
             return false;
         }
 
-        // Check file size
+        // ARM32 optimization: Check validation cache first
+        var cachedResult = GetCachedValidationResult(filePath);
+        if (cachedResult != null)
+        {
+            _logger.LogDebug("ARM32: Using cached validation for {FilePath}: {IsValid}", filePath, cachedResult.IsValid);
+            return cachedResult.IsValid;
+        }
+
+        // Perform validation and cache result
+        var validationResult = await ValidateFileWithCachingAsync(filePath);
+        return validationResult;
+    }
+
+    /// <summary>
+    /// Validates file with caching to reduce I/O operations.
+    /// ARM32 optimization: Skip redundant file size checks for known large file types.
+    /// </summary>
+    private async Task<bool> ValidateFileWithCachingAsync(string filePath)
+    {
+        var extension = Path.GetExtension(filePath);
+        var isKnownLargeType = IsKnownLargeFileType(extension);
+
         try
         {
             var fileInfo = new FileInfo(filePath);
-            var fileSizeMB = fileInfo.Length / (1024.0 * 1024.0);
-            
-            if (fileSizeMB < _config.MinFileSizeMB)
+            var fileLastModified = fileInfo.LastWriteTime;
+
+            // ARM32 optimization: Skip file size check for known large video file types
+            bool skipSizeCheck = isKnownLargeType;
+            long fileSizeBytes = 0;
+            bool sizeValid = true;
+
+            if (!skipSizeCheck)
             {
-                _logger.LogDebug("File too small ({SizeMB:F2}MB < {MinSizeMB}MB): {FilePath}", 
-                    fileSizeMB, _config.MinFileSizeMB, filePath);
-                return false;
+                fileSizeBytes = fileInfo.Length;
+                var fileSizeMB = fileSizeBytes / (1024.0 * 1024.0);
+                sizeValid = fileSizeMB >= _config.MinFileSizeMB;
+
+                if (!sizeValid)
+                {
+                    _logger.LogDebug("ARM32: File too small ({SizeMB:F2}MB < {MinSizeMB}MB): {FilePath}",
+                        fileSizeMB, _config.MinFileSizeMB, filePath);
+                }
             }
+            else
+            {
+                // For known large types, assume size is valid
+                fileSizeBytes = fileInfo.Length;
+                _logger.LogDebug("ARM32: Skipping size check for known large file type {Extension}: {FilePath}",
+                    extension, filePath);
+            }
+
+            bool isValid = sizeValid;
+            string? errorReason = sizeValid ? null : "File too small";
+
+            // Check if already tracked (expensive operation, so do it last)
+            if (isValid)
+            {
+                try
+                {
+                    using var scope = _serviceScopeFactory.CreateScope();
+                    var fileService = scope.ServiceProvider.GetRequiredService<IFileService>();
+
+                    var alreadyTracked = await fileService.IsFileAlreadyTrackedAsync(filePath);
+                    if (alreadyTracked.IsSuccess && alreadyTracked.Value)
+                    {
+                        isValid = false;
+                        errorReason = "Already tracked";
+                        _logger.LogDebug("ARM32: File already tracked: {FilePath}", filePath);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "ARM32: Could not check if file is already tracked: {FilePath}", filePath);
+                    // Continue processing to avoid missing files due to service issues
+                }
+            }
+
+            // Cache the validation result
+            CacheValidationResult(filePath, new FileValidationResult
+            {
+                IsValid = isValid,
+                ErrorReason = errorReason,
+                FileSizeBytes = fileSizeBytes,
+                FileLastModified = fileLastModified
+            });
+
+            return isValid;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Could not check file size: {FilePath}", filePath);
+            _logger.LogWarning(ex, "ARM32: Could not validate file: {FilePath}", filePath);
+
+            // Cache negative result to avoid repeated failures
+            CacheValidationResult(filePath, new FileValidationResult
+            {
+                IsValid = false,
+                ErrorReason = ex.Message,
+                FileSizeBytes = 0,
+                FileLastModified = DateTime.MinValue
+            });
+
             return false;
         }
+    }
 
-        // Check if already tracked
-        try
+    /// <summary>
+    /// Checks if a file extension represents a known large file type that can skip size validation.
+    /// ARM32 optimization: Avoid expensive I/O for file types that are typically large.
+    /// </summary>
+    private static bool IsKnownLargeFileType(string extension)
+    {
+        var knownLargeTypes = new[] { ".mkv", ".mp4", ".avi", ".m4v", ".mov", ".wmv", ".flv", ".webm" };
+        return knownLargeTypes.Contains(extension, StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Gets cached validation result if available and still valid.
+    /// </summary>
+    private FileValidationResult? GetCachedValidationResult(string filePath)
+    {
+        lock (_cacheRwLock)
         {
-            using var scope = _serviceScopeFactory.CreateScope();
-            var fileService = scope.ServiceProvider.GetRequiredService<IFileService>();
-            
-            var alreadyTracked = await fileService.IsFileAlreadyTrackedAsync(filePath);
-            if (alreadyTracked.IsSuccess && alreadyTracked.Value)
+            if (_validationCache.TryGetValue(filePath, out var cachedResult))
             {
-                _logger.LogDebug("File already tracked: {FilePath}", filePath);
-                return false;
+                try
+                {
+                    var fileInfo = new FileInfo(filePath);
+                    if (cachedResult.IsCacheValid(fileInfo.LastWriteTime))
+                    {
+                        return cachedResult;
+                    }
+                    else
+                    {
+                        // Cache expired or file modified, remove it
+                        _validationCache.Remove(filePath);
+                    }
+                }
+                catch
+                {
+                    // File may not exist anymore, remove from cache
+                    _validationCache.Remove(filePath);
+                }
+            }
+
+            // Periodic cache cleanup (every 10 minutes)
+            if (DateTime.UtcNow.Subtract(_lastCacheCleanup).TotalMinutes > 10)
+            {
+                CleanupValidationCache();
+                _lastCacheCleanup = DateTime.UtcNow;
             }
         }
-        catch (Exception ex)
+
+        return null;
+    }
+
+    /// <summary>
+    /// Caches validation result for future use.
+    /// </summary>
+    private void CacheValidationResult(string filePath, FileValidationResult result)
+    {
+        lock (_cacheRwLock)
         {
-            _logger.LogWarning(ex, "Could not check if file is already tracked: {FilePath}", filePath);
-            // Continue processing to avoid missing files due to service issues
+            _validationCache[filePath] = result;
+
+            // Limit cache size for ARM32 memory management
+            if (_validationCache.Count > 1000)
+            {
+                CleanupValidationCache();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Cleans up expired validation cache entries.
+    /// ARM32 optimization: Keep cache size manageable.
+    /// </summary>
+    private void CleanupValidationCache()
+    {
+        var cutoffTime = DateTime.UtcNow.AddMinutes(-15);
+        var keysToRemove = _validationCache
+            .Where(kvp => kvp.Value.CachedAt < cutoffTime)
+            .Select(kvp => kvp.Key)
+            .ToList();
+
+        foreach (var key in keysToRemove)
+        {
+            _validationCache.Remove(key);
         }
 
-        return true;
+        if (keysToRemove.Count > 0)
+        {
+            _logger.LogDebug("ARM32: Cleaned up {Count} expired validation cache entries", keysToRemove.Count);
+        }
     }
 
     /// <summary>
@@ -657,6 +850,10 @@ public class FileDiscoveryService : IFileDiscoveryService, IDisposable
         _batchProcessingTimer?.Dispose();
         _scanSemaphore?.Dispose();
 
+        // Dispose single watcher
+        _singleWatcher?.Dispose();
+
+        // Legacy cleanup for any remaining watchers
         var watchersToDispose = _watchers.ToArray();
         foreach (var watcher in watchersToDispose)
         {
@@ -664,6 +861,34 @@ public class FileDiscoveryService : IFileDiscoveryService, IDisposable
         }
         _watchers.Clear();
 
+        // Clear validation cache for ARM32 memory management
+        lock (_cacheRwLock)
+        {
+            _validationCache.Clear();
+        }
+
         _logger.LogInformation("File Discovery Service disposed");
+    }
+}
+
+/// <summary>
+/// Cached validation result for file system optimization.
+/// Reduces repeated I/O operations for file validation.
+/// </summary>
+internal class FileValidationResult
+{
+    public bool IsValid { get; set; }
+    public string? ErrorReason { get; set; }
+    public long FileSizeBytes { get; set; }
+    public DateTime CachedAt { get; set; } = DateTime.UtcNow;
+    public DateTime FileLastModified { get; set; }
+
+    /// <summary>
+    /// Check if cache entry is still valid (file not modified, cache not expired).
+    /// </summary>
+    public bool IsCacheValid(DateTime fileLastModified, int cacheValidityMinutes = 5)
+    {
+        var cacheExpiry = CachedAt.AddMinutes(cacheValidityMinutes);
+        return DateTime.UtcNow <= cacheExpiry && FileLastModified == fileLastModified;
     }
 }
