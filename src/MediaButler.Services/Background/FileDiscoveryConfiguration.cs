@@ -57,9 +57,10 @@ public class FileDiscoveryConfiguration
     /// <summary>
     /// Delay in seconds before processing a newly detected file.
     /// Helps ensure file writes are complete before processing.
+    /// ARM32 optimization: Increased to 8 seconds for better I/O management.
     /// </summary>
     [Range(0, 300, ErrorMessage = "Debounce delay must be between 0 and 300 seconds")]
-    public int DebounceDelaySeconds { get; set; } = 3;
+    public int DebounceDelaySeconds { get; set; } = 8;
 
     /// <summary>
     /// Maximum number of concurrent folder scan operations.
