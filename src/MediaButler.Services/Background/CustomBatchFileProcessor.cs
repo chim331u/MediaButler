@@ -12,14 +12,17 @@ namespace MediaButler.Services.Background;
 /// <summary>
 /// Custom batch file processor that works with the lightweight background task queue.
 /// Replaces Hangfire-based BatchFileProcessor with similar functionality.
+/// ARM32 optimized for QNAP TS-231P with memory monitoring and GC management.
 /// </summary>
 public class CustomBatchFileProcessor
 {
     private readonly ILogger<CustomBatchFileProcessor> _logger;
+    private readonly ARM32MemoryMonitor _memoryMonitor;
 
     public CustomBatchFileProcessor(ILogger<CustomBatchFileProcessor> logger)
     {
         _logger = logger;
+        _memoryMonitor = new ARM32MemoryMonitor(logger);
     }
 
     /// <summary>
@@ -182,6 +185,21 @@ public class CustomBatchFileProcessor
 
         try
         {
+            // ARM32: Track operation and check memory before processing each file
+            _memoryMonitor.TrackOperation();
+
+            if (_memoryMonitor.ShouldThrottleProcessing())
+            {
+                _logger.LogWarning("ARM32: Memory pressure during batch processing, waiting before processing file {Index}/{Total}",
+                    currentIndex, totalCount);
+
+                if (!await _memoryMonitor.WaitForMemoryAvailableAsync(cancellationToken))
+                {
+                    _logger.LogError("ARM32: Could not resolve memory pressure during batch processing");
+                    throw new InvalidOperationException("Memory pressure could not be resolved");
+                }
+            }
+
             // Send file processing started notification
             await SendFileProcessingStartedNotification(jobId, operation, currentIndex, totalCount,
                 notificationService, cancellationToken);
