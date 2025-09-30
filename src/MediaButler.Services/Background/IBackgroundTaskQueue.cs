@@ -43,7 +43,7 @@ public record QueuedWorkItem
 }
 
 /// <summary>
-/// Current status of the background task queue.
+/// Current status of the background task queue with ARM32 memory monitoring.
 /// </summary>
 public record QueueStatus
 {
@@ -52,4 +52,9 @@ public record QueueStatus
     public int CompletedJobs { get; init; }
     public int FailedJobs { get; init; }
     public DateTime LastActivity { get; init; }
+
+    // ARM32 memory monitoring
+    public double MemoryUsageMB { get; init; }
+    public bool IsUnderMemoryPressure { get; init; }
+    public int OperationCount { get; init; }
 }

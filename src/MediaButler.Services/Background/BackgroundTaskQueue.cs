@@ -15,6 +15,7 @@ public class BackgroundTaskQueue : IBackgroundTaskQueue
 {
     private readonly Channel<QueuedWorkItem> _queue;
     private readonly ILogger<BackgroundTaskQueue> _logger;
+    private readonly ARM32MemoryMonitor _memoryMonitor;
 
     // Job tracking for status monitoring
     private readonly ConcurrentDictionary<string, BackgroundJobInfo> _jobs = new();
@@ -30,8 +31,12 @@ public class BackgroundTaskQueue : IBackgroundTaskQueue
     {
         _logger = logger;
 
-        // Create bounded channel for ARM32 memory management
-        var options = new BoundedChannelOptions(capacity)
+        // Initialize ARM32 memory monitor with simple logger
+        _memoryMonitor = new ARM32MemoryMonitor(logger);
+
+        // Create bounded channel for ARM32 memory management - reduced capacity for QNAP TS-231P
+        var armCapacity = Math.Min(capacity, 20); // ARM32: Limit to 20 items max
+        var options = new BoundedChannelOptions(armCapacity)
         {
             FullMode = BoundedChannelFullMode.Wait,
             SingleReader = false, // Allow multiple workers if needed
@@ -39,6 +44,8 @@ public class BackgroundTaskQueue : IBackgroundTaskQueue
         };
 
         _queue = Channel.CreateBounded<QueuedWorkItem>(options);
+
+        _logger.LogInformation("ARM32 Background Task Queue initialized with capacity {Capacity} for QNAP TS-231P", armCapacity);
     }
 
     public void QueueBackgroundWorkItem(
@@ -88,7 +95,20 @@ public class BackgroundTaskQueue : IBackgroundTaskQueue
 
     public async Task<QueuedWorkItem> DequeueAsync(CancellationToken cancellationToken)
     {
+        // ARM32: Check memory before dequeuing
+        if (_memoryMonitor.ShouldThrottleProcessing())
+        {
+            _logger.LogWarning("ARM32: Memory pressure detected, waiting before dequeuing job");
+            if (!await _memoryMonitor.WaitForMemoryAvailableAsync(cancellationToken))
+            {
+                throw new OperationCanceledException("Memory pressure could not be resolved");
+            }
+        }
+
         var workItem = await _queue.Reader.ReadAsync(cancellationToken);
+
+        // Track operation for periodic GC
+        _memoryMonitor.TrackOperation();
 
         // Update job status to running
         if (_jobs.TryGetValue(workItem.JobId, out var jobInfo))
@@ -101,20 +121,25 @@ public class BackgroundTaskQueue : IBackgroundTaskQueue
         Interlocked.Increment(ref _activeJobs);
         _lastActivity = DateTime.UtcNow;
 
-        _logger.LogDebug("Dequeued background job {JobId} for processing", workItem.JobId);
+        _logger.LogDebug("ARM32: Dequeued background job {JobId} for processing", workItem.JobId);
 
         return workItem;
     }
 
     public QueueStatus GetQueueStatus()
     {
+        var memoryStats = _memoryMonitor.GetMemoryStats();
         return new QueueStatus
         {
             QueuedJobs = _queuedJobs,
             ActiveJobs = _activeJobs,
             CompletedJobs = _completedJobs,
             FailedJobs = _failedJobs,
-            LastActivity = _lastActivity
+            LastActivity = _lastActivity,
+            // ARM32: Include memory stats
+            MemoryUsageMB = memoryStats.CurrentMemoryUsageMB,
+            IsUnderMemoryPressure = memoryStats.IsUnderMemoryPressure,
+            OperationCount = memoryStats.OperationCount
         };
     }
 

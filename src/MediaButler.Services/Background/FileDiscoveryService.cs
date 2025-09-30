@@ -19,12 +19,18 @@ public class FileDiscoveryService : IFileDiscoveryService, IDisposable
     private readonly IServiceScopeFactory _serviceScopeFactory;
     private readonly IFileProcessingQueue _processingQueue;
     private readonly ILogger<FileDiscoveryService> _logger;
+    private readonly ARM32MemoryMonitor _memoryMonitor;
     
     private readonly List<FileSystemWatcher> _watchers = new();
     private readonly ConcurrentDictionary<string, DateTime> _pendingFiles = new();
     private readonly Timer? _scanTimer;
     private readonly Timer? _debounceTimer;
     private readonly SemaphoreSlim _scanSemaphore;
+
+    // ARM32 optimization: Batch processing for file discovery
+    private readonly List<string> _discoveredFilesBatch = new();
+    private readonly Timer? _batchProcessingTimer;
+    private readonly object _batchLock = new();
     
     private volatile bool _isMonitoring;
     private volatile bool _disposed;
@@ -41,6 +47,9 @@ public class FileDiscoveryService : IFileDiscoveryService, IDisposable
         _serviceScopeFactory = serviceScopeFactory ?? throw new ArgumentNullException(nameof(serviceScopeFactory));
         _processingQueue = processingQueue ?? throw new ArgumentNullException(nameof(processingQueue));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+
+        // Initialize ARM32 memory monitor for QNAP TS-231P
+        _memoryMonitor = new ARM32MemoryMonitor(logger);
 
         // Validate configuration
         var validationErrors = _config.Validate().ToList();
@@ -69,6 +78,13 @@ public class FileDiscoveryService : IFileDiscoveryService, IDisposable
             null,
             TimeSpan.FromSeconds(1),
             TimeSpan.FromSeconds(1));
+
+        // ARM32 optimization: Setup batch processing timer for discovered files
+        _batchProcessingTimer = new Timer(
+            ProcessBatchedFiles,
+            null,
+            TimeSpan.FromSeconds(5),
+            TimeSpan.FromSeconds(5));
 
         _logger.LogInformation(
             "File Discovery Service initialized. Watching {FolderCount} folders, {ExtensionCount} extensions",
@@ -516,39 +532,98 @@ public class FileDiscoveryService : IFileDiscoveryService, IDisposable
 
     /// <summary>
     /// Raises the FileDiscovered event and queues the file for processing.
+    /// ARM32 optimization: Adds files to batch for processing instead of immediate processing.
     /// </summary>
-    private async void OnFileDiscovered(string filePath)
+    private void OnFileDiscovered(string filePath)
     {
-        try
+        // ARM32 optimization: Add to batch instead of immediate processing
+        lock (_batchLock)
         {
-            // Register the file with FileService using scoped service
-            using var scope = _serviceScopeFactory.CreateScope();
-            var fileService = scope.ServiceProvider.GetRequiredService<IFileService>();
-            
-            var registrationResult = await fileService.RegisterFileAsync(filePath);
-            
-            if (registrationResult.IsSuccess)
+            _discoveredFilesBatch.Add(filePath);
+            _logger.LogDebug("ARM32: File added to discovery batch: {FilePath} (batch size: {BatchSize})",
+                filePath, _discoveredFilesBatch.Count);
+
+            // If batch is full, process immediately
+            if (_discoveredFilesBatch.Count >= 5)
             {
-                // Queue the file for processing
-                await _processingQueue.EnqueueAsync(registrationResult.Value);
-                
-                // Raise the event
-                FileDiscovered?.Invoke(this, new FileDiscoveredEventArgs(filePath, DateTime.UtcNow));
-                
-                _logger.LogInformation("File discovered and queued for processing: {FilePath}", filePath);
-            }
-            else
-            {
-                _logger.LogWarning("Failed to register discovered file {FilePath}: {Error}", 
-                    filePath, registrationResult.Error);
-                OnDiscoveryError(filePath, $"Failed to register file: {registrationResult.Error}");
+                ProcessBatchedFiles(null);
             }
         }
-        catch (Exception ex)
+    }
+
+    /// <summary>
+    /// ARM32 optimization: Processes discovered files in batches of 5 to reduce memory pressure.
+    /// </summary>
+    private async void ProcessBatchedFiles(object? state)
+    {
+        if (_disposed) return;
+
+        List<string> batchToProcess;
+        lock (_batchLock)
         {
-            _logger.LogError(ex, "Error processing discovered file: {FilePath}", filePath);
-            OnDiscoveryError(filePath, "Error processing discovered file", ex);
+            if (_discoveredFilesBatch.Count == 0) return;
+
+            // ARM32: Take up to 5 files for batch processing
+            batchToProcess = _discoveredFilesBatch.Take(5).ToList();
+            _discoveredFilesBatch.RemoveRange(0, batchToProcess.Count);
         }
+
+        // ARM32: Check memory before processing batch
+        if (_memoryMonitor.ShouldThrottleProcessing())
+        {
+            _logger.LogWarning("ARM32: Memory pressure detected, waiting before processing batch of {Count} files", batchToProcess.Count);
+
+            if (!await _memoryMonitor.WaitForMemoryAvailableAsync())
+            {
+                _logger.LogError("ARM32: Could not resolve memory pressure, re-queuing {Count} files", batchToProcess.Count);
+                lock (_batchLock)
+                {
+                    _discoveredFilesBatch.InsertRange(0, batchToProcess);
+                }
+                return;
+            }
+        }
+
+        _logger.LogInformation("ARM32: Processing batch of {Count} discovered files", batchToProcess.Count);
+
+        foreach (var filePath in batchToProcess)
+        {
+            try
+            {
+                // Track operation for periodic GC
+                _memoryMonitor.TrackOperation();
+
+                // Register the file with FileService using scoped service
+                using var scope = _serviceScopeFactory.CreateScope();
+                var fileService = scope.ServiceProvider.GetRequiredService<IFileService>();
+
+                var registrationResult = await fileService.RegisterFileAsync(filePath);
+
+                if (registrationResult.IsSuccess)
+                {
+                    // Queue the file for processing
+                    await _processingQueue.EnqueueAsync(registrationResult.Value);
+
+                    // Raise the event
+                    FileDiscovered?.Invoke(this, new FileDiscoveredEventArgs(filePath, DateTime.UtcNow));
+
+                    _logger.LogDebug("ARM32: File registered and queued: {FilePath}", filePath);
+                }
+                else
+                {
+                    _logger.LogWarning("ARM32: Failed to register file {FilePath}: {Error}",
+                        filePath, registrationResult.Error);
+                    OnDiscoveryError(filePath, $"Failed to register file: {registrationResult.Error}");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "ARM32: Error processing file {FilePath}", filePath);
+                OnDiscoveryError(filePath, "Error processing discovered file", ex);
+            }
+        }
+
+        _logger.LogInformation("ARM32: Completed batch processing of {Count} files", batchToProcess.Count);
     }
 
     /// <summary>
@@ -579,6 +654,7 @@ public class FileDiscoveryService : IFileDiscoveryService, IDisposable
 
         _scanTimer?.Dispose();
         _debounceTimer?.Dispose();
+        _batchProcessingTimer?.Dispose();
         _scanSemaphore?.Dispose();
 
         var watchersToDispose = _watchers.ToArray();

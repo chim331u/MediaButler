@@ -63,10 +63,10 @@ public class FileDiscoveryConfiguration
 
     /// <summary>
     /// Maximum number of concurrent folder scan operations.
-    /// ARM32 optimization to prevent resource exhaustion.
+    /// ARM32 optimization to prevent resource exhaustion - set to 1 for QNAP TS-231P.
     /// </summary>
     [Range(1, 10, ErrorMessage = "Max concurrent scans must be between 1 and 10")]
-    public int MaxConcurrentScans { get; set; } = 2;
+    public int MaxConcurrentScans { get; set; } = 1;
 
     /// <summary>
     /// Validates the configuration and returns validation results.
