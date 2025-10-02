@@ -151,43 +151,105 @@ public class FileOperationService : IFileOperationService
                     _logger.LogDebug("Drive detection: Source={SourcePath} ({SourceRoot}) -> Target={TargetPath} ({TargetRoot}), CrossDrive={CrossDrive}",
                         fullSourcePath, sourceRoot, fullTargetPath, targetRoot, wasCrossDriveOperation);
 
-                    if (wasCrossDriveOperation)
+                    // Check if target file already exists and handle appropriately
+                    if (File.Exists(fullTargetPath))
                     {
-                        // Cross-drive: copy then delete
-                        await CopyFileAsync(sourcePath, targetPath, cancellationToken);
+                        _logger.LogWarning("Target file already exists: {TargetPath}. Checking if files are identical.",
+                            fullTargetPath);
 
-                        // Verify copy was successful before deleting source
-                        if (File.Exists(targetPath))
+                        // Compare file hashes to determine if they're the same file
+                        var sourceHash = await CalculateFileHashAsync(fullSourcePath, cancellationToken);
+                        var targetHash = await CalculateFileHashAsync(fullTargetPath, cancellationToken);
+
+                        if (sourceHash == targetHash)
                         {
-                            try
+                            // Files are identical - skip move, delete source, update database
+                            _logger.LogInformation(
+                                "Target file {TargetPath} is identical to source (same hash: {Hash}). Skipping move and deleting source.",
+                                fullTargetPath, sourceHash);
+
+                            File.Delete(fullSourcePath);
+                            _logger.LogDebug("Deleted duplicate source file: {SourcePath}", fullSourcePath);
+
+                            // Update target path to the existing file
+                            targetPath = fullTargetPath;
+                        }
+                        else
+                        {
+                            // Files are different - append suffix to avoid overwrite
+                            var targetDir = Path.GetDirectoryName(fullTargetPath)!;
+                            var targetFileName = Path.GetFileNameWithoutExtension(fullTargetPath);
+                            var targetExtension = Path.GetExtension(fullTargetPath);
+
+                            var suffix = 1;
+                            string newTargetPath;
+                            do
                             {
-                                File.Delete(sourcePath);
-                                _logger.LogDebug("Completed cross-drive move from {SourcePath} to {TargetPath}",
-                                    sourcePath, targetPath);
+                                newTargetPath = Path.Combine(targetDir, $"{targetFileName}_{suffix}{targetExtension}");
+                                suffix++;
+                            } while (File.Exists(newTargetPath) && suffix < 100); // Limit to prevent infinite loop
+
+                            if (File.Exists(newTargetPath))
+                            {
+                                throw new InvalidOperationException(
+                                    $"Cannot generate unique filename. Too many duplicates exist for: {fullTargetPath}");
                             }
-                            catch (Exception deleteEx)
+
+                            _logger.LogWarning(
+                                "Target file {TargetPath} exists with different hash. Renaming to {NewTargetPath}",
+                                fullTargetPath, newTargetPath);
+
+                            fullTargetPath = newTargetPath;
+                            targetPath = newTargetPath;
+                        }
+                    }
+
+                    // Perform the move operation only if source still exists (wasn't deleted as duplicate)
+                    if (File.Exists(fullSourcePath))
+                    {
+                        if (wasCrossDriveOperation)
+                        {
+                            // Cross-drive: copy then delete
+                            await CopyFileAsync(sourcePath, targetPath, cancellationToken);
+
+                            // Verify copy was successful before deleting source
+                            if (File.Exists(targetPath))
                             {
-                                _logger.LogError(deleteEx, "Failed to delete source file {SourcePath} after successful copy", sourcePath);
-                                throw new InvalidOperationException($"File copied successfully but failed to delete source: {deleteEx.Message}", deleteEx);
+                                try
+                                {
+                                    File.Delete(sourcePath);
+                                    _logger.LogDebug("Completed cross-drive move from {SourcePath} to {TargetPath}",
+                                        sourcePath, targetPath);
+                                }
+                                catch (Exception deleteEx)
+                                {
+                                    _logger.LogError(deleteEx, "Failed to delete source file {SourcePath} after successful copy", sourcePath);
+                                    throw new InvalidOperationException($"File copied successfully but failed to delete source: {deleteEx.Message}", deleteEx);
+                                }
+                            }
+                            else
+                            {
+                                throw new InvalidOperationException($"Copy operation failed: target file {targetPath} does not exist after copy");
                             }
                         }
                         else
                         {
-                            throw new InvalidOperationException($"Copy operation failed: target file {targetPath} does not exist after copy");
+                            // Same drive: atomic move (overwrite flag added for .NET 6+)
+                            File.Move(sourcePath, targetPath, overwrite: true);
+
+                            _logger.LogDebug("Completed same-drive move from {SourcePath} to {TargetPath}",
+                                sourcePath, targetPath);
                         }
                     }
                     else
                     {
-                        // Same drive: atomic move
-                        File.Move(sourcePath, targetPath);
-                        
-                        _logger.LogDebug("Completed same-drive move from {SourcePath} to {TargetPath}", 
-                            sourcePath, targetPath);
+                        _logger.LogDebug("Source file was already deleted (duplicate scenario). Using existing target: {TargetPath}",
+                            targetPath);
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "File operation failed during move from {SourcePath} to {TargetPath}", 
+                    _logger.LogError(ex, "File operation failed during move from {SourcePath} to {TargetPath}",
                         sourcePath, targetPath);
                     throw;
                 }
@@ -613,6 +675,18 @@ public class FileOperationService : IFileOperationService
                 _recentOperationDurations.RemoveAt(0);
             }
         }
+    }
+
+    /// <summary>
+    /// Calculates SHA256 hash of a file for duplicate detection.
+    /// </summary>
+    private static async Task<string> CalculateFileHashAsync(string filePath, CancellationToken cancellationToken = default)
+    {
+        using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        using var sha256 = System.Security.Cryptography.SHA256.Create();
+
+        var hashBytes = await Task.Run(() => sha256.ComputeHash(stream), cancellationToken);
+        return Convert.ToHexString(hashBytes).ToLowerInvariant();
     }
 
     /// <summary>

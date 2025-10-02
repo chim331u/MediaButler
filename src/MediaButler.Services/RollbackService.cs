@@ -4,6 +4,7 @@ using MediaButler.Core.Entities;
 using MediaButler.Core.Enums;
 using MediaButler.Core.Services;
 using MediaButler.Data.UnitOfWork;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace MediaButler.Services;
@@ -12,19 +13,23 @@ namespace MediaButler.Services;
 /// Service for managing file operation rollback functionality.
 /// Implements simple rollback mechanisms using ProcessingLog for audit trail.
 /// Follows "Simple Made Easy" principles with atomic OS operations and clear separation of concerns.
+///
+/// IMPORTANT: This service uses IServiceScopeFactory to create its own DbContext scope for each operation,
+/// preventing DbContext threading conflicts when called from other services (e.g., FileOrganizationService).
+/// This ensures each database operation has its own isolated DbContext instance.
 /// </summary>
 public class RollbackService : IRollbackService
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IServiceScopeFactory _serviceScopeFactory;
     private readonly ILogger<RollbackService> _logger;
-    
+
     private const string RollbackCategory = "FileOperation.Rollback";
 
     public RollbackService(
-        IUnitOfWork unitOfWork,
+        IServiceScopeFactory serviceScopeFactory,
         ILogger<RollbackService> logger)
     {
-        _unitOfWork = unitOfWork ?? throw new ArgumentNullException(nameof(unitOfWork));
+        _serviceScopeFactory = serviceScopeFactory ?? throw new ArgumentNullException(nameof(serviceScopeFactory));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -38,15 +43,19 @@ public class RollbackService : IRollbackService
     {
         if (string.IsNullOrWhiteSpace(fileHash))
             return Result<Guid>.Failure("File hash cannot be null or empty");
-        
+
         if (string.IsNullOrWhiteSpace(operationType))
             return Result<Guid>.Failure("Operation type cannot be null or empty");
-        
+
         if (string.IsNullOrWhiteSpace(originalPath))
             return Result<Guid>.Failure("Original path cannot be null or empty");
 
         try
         {
+            // Create own scope to avoid DbContext conflicts with calling service
+            using var scope = _serviceScopeFactory.CreateScope();
+            var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+
             // Create rollback data structure
             var rollbackData = new
             {
@@ -72,8 +81,8 @@ public class RollbackService : IRollbackService
                 rollbackJson);
 
             // Store the rollback point
-            _unitOfWork.ProcessingLogs.Add(rollbackLog);
-            await _unitOfWork.SaveChangesAsync();
+            unitOfWork.ProcessingLogs.Add(rollbackLog);
+            await unitOfWork.SaveChangesAsync();
 
             _logger.LogInformation(
                 "Created rollback point {RollbackId} for file {FileHash}, operation: {Operation}",
@@ -83,10 +92,10 @@ public class RollbackService : IRollbackService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, 
+            _logger.LogError(ex,
                 "Failed to create rollback point for file {FileHash}, operation: {Operation}",
                 fileHash, operationType);
-            
+
             return Result<Guid>.Failure($"Failed to create rollback point: {ex.Message}");
         }
     }
@@ -96,8 +105,12 @@ public class RollbackService : IRollbackService
     {
         try
         {
+            // Create own scope to avoid DbContext conflicts
+            using var scope = _serviceScopeFactory.CreateScope();
+            var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+
             // Find the rollback point
-            var rollbackLog = await _unitOfWork.ProcessingLogs.GetByIdAsync(new object[] { operationId });
+            var rollbackLog = await unitOfWork.ProcessingLogs.GetByIdAsync(new object[] { operationId });
             if (rollbackLog == null)
                 return Result.Failure($"Rollback point {operationId} not found");
 
@@ -139,8 +152,8 @@ public class RollbackService : IRollbackService
                 $"Successfully executed rollback for {rollbackData.OperationType}",
                 $"Restored file from {rollbackData.TargetPath} to {rollbackData.OriginalPath}");
 
-            _unitOfWork.ProcessingLogs.Add(successLog);
-            await _unitOfWork.SaveChangesAsync();
+            unitOfWork.ProcessingLogs.Add(successLog);
+            await unitOfWork.SaveChangesAsync();
 
             _logger.LogInformation(
                 "Successfully executed rollback {RollbackId} for file {FileHash}",
@@ -163,8 +176,12 @@ public class RollbackService : IRollbackService
 
         try
         {
+            // Create own scope to avoid DbContext conflicts
+            using var scope = _serviceScopeFactory.CreateScope();
+            var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+
             // Find the most recent rollback point for this file
-            var recentRollbackPoints = await _unitOfWork.ProcessingLogs
+            var recentRollbackPoints = await unitOfWork.ProcessingLogs
                 .FindAsync(log => log.FileHash == fileHash);
 
             var lastRollbackPoint = recentRollbackPoints
@@ -189,8 +206,12 @@ public class RollbackService : IRollbackService
     {
         try
         {
+            // Create own scope to avoid DbContext conflicts
+            using var scope = _serviceScopeFactory.CreateScope();
+            var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+
             // Find the rollback point
-            var rollbackLog = await _unitOfWork.ProcessingLogs.GetByIdAsync(new object[] { operationId });
+            var rollbackLog = await unitOfWork.ProcessingLogs.GetByIdAsync(new object[] { operationId });
             if (rollbackLog == null)
                 return Result<RollbackValidationResult>.Failure($"Rollback point {operationId} not found");
 
@@ -276,21 +297,25 @@ public class RollbackService : IRollbackService
     {
         try
         {
-            var allLogs = await _unitOfWork.ProcessingLogs.GetAllAsync();
+            // Create own scope to avoid DbContext conflicts
+            using var scope = _serviceScopeFactory.CreateScope();
+            var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+
+            var allLogs = await unitOfWork.ProcessingLogs.GetAllAsync();
             var rollbackLogsToDelete = allLogs
                 .Where(log => log.Category == RollbackCategory && log.CreatedDate < olderThan)
                 .ToList();
 
             var deleteCount = rollbackLogsToDelete.Count;
-            
+
             foreach (var log in rollbackLogsToDelete)
             {
                 log.SoftDelete();
             }
 
-            await _unitOfWork.SaveChangesAsync();
+            await unitOfWork.SaveChangesAsync();
 
-            _logger.LogInformation("Cleaned up {Count} rollback points older than {Date}", 
+            _logger.LogInformation("Cleaned up {Count} rollback points older than {Date}",
                 deleteCount, olderThan);
 
             return Result<int>.Success(deleteCount);
@@ -310,7 +335,11 @@ public class RollbackService : IRollbackService
 
         try
         {
-            var logs = await _unitOfWork.ProcessingLogs.FindAsync(log => log.FileHash == fileHash);
+            // Create own scope to avoid DbContext conflicts
+            using var scope = _serviceScopeFactory.CreateScope();
+            var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+
+            var logs = await unitOfWork.ProcessingLogs.FindAsync(log => log.FileHash == fileHash);
             var rollbackLogs = logs
                 .Where(log => log.Category == RollbackCategory)
                 .OrderByDescending(log => log.CreatedDate)

@@ -220,6 +220,75 @@
         border-left: 4px solid var(--rz-info);
         border: 1px solid var(--rz-border-color-light);
     }
+
+    /* Enhanced Latest File Styling */
+    .latest-file {
+        border-left: 4px solid var(--rz-warning);
+        background: linear-gradient(90deg, rgba(255, 193, 7, 0.1) 0%, var(--rz-background-color) 100%);
+        font-weight: 500;
+    }
+
+    .latest-file:hover {
+        background: linear-gradient(90deg, rgba(255, 193, 7, 0.15) 0%, var(--rz-background-color-hover) 100%);
+        border-left-color: var(--rz-warning-darker);
+    }
+
+    .other-file {
+        border-left: 4px solid var(--rz-secondary-lighter);
+        background: var(--rz-background-color);
+        opacity: 0.95;
+    }
+
+    .other-file:hover {
+        background: var(--rz-background-color-hover);
+        border-left-color: var(--rz-secondary);
+        opacity: 1;
+    }
+
+    .other-files-divider {
+        padding: 12px 20px;
+        background: linear-gradient(90deg, var(--rz-secondary-lighter) 0%, var(--rz-background-color-alt) 100%);
+        font-size: 0.85rem;
+        color: var(--rz-text-color-secondary);
+        border-top: 1px solid var(--rz-border-color-light);
+        border-bottom: 1px solid var(--rz-border-color-light);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .other-files-divider span {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .other-files-divider span::before {
+        content: "▼";
+        color: var(--rz-secondary);
+        font-size: 0.7rem;
+    }
+
+    .other-files-loading {
+        padding: 16px 20px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        background: var(--rz-background-color-alt);
+        border-top: 1px solid var(--rz-border-color-light);
+        color: var(--rz-text-color-secondary);
+        font-style: italic;
+    }
+
+    .other-files-empty {
+        padding: 16px 20px;
+        text-align: center;
+        background: var(--rz-background-color-alt);
+        border-top: 1px solid var(--rz-border-color-light);
+        color: var(--rz-text-color-secondary);
+        font-style: italic;
+        opacity: 0.8;
+    }
 </style>
 
 <div class="last-view-container">
@@ -282,45 +351,99 @@
         @foreach (var group in _filteredGroups.Take(20))
         {
             <div class="category-group">
-                <div class="category-header" @onclick="() => ToggleCategoryExpansion(group.Key)">
+                <div class="category-header" @onclick="async () => await ToggleCategoryExpansion(group.Key)">
                     <div class="category-info">
                         <strong>@group.Key</strong>
-                        <span class="file-count-badge">@group.Value.Count files</span>
+                        <span class="file-count-badge">
+                            @GetFileCountDisplay(group.Key)
+                        </span>
                     </div>
                     <i class="rzi rzi-chevron-down expand-icon @(IsCategoryExpanded(group.Key) ? "expanded" : "")"></i>
                 </div>
 
-                @if (IsCategoryExpanded(group.Key))
-                {
-                    <div class="category-files">
-                        @foreach (var file in group.Value.Take(50))
+                <div class="category-files">
+                    @* Always show latest file *@
+                    @if (_categoryLatestFiles.ContainsKey(group.Key))
+                    {
+                        var latestFile = _categoryLatestFiles[group.Key];
+                        <div class="file-row latest-file">
+                            <div class="file-info">
+                                <div class="file-name">
+                                    <i class="rzi rzi-star" style="color: var(--rz-warning); margin-right: 8px;" title="Latest file"></i>
+                                    @latestFile.Name
+                                </div>
+                                <div class="file-path">@latestFile.TargetPath</div>
+                            </div>
+                            <div class="file-size">@FormatFileSize(latestFile.FileSize)</div>
+                            <div class="file-actions">
+                                <RadzenButton
+                                    Icon="folder_open"
+                                    ButtonStyle="ButtonStyle.Light"
+                                    Size="ButtonSize.Medium"
+                                    Click="() => OpenFileLocation(latestFile)"
+                                    Title="Open folder" />
+                                <RadzenButton
+                                    Icon="visibility_off"
+                                    ButtonStyle="ButtonStyle.Secondary"
+                                    Variant="Variant.Flat"
+                                    Shade="Shade.Lighter"
+                                    Size="ButtonSize.Medium"
+                                    Click="() => IgnoreFile(latestFile)"
+                                    Title="Don't show again" />
+                            </div>
+                        </div>
+                    }
+
+                    @* Show other files only when expanded *@
+                    @if (IsCategoryExpanded(group.Key))
+                    {
+                        @if (!_categoryOtherFilesLoaded.ContainsKey(group.Key) || !_categoryOtherFilesLoaded[group.Key])
                         {
-                            <div class="file-row">
-                                <div class="file-info">
-                                    <div class="file-name">@file.Name</div>
-                                    <div class="file-path">@file.TargetPath</div>
-                                </div>
-                                <div class="file-size">@FormatFileSize(file.FileSize)</div>
-                                <div class="file-actions">
-                                    <RadzenButton
-                                        Icon="folder_open"
-                                        ButtonStyle="ButtonStyle.Light"
-                                        Size="ButtonSize.Medium"
-                                        Click="() => OpenFileLocation(file)"
-                                        Title="Open folder" />
-                                    <RadzenButton
-                                        Icon="visibility_off"
-                                        ButtonStyle="ButtonStyle.Secondary"
-                                        Variant="Variant.Flat"
-                                        Shade="Shade.Lighter"
-                                        Size="ButtonSize.Medium"
-                                        Click="() => IgnoreFile(file)"
-                                        Title="Don't show again" />
-                                </div>
+                            <div class="other-files-loading">
+                                <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Small" />
+                                <span>Loading other files...</span>
                             </div>
                         }
-                    </div>
-                }
+                        else if (_categoryOtherFiles.ContainsKey(group.Key) && _categoryOtherFiles[group.Key].Any())
+                        {
+                            <div class="other-files-divider">
+                                <span>Other files in @group.Key (@_categoryOtherFiles[group.Key].Count files):</span>
+                            </div>
+                            @foreach (var file in _categoryOtherFiles[group.Key].Take(49))
+                            {
+                                <div class="file-row other-file">
+                                    <div class="file-info">
+                                        <div class="file-name">@file.Name</div>
+                                        <div class="file-path">@file.TargetPath</div>
+                                    </div>
+                                    <div class="file-size">@FormatFileSize(file.FileSize)</div>
+                                    <div class="file-actions">
+                                        <RadzenButton
+                                            Icon="folder_open"
+                                            ButtonStyle="ButtonStyle.Light"
+                                            Size="ButtonSize.Medium"
+                                            Click="() => OpenFileLocation(file)"
+                                            Title="Open folder" />
+                                        <RadzenButton
+                                            Icon="visibility_off"
+                                            ButtonStyle="ButtonStyle.Secondary"
+                                            Variant="Variant.Flat"
+                                            Shade="Shade.Lighter"
+                                            Size="ButtonSize.Medium"
+                                            Click="() => IgnoreFile(file)"
+                                            Title="Don't show again" />
+                                    </div>
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <div class="other-files-empty">
+                                <span>No other files in this category</span>
+                            </div>
+                        }
+                    }
+                </div>
             </div>
         }
 
@@ -349,6 +472,12 @@
     private Dictionary<string, List<FileManagementDto>> _filteredGroups = new();
     private HashSet<string> _expandedCategories = new();
 
+    // Enhanced data structures for latest file per category with lazy loading
+    private Dictionary<string, FileManagementDto> _categoryLatestFiles = new();
+    private Dictionary<string, List<FileManagementDto>> _categoryOtherFiles = new();
+    private Dictionary<string, List<FileManagementDto>> _expandedCategoryFiles = new();
+    private Dictionary<string, bool> _categoryOtherFilesLoaded = new(); // Track which categories have loaded other files
+
     private string _searchText = string.Empty;
     private bool _isLoading = true;
     private string? _errorMessage;
@@ -371,32 +500,51 @@
             _errorMessage = null;
             StateHasChanged();
 
-            // Load recently moved files (API limit is 100 per request)
-            var result = await FilesApiService.GetFilesByStatusesAsync(
-                skip: 0,
-                take: 100, // API maximum limit
-                statuses: new[] { FileStatus.Moved },
-                cancellationToken: default);
+            // First, get all categories
+            var categoriesResult = await FilesApiService.GetDistinctCategoriesAsync();
+            if (!categoriesResult.IsSuccess || categoriesResult.Value == null)
+            {
+                _errorMessage = categoriesResult.Error ?? "Failed to load categories";
+                return;
+            }
 
-            if (result.IsSuccess && result.Value != null)
+            var categories = categoriesResult.Value.ToList();
+            _categoryLatestFiles.Clear();
+            _categoryOtherFiles.Clear();
+            _categoryOtherFilesLoaded.Clear();
+
+            // Load only the latest file (first by filename desc) for each category
+            foreach (var category in categories)
             {
-                _allFiles = result.Value.ToList();
-                GroupFilesByCategory();
-                ApplySearchFilter();
-                _totalFiles = _allFiles.Count;
+                var categoryFilesResult = await FilesApiService.GetFilesByStatusesAsync(
+                    skip: 0,
+                    take: 1, // Only get the first (latest) file
+                    statuses: new[] { FileStatus.Moved },
+                    category: category,
+                    cancellationToken: default);
+
+                if (categoryFilesResult.IsSuccess && categoryFilesResult.Value != null && categoryFilesResult.Value.Any())
+                {
+                    _categoryLatestFiles[category] = categoryFilesResult.Value.First();
+                    _categoryOtherFiles[category] = new List<FileManagementDto>(); // Initialize empty
+                    _categoryOtherFilesLoaded[category] = false; // Mark as not loaded
+                }
             }
-            else
-            {
-                _errorMessage = result.Error ?? "Failed to load files";
-                _allFiles.Clear();
-                _categoryGroups.Clear();
-                _filteredGroups.Clear();
-            }
+
+            // Update UI structures
+            _categoryGroups = _categoryLatestFiles.ToDictionary(
+                kvp => kvp.Key,
+                kvp => new List<FileManagementDto> { kvp.Value }
+            );
+
+            ApplySearchFilter();
+            _totalFiles = _categoryLatestFiles.Count; // Show count of categories with latest files
         }
         catch (Exception ex)
         {
             _errorMessage = $"Error loading data: {ex.Message}";
-            _allFiles.Clear();
+            _categoryLatestFiles.Clear();
+            _categoryOtherFiles.Clear();
             _categoryGroups.Clear();
             _filteredGroups.Clear();
         }
@@ -407,34 +555,69 @@
         }
     }
 
-    private void GroupFilesByCategory()
-    {
-        _categoryGroups = _allFiles
-            .Where(f => !string.IsNullOrEmpty(f.FileCategory))
-            .GroupBy(f => f.FileCategory!)
-            .OrderByDescending(g => g.Count())
-            .ThenBy(g => g.Key)
-            .ToDictionary(g => g.Key, g => g.OrderByDescending(f => f.CreatedDate ?? DateTime.MinValue).ToList());
-    }
 
     private void ApplySearchFilter()
     {
         if (string.IsNullOrWhiteSpace(_searchText))
         {
-            _filteredGroups = _categoryGroups;
+            // Show all categories with latest files (maintain expanded state)
+            _filteredGroups = new Dictionary<string, List<FileManagementDto>>();
+
+            foreach (var kvp in _categoryLatestFiles)
+            {
+                var category = kvp.Key;
+                var latestFile = kvp.Value;
+
+                if (IsCategoryExpanded(category) && _categoryOtherFiles.ContainsKey(category))
+                {
+                    // Show latest + all other files for expanded categories
+                    var allFiles = new List<FileManagementDto> { latestFile };
+                    allFiles.AddRange(_categoryOtherFiles[category]);
+                    _filteredGroups[category] = allFiles;
+                }
+                else
+                {
+                    // Show only latest file for collapsed categories
+                    _filteredGroups[category] = new List<FileManagementDto> { latestFile };
+                }
+            }
         }
         else
         {
+            // Search across both latest files and other files
             var searchLower = _searchText.ToLowerInvariant();
-            _filteredGroups = _categoryGroups
-                .Where(kvp =>
-                    kvp.Key.ToLowerInvariant().Contains(searchLower) ||
-                    kvp.Value.Any(f => f.Name.ToLowerInvariant().Contains(searchLower)))
-                .ToDictionary(
-                    kvp => kvp.Key,
-                    kvp => kvp.Value.Where(f =>
-                        kvp.Key.ToLowerInvariant().Contains(searchLower) ||
-                        f.Name.ToLowerInvariant().Contains(searchLower)).ToList());
+            _filteredGroups = new Dictionary<string, List<FileManagementDto>>();
+
+            foreach (var kvp in _categoryLatestFiles)
+            {
+                var category = kvp.Key;
+                var latestFile = kvp.Value;
+                var categoryMatches = category.ToLowerInvariant().Contains(searchLower);
+                var latestFileMatches = latestFile.Name.ToLowerInvariant().Contains(searchLower);
+
+                var matchingFiles = new List<FileManagementDto>();
+
+                // Always include latest file if category or file matches
+                if (categoryMatches || latestFileMatches)
+                {
+                    matchingFiles.Add(latestFile);
+                }
+
+                // Check other files for matches
+                if (_categoryOtherFiles.ContainsKey(category))
+                {
+                    var matchingOtherFiles = _categoryOtherFiles[category]
+                        .Where(f => categoryMatches || f.Name.ToLowerInvariant().Contains(searchLower))
+                        .ToList();
+                    matchingFiles.AddRange(matchingOtherFiles);
+                }
+
+                // Only add category if it has matching files
+                if (matchingFiles.Any())
+                {
+                    _filteredGroups[category] = matchingFiles;
+                }
+            }
         }
     }
 
@@ -445,12 +628,77 @@
         StateHasChanged();
     }
 
-    private void ToggleCategoryExpansion(string category)
+    private async Task ToggleCategoryExpansion(string category)
     {
-        if (_expandedCategories.Contains(category))
+        if (_expandedCategoryFiles.ContainsKey(category))
+        {
+            // Collapse: Hide other files, show only latest
+            _expandedCategoryFiles.Remove(category);
             _expandedCategories.Remove(category);
+
+            if (_categoryLatestFiles.ContainsKey(category))
+            {
+                _categoryGroups[category] = new List<FileManagementDto> { _categoryLatestFiles[category] };
+            }
+        }
         else
-            _expandedCategories.Add(category);
+        {
+            // Expand: Load other files on demand if not already loaded
+            if (!_categoryOtherFilesLoaded.ContainsKey(category) || !_categoryOtherFilesLoaded[category])
+            {
+                await LoadOtherFilesForCategory(category);
+            }
+
+            // Show latest + all other files
+            if (_categoryOtherFiles.ContainsKey(category))
+            {
+                _expandedCategoryFiles[category] = _categoryOtherFiles[category];
+                _expandedCategories.Add(category);
+
+                var allFiles = new List<FileManagementDto>();
+                if (_categoryLatestFiles.ContainsKey(category))
+                {
+                    allFiles.Add(_categoryLatestFiles[category]);
+                }
+                allFiles.AddRange(_categoryOtherFiles[category]);
+                _categoryGroups[category] = allFiles;
+            }
+        }
+
+        // Re-apply search filter to maintain filtered view
+        ApplySearchFilter();
+        StateHasChanged();
+    }
+
+    private async Task LoadOtherFilesForCategory(string category)
+    {
+        try
+        {
+            // Load all files for this category (skip the first one since we already have it)
+            var categoryFilesResult = await FilesApiService.GetFilesByStatusesAsync(
+                skip: 1, // Skip the first file (latest) since we already have it
+                take: 100, // Get up to 100 other files
+                statuses: new[] { FileStatus.Moved },
+                category: category,
+                cancellationToken: default);
+
+            if (categoryFilesResult.IsSuccess && categoryFilesResult.Value != null)
+            {
+                _categoryOtherFiles[category] = categoryFilesResult.Value.ToList();
+                _categoryOtherFilesLoaded[category] = true;
+            }
+            else
+            {
+                _categoryOtherFiles[category] = new List<FileManagementDto>();
+                _categoryOtherFilesLoaded[category] = true; // Mark as loaded even if empty to avoid retries
+            }
+        }
+        catch (Exception)
+        {
+            // On error, just initialize as empty to avoid repeated attempts
+            _categoryOtherFiles[category] = new List<FileManagementDto>();
+            _categoryOtherFilesLoaded[category] = true;
+        }
     }
 
     private bool IsCategoryExpanded(string category) => _expandedCategories.Contains(category);
@@ -503,12 +751,26 @@
                     Duration = 3000
                 });
 
-                // Remove from current view
+                // Remove from current view - update all data structures
                 foreach (var group in _categoryGroups.Values)
                 {
                     group.RemoveAll(f => f.Hash == file.Hash);
                 }
-                GroupFilesByCategory();
+
+                // Remove from lazy-loaded data structures
+                foreach (var kvp in _categoryLatestFiles.ToList())
+                {
+                    if (kvp.Value.Hash == file.Hash)
+                    {
+                        _categoryLatestFiles.Remove(kvp.Key);
+                    }
+                }
+
+                foreach (var kvp in _categoryOtherFiles.ToList())
+                {
+                    kvp.Value.RemoveAll(f => f.Hash == file.Hash);
+                }
+
                 ApplySearchFilter();
                 StateHasChanged();
             }
@@ -564,6 +826,44 @@
         }
 
         return $"{len:0.##} {sizes[order]}";
+    }
+
+    private int GetTotalFileCount(string category)
+    {
+        var count = 0;
+        if (_categoryLatestFiles.ContainsKey(category))
+            count += 1;
+
+        // If other files are loaded, show exact count
+        if (_categoryOtherFiles.ContainsKey(category) &&
+            _categoryOtherFilesLoaded.ContainsKey(category) &&
+            _categoryOtherFilesLoaded[category])
+        {
+            count += _categoryOtherFiles[category].Count;
+        }
+        else
+        {
+            // If not loaded yet, show "+" to indicate there might be more
+            // We'll update this logic in the UI template instead
+        }
+
+        return count;
+    }
+
+    private string GetFileCountDisplay(string category)
+    {
+        var latestCount = _categoryLatestFiles.ContainsKey(category) ? 1 : 0;
+
+        if (_categoryOtherFilesLoaded.ContainsKey(category) && _categoryOtherFilesLoaded[category])
+        {
+            var otherCount = _categoryOtherFiles.ContainsKey(category) ? _categoryOtherFiles[category].Count : 0;
+            var total = latestCount + otherCount;
+            return $"{total} files";
+        }
+        else
+        {
+            return latestCount > 0 ? $"{latestCount}+ files" : "0 files";
+        }
     }
 
     public async ValueTask DisposeAsync()

@@ -43,7 +43,9 @@ public class TrackedFileRepository : Repository<TrackedFile>, ITrackedFileReposi
     public async Task<IEnumerable<TrackedFile>> GetByStatusAsync(FileStatus status, CancellationToken cancellationToken = default)
     {
         // Uses IX_TrackedFiles_Status_IsActive index for optimal performance
+        // AsNoTracking for read-only query performance boost
         return await DbSet
+            .AsNoTracking()
             .Where(f => f.Status == status)
             .OrderBy(f => f.CreatedDate)
             .ToListAsync(cancellationToken);
@@ -56,6 +58,7 @@ public class TrackedFileRepository : Repository<TrackedFile>, ITrackedFileReposi
 
         // Uses IX_TrackedFiles_Status_IsActive index, filtered for New status
         return await DbSet
+            .AsNoTracking()
             .Where(f => f.Status == FileStatus.New)
             .OrderBy(f => f.CreatedDate) // FIFO processing
             .Take(limit)
@@ -67,6 +70,7 @@ public class TrackedFileRepository : Repository<TrackedFile>, ITrackedFileReposi
     {
         // Uses IX_TrackedFiles_Classification_Workflow index for Classified status
         return await DbSet
+            .AsNoTracking()
             .Where(f => f.Status == FileStatus.Classified)
             .OrderBy(f => f.ClassifiedAt) // Order by classification time
             .ToListAsync(cancellationToken);
@@ -79,6 +83,7 @@ public class TrackedFileRepository : Repository<TrackedFile>, ITrackedFileReposi
 
         // Uses IX_TrackedFiles_Organization_Workflow index for ReadyToMove status
         return await DbSet
+            .AsNoTracking()
             .Where(f => f.Status == FileStatus.ReadyToMove)
             .OrderBy(f => f.LastUpdateDate) // Order by confirmation time
             .Take(limit)
@@ -90,6 +95,7 @@ public class TrackedFileRepository : Repository<TrackedFile>, ITrackedFileReposi
     {
         // Uses IX_TrackedFiles_Error_Monitoring index for error statuses
         return await DbSet
+            .AsNoTracking()
             .Where(f => f.Status == FileStatus.Error || f.Status == FileStatus.Retry)
             .OrderByDescending(f => f.LastErrorAt) // Most recent errors first
             .ToListAsync(cancellationToken);
@@ -102,6 +108,7 @@ public class TrackedFileRepository : Repository<TrackedFile>, ITrackedFileReposi
 
         // Uses IX_TrackedFiles_Category_Stats index
         return await DbSet
+            .AsNoTracking()
             .Where(f => f.Category == category)
             .OrderByDescending(f => f.MovedAt)
             .ThenBy(f => f.FileName)
@@ -116,6 +123,7 @@ public class TrackedFileRepository : Repository<TrackedFile>, ITrackedFileReposi
 
         // Uses IX_TrackedFiles_Classification_Workflow index
         return await DbSet
+            .AsNoTracking()
             .Where(f => f.Status == FileStatus.Classified && f.Confidence < confidenceThreshold)
             .OrderBy(f => f.Confidence) // Lowest confidence first
             .ThenBy(f => f.ClassifiedAt)
@@ -257,9 +265,11 @@ public class TrackedFileRepository : Repository<TrackedFile>, ITrackedFileReposi
     public async Task<IEnumerable<string>> GetDistinctCategoriesAsync(CancellationToken cancellationToken = default)
     {
         // Uses IX_TrackedFiles_Category_Stats index for efficient category queries
+        // AsNoTracking for optimal read performance (most frequently called for UI dropdowns)
         return await DbSet
+            .AsNoTracking()
             .Where(f => !string.IsNullOrEmpty(f.Category))
-            .Select(f => f.Category)
+            .Select(f => f.Category!)
             .Distinct()
             .OrderBy(c => c)
             .ToListAsync(cancellationToken);
