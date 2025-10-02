@@ -1,13 +1,14 @@
 #!/bin/bash
 
 #############################################################################
-# MediaButler API Deployment Script for QNAP ARM32 NAS
-# Optimized for ARM32 architecture with 1GB RAM
+# MediaButler API Deployment Script
+# Multi-platform: QNAP ARM32 NAS or Development Mac ARM64
 #
 # This script performs:
-# 1. Git clone from specified repository and branch
-# 2. Docker build optimized for ARM32
-# 3. Docker run with configurable parameters and environment variables
+# 1. Platform selection (QNAP NAS or MacBook ARM64)
+# 2. Git clone from specified repository and branch
+# 3. Docker build with platform-specific optimizations
+# 4. Docker run with configurable parameters and environment variables
 #############################################################################
 
 set -e  # Exit on any error
@@ -37,6 +38,13 @@ warning() {
 }
 
 #############################################################################
+# PLATFORM SELECTION
+#############################################################################
+
+# Deployment target platform
+DEPLOYMENT_PLATFORM="${DEPLOYMENT_PLATFORM:-}"  # Will be set by user selection
+
+#############################################################################
 # CONFIGURATION PARAMETERS
 # These can be modified or set via environment variables
 # Based on MediaButler architecture - all parameters consolidated here
@@ -60,12 +68,11 @@ BUILD_CONTEXT="${BUILD_CONTEXT:-.}"
 HOST_PORT="${HOST_PORT:-30129}"
 CONTAINER_PORT="${CONTAINER_PORT:-8080}"
 
-# Volume Mappings (QNAP specific paths)
-# Customize these paths according to your QNAP NAS setup
-DATA_VOLUME="${DATA_VOLUME:-/share/CACHEDEV2_DATA/Storage/Docker/mediabutler:/data}"
-WATCH_VOLUME="${WATCH_VOLUME:-/share/Download/Incoming:/watch}"
-LIBRARY_VOLUME="${LIBRARY_VOLUME:-/share/Video/Serie:/library}"
-LOGS_VOLUME="${LOGS_VOLUME:-/share/CACHEDEV2_DATA/Storage/Docker/mediabutler/logs:/app/logs}"
+# Volume Mappings - will be set based on platform selection
+DATA_VOLUME="${DATA_VOLUME:-}"
+WATCH_VOLUME="${WATCH_VOLUME:-}"
+LIBRARY_VOLUME="${LIBRARY_VOLUME:-}"
+LOGS_VOLUME="${LOGS_VOLUME:-}"
 
 # Application Environment Variables
 ASPNETCORE_ENVIRONMENT="${ASPNETCORE_ENVIRONMENT:-Production}"
@@ -76,24 +83,213 @@ WATCHFOLDER_PATH="${WATCHFOLDER_PATH:-/watch}"
 LIBRARY_PATH="${LIBRARY_PATH:-/library}"
 DATABASE_PATH="${DATABASE_PATH:-/data/mediabutler.db}"
 
+# Platform-specific optimization settings (will be set based on platform)
+MAX_BATCH_SIZE="${MAX_BATCH_SIZE:-}"
+SCAN_INTERVAL_MINUTES="${SCAN_INTERVAL_MINUTES:-}"
+DATABASE_CONNECTION_POOL_SIZE="${DATABASE_CONNECTION_POOL_SIZE:-}"
+LOG_RETENTION_DAYS="${LOG_RETENTION_DAYS:-}"
+MEMORY_THRESHOLD_MB="${MEMORY_THRESHOLD_MB:-}"
+AUTO_GC_TRIGGER_MB="${AUTO_GC_TRIGGER_MB:-}"
+DOCKER_PLATFORM="${DOCKER_PLATFORM:-}"
+
 #############################################################################
-# ARM32 NAS OPTIMIZATION SETTINGS
-# These settings are automatically applied in the Docker container
+# PLATFORM DETECTION AND SELECTION
 #############################################################################
 
-# Background processing optimization (optimized for ARM32)
-MAX_BATCH_SIZE="${MAX_BATCH_SIZE:-10}"
-SCAN_INTERVAL_MINUTES="${SCAN_INTERVAL_MINUTES:-5}"
+detect_current_platform() {
+    local arch=$(uname -m)
+    local os=$(uname -s)
 
-# Database connection pool size (optimized for limited memory)
-DATABASE_CONNECTION_POOL_SIZE="${DATABASE_CONNECTION_POOL_SIZE:-5}"
+    if [[ "$os" == "Darwin" && "$arch" == "arm64" ]]; then
+        echo "mac_arm64"
+    elif [[ "$arch" == "armv7l" ]]; then
+        echo "qnap_arm32"
+    else
+        echo "unknown"
+    fi
+}
 
-# Log file retention in days (to manage disk space)
-LOG_RETENTION_DAYS="${LOG_RETENTION_DAYS:-30}"
+select_deployment_platform() {
+    echo ""
+    echo "============================================================================="
+    echo "  DEPLOYMENT PLATFORM SELECTION"
+    echo "============================================================================="
+    echo ""
 
-# Memory optimization settings
-MEMORY_THRESHOLD_MB="${MEMORY_THRESHOLD_MB:-250}"
-AUTO_GC_TRIGGER_MB="${AUTO_GC_TRIGGER_MB:-200}"
+    local detected_platform=$(detect_current_platform)
+
+    case $detected_platform in
+        mac_arm64)
+            log "Detected platform: MacBook ARM64 (Apple Silicon)"
+            ;;
+        qnap_arm32)
+            log "Detected platform: QNAP NAS ARM32"
+            ;;
+        *)
+            log "Detected platform: $detected_platform"
+            ;;
+    esac
+
+    echo ""
+    echo "Select deployment target:"
+    echo ""
+    echo "  ${GREEN}1)${NC} QNAP NAS (ARM32) - Production deployment"
+    echo "     - ARM32 optimized build"
+    echo "     - 1GB RAM optimizations"
+    echo "     - QNAP volume paths"
+    echo ""
+    echo "  ${GREEN}2)${NC} MacBook ARM64 - Local development"
+    echo "     - ARM64 native build"
+    echo "     - Development-friendly settings"
+    echo "     - Local volume paths"
+    echo ""
+
+    read -p "$(echo -e ${YELLOW}Enter your choice [1-2]: ${NC})" -n 1 -r
+    echo ""
+    echo ""
+
+    case $REPLY in
+        1)
+            DEPLOYMENT_PLATFORM="qnap_arm32"
+            configure_qnap_platform
+            success "Selected: QNAP NAS ARM32 deployment"
+            ;;
+        2)
+            DEPLOYMENT_PLATFORM="mac_arm64"
+            configure_mac_platform
+            success "Selected: MacBook ARM64 development"
+            ;;
+        *)
+            error "Invalid selection: $REPLY"
+            exit 1
+            ;;
+    esac
+}
+
+configure_qnap_platform() {
+    log "Configuring for QNAP ARM32 NAS..."
+
+    # QNAP-specific volume paths
+    DATA_VOLUME="${DATA_VOLUME:-/share/CACHEDEV2_DATA/Storage/Docker/mediabutler:/data}"
+    WATCH_VOLUME="${WATCH_VOLUME:-/share/Download/Incoming:/watch}"
+    LIBRARY_VOLUME="${LIBRARY_VOLUME:-/share/Video/Serie:/library}"
+    LOGS_VOLUME="${LOGS_VOLUME:-/share/CACHEDEV2_DATA/Storage/Docker/mediabutler/logs:/app/logs}"
+
+    # ARM32 optimizations (1GB RAM)
+    MAX_BATCH_SIZE="${MAX_BATCH_SIZE:-10}"
+    SCAN_INTERVAL_MINUTES="${SCAN_INTERVAL_MINUTES:-5}"
+    DATABASE_CONNECTION_POOL_SIZE="${DATABASE_CONNECTION_POOL_SIZE:-5}"
+    LOG_RETENTION_DAYS="${LOG_RETENTION_DAYS:-30}"
+    MEMORY_THRESHOLD_MB="${MEMORY_THRESHOLD_MB:-250}"
+    AUTO_GC_TRIGGER_MB="${AUTO_GC_TRIGGER_MB:-200}"
+
+    # Docker platform
+    DOCKER_PLATFORM="linux/arm/v7"
+
+    # Production environment
+    ASPNETCORE_ENVIRONMENT="${ASPNETCORE_ENVIRONMENT:-Production}"
+}
+
+configure_mac_platform() {
+    log "Configuring for MacBook ARM64 development..."
+
+    # Mac-specific volume paths (local development)
+    DATA_VOLUME="${DATA_VOLUME:-$HOME/mediabutler/data:/data}"
+    WATCH_VOLUME="${WATCH_VOLUME:-$HOME/mediabutler/watch:/watch}"
+    LIBRARY_VOLUME="${LIBRARY_VOLUME:-$HOME/mediabutler/library:/library}"
+    LOGS_VOLUME="${LOGS_VOLUME:-$HOME/mediabutler/logs:/app/logs}"
+
+    # Development-friendly settings (no strict memory limits)
+    MAX_BATCH_SIZE="${MAX_BATCH_SIZE:-50}"
+    SCAN_INTERVAL_MINUTES="${SCAN_INTERVAL_MINUTES:-2}"
+    DATABASE_CONNECTION_POOL_SIZE="${DATABASE_CONNECTION_POOL_SIZE:-20}"
+    LOG_RETENTION_DAYS="${LOG_RETENTION_DAYS:-7}"
+    MEMORY_THRESHOLD_MB="${MEMORY_THRESHOLD_MB:-1000}"
+    AUTO_GC_TRIGGER_MB="${AUTO_GC_TRIGGER_MB:-800}"
+
+    # Docker platform
+    DOCKER_PLATFORM="linux/arm64"
+
+    # Development environment
+    ASPNETCORE_ENVIRONMENT="${ASPNETCORE_ENVIRONMENT:-Development}"
+
+    # Create local directories if they don't exist
+    mkdir -p "$HOME/mediabutler/data"
+    mkdir -p "$HOME/mediabutler/watch"
+    mkdir -p "$HOME/mediabutler/library"
+    mkdir -p "$HOME/mediabutler/logs"
+}
+
+review_and_confirm_configuration() {
+    echo ""
+    echo "============================================================================="
+    echo "  DEPLOYMENT CONFIGURATION REVIEW"
+    echo "============================================================================="
+    echo ""
+    echo "${BLUE}Platform Configuration:${NC}"
+    echo "  Deployment Target:  $DEPLOYMENT_PLATFORM"
+    echo "  Docker Platform:    $DOCKER_PLATFORM"
+    echo "  Environment:        $ASPNETCORE_ENVIRONMENT"
+    echo ""
+    echo "${BLUE}Git Repository Configuration:${NC}"
+    echo "  Repository URL:     $GITHUB_REPO"
+    echo "  Branch:             $GIT_BRANCH"
+    echo "  Local Clone Path:   $LOCAL_REPO_DIR"
+    echo ""
+    echo "${BLUE}Docker Configuration:${NC}"
+    echo "  Image Name:         $DOCKER_IMAGE_NAME"
+    echo "  Image Tag:          $DOCKER_IMAGE_TAG"
+    echo "  Container Name:     $CONTAINER_NAME"
+    echo "  Dockerfile Path:    $DOCKERFILE_PATH"
+    echo "  Build Context:      $BUILD_CONTEXT"
+    echo ""
+    echo "${BLUE}Container Runtime:${NC}"
+    echo "  Host Port:          $HOST_PORT"
+    echo "  Container Port:     $CONTAINER_PORT"
+    echo ""
+    echo "${BLUE}Volume Mappings (Host:Container):${NC}"
+    echo "  Data:               $DATA_VOLUME"
+    echo "  Watch Folder:       $WATCH_VOLUME"
+    echo "  Library:            $LIBRARY_VOLUME"
+    echo "  Logs:               $LOGS_VOLUME"
+    echo ""
+    echo "${BLUE}Application Settings:${NC}"
+    echo "  Log Level:          $LOG_LEVEL"
+    echo ""
+    echo "${BLUE}MediaButler Paths (Container):${NC}"
+    echo "  Watch Folder:       $WATCHFOLDER_PATH"
+    echo "  Library Path:       $LIBRARY_PATH"
+    echo "  Database Path:      $DATABASE_PATH"
+    echo ""
+    echo "${BLUE}Performance Optimization Settings:${NC}"
+    echo "  Max Batch Size:     $MAX_BATCH_SIZE"
+    echo "  Scan Interval:      $SCAN_INTERVAL_MINUTES minutes"
+    echo "  DB Pool Size:       $DATABASE_CONNECTION_POOL_SIZE"
+    echo "  Log Retention:      $LOG_RETENTION_DAYS days"
+    echo "  Memory Threshold:   ${MEMORY_THRESHOLD_MB}MB"
+    echo "  Auto GC Trigger:    ${AUTO_GC_TRIGGER_MB}MB"
+    echo ""
+    echo "============================================================================="
+    echo ""
+
+    # Prompt for confirmation
+    read -p "$(echo -e ${YELLOW}Do you want to proceed with this configuration? \(y/n\): ${NC})" -n 1 -r
+    echo ""
+
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo ""
+        log "Deployment cancelled by user."
+        echo ""
+        echo "To modify configuration:"
+        echo "  1. Edit the script: nano $0"
+        echo "  2. Or use command line options: $0 --help"
+        echo "  3. Or export environment variables before running"
+        echo ""
+        exit 0
+    fi
+
+    success "Configuration confirmed. Proceeding with deployment..."
+}
 
 #############################################################################
 # PARAMETER VALIDATION
@@ -403,7 +599,7 @@ clone_repository() {
 #############################################################################
 
 build_docker_image() {
-    log "Building Docker image for ARM32 architecture..."
+    log "Building Docker image for $DEPLOYMENT_PLATFORM..."
 
     cd "$LOCAL_REPO_DIR"
 
@@ -419,15 +615,16 @@ build_docker_image() {
 
     local image_full_name="${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
 
-    # Build Docker image with ARM32 platform specification
+    # Build Docker image with platform-specific specification
     log "Building image: $image_full_name"
     log "Dockerfile: $DOCKERFILE_PATH"
     log "Build context: $BUILD_CONTEXT"
+    log "Target platform: $DOCKER_PLATFORM"
 
     # Try to build with platform specification first
-    log "Attempting build with --platform linux/arm/v7"
+    log "Attempting build with --platform $DOCKER_PLATFORM"
     if ! docker build \
-        --platform linux/arm/v7 \
+        --platform "$DOCKER_PLATFORM" \
         -f "$DOCKERFILE_PATH" \
         -t "$image_full_name" \
         "$BUILD_CONTEXT"; then
@@ -539,7 +736,7 @@ run_docker_container() {
         -e "MediaButler__FileDiscovery__ScanIntervalMinutes=$SCAN_INTERVAL_MINUTES" \
         -e "MediaButler__ARM32__MemoryThresholdMB=$MEMORY_THRESHOLD_MB" \
         -e "MediaButler__ARM32__AutoGCTriggerMB=$AUTO_GC_TRIGGER_MB" \
-        --platform linux/arm/v7 \
+        --platform "$DOCKER_PLATFORM" \
         "$image_full_name"
 
     # Verify container is running
@@ -768,6 +965,12 @@ main() {
     parse_arguments "$@"
     print_banner
 
+    # Platform selection (QNAP ARM32 or MacBook ARM64)
+    select_deployment_platform
+
+    # Review and confirm configuration
+    review_and_confirm_configuration
+
     # Pre-deployment checks
     validate_parameters
     check_qnap_environment
@@ -784,7 +987,7 @@ main() {
     cleanup_temp_files
 
     print_summary
-    success "MediaButler API deployed successfully on QNAP ARM32 NAS!"
+    success "MediaButler API deployed successfully on $DEPLOYMENT_PLATFORM!"
 }
 
 # Trap to cleanup on script exit
