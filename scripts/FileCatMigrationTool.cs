@@ -24,14 +24,16 @@ using System.Threading.Tasks;
 /// - Safe dry-run mode for preview
 /// - Transaction-based migration with rollback support
 /// - Status mapping from FileCat flags to MediaButler workflow states
-/// - Category normalization to UPPERCASE format
+/// - Category migration from FileCat (manual categorization preserved)
+/// - ML fields (SuggestedCategory, Confidence) left null for ML to calculate
 /// - File path and naming convention alignment
 /// - Audit trail preservation (CreatedDate, LastUpdateDate)
+/// - MovedAt timestamp set to current date for Moved status files
 ///
-/// STATUS MAPPING:
-/// - IsNotToMove = true → Status.Ignored (8)
-/// - IsToCategorize = false + has category → Status.Classified (2)
-/// - All other files → Status.Moved (5)
+/// STATUS MAPPING (Updated):
+/// - IsNotToMove = 1 → Status.Ignored (8)
+/// - IsToCategorize = 0 + has category → Status.Moved (5)
+/// - All other files → Status.Classified (2)
 ///
 /// REQUIREMENTS:
 /// - Source: FileCat.db with FilesDetail table
@@ -274,7 +276,7 @@ public class FileCatMigrationTool
                     insertCommand.Parameters.AddWithValue("@Category", (object)trackedFile.Category ?? DBNull.Value);
                     insertCommand.Parameters.AddWithValue("@TargetPath", (object)trackedFile.TargetPath ?? DBNull.Value);
                     insertCommand.Parameters.AddWithValue("@ClassifiedAt", (object)trackedFile.ClassifiedAt ?? DBNull.Value);
-                    insertCommand.Parameters.AddWithValue("@MovedAt", DBNull.Value);
+                    insertCommand.Parameters.AddWithValue("@MovedAt", (object)trackedFile.MovedAt ?? DBNull.Value);
                     insertCommand.Parameters.AddWithValue("@LastError", (object)trackedFile.LastError ?? DBNull.Value);
                     insertCommand.Parameters.AddWithValue("@LastErrorAt", (object)trackedFile.LastErrorAt ?? DBNull.Value);
                     insertCommand.Parameters.AddWithValue("@RetryCount", 0);
@@ -333,11 +335,12 @@ public class FileCatMigrationTool
             OriginalPath = "", // Keep empty as this represents the watch folder path
             FileSize = (long)source.FileSize, // Migrate filesize as is
             Status = status,
-            SuggestedCategory = !string.IsNullOrEmpty(source.FileCategory) ? source.FileCategory.ToUpperInvariant() : null,
-            Confidence = !string.IsNullOrEmpty(source.FileCategory) ? 0.95m : 0.0m,
-            Category = !string.IsNullOrEmpty(source.FileCategory) && !source.IsNotToMove ? source.FileCategory.ToUpperInvariant() : null,
+            SuggestedCategory = !string.IsNullOrEmpty(source.FileCategory) ? source.FileCategory : null, // Use FileCat category as ML suggestion
+            Confidence = !string.IsNullOrEmpty(source.FileCategory) ? 1.0m : 0.0m, // High confidence for existing categorized files
+            Category = !string.IsNullOrEmpty(source.FileCategory) ? source.FileCategory : null, // Always set from FileCat (manual categorization)
             TargetPath = targetPath,
-            ClassifiedAt = !string.IsNullOrEmpty(source.FileCategory) ? source.LastUpdatedDate : null,
+            ClassifiedAt = status == 2 && !string.IsNullOrEmpty(source.FileCategory) ? source.LastUpdatedDate : null, // Set for Classified status
+            MovedAt = status == 5 ? source.LastUpdatedDate : (DateTime?)null, // Use LastUpdatedDate as MovedAt for Moved status
             LastError = source.IsDeleted ? "File marked as deleted in source system" : null,
             LastErrorAt = source.IsDeleted ? source.LastUpdatedDate : null,
             CreatedDate = source.CreatedDate,
@@ -357,10 +360,10 @@ public class FileCatMigrationTool
         if (source.IsNotToMove) return 8; // Ignored
 
         // migrate records with isToCategorize = 0 with in Status = 2 (Classified)
-        if (!source.IsToCategorize && !string.IsNullOrEmpty(source.FileCategory)) return 2; // Classified
+        if (!source.IsToCategorize && !string.IsNullOrEmpty(source.FileCategory)) return 5; // Moved
 
         // migrate all other records in status = 5 (Moved)
-        return 5; // Moved
+        return 2; // Classified
     }
 
     /// <summary>
@@ -442,6 +445,7 @@ public class TrackedFileRecord
     public string? Category { get; set; }
     public string? TargetPath { get; set; }
     public DateTime? ClassifiedAt { get; set; }
+    public DateTime? MovedAt { get; set; }
     public string? LastError { get; set; }
     public DateTime? LastErrorAt { get; set; }
     public DateTime CreatedDate { get; set; }
