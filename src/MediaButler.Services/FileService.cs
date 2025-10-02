@@ -4,6 +4,7 @@ using MediaButler.Core.Enums;
 using MediaButler.Data.Repositories;
 using MediaButler.Data.UnitOfWork;
 using MediaButler.Services.Interfaces;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using System.Security.Cryptography;
 
@@ -33,6 +34,8 @@ public class FileService : IFileService
 
     /// <summary>
     /// Registers a new file for tracking based on its file path.
+    /// Implements idempotent registration: if file hash already exists, returns existing record instead of failing.
+    /// This prevents UNIQUE constraint violations from concurrent file discovery processes.
     /// </summary>
     public async Task<Result<TrackedFile>> RegisterFileAsync(string filePath, CancellationToken cancellationToken = default)
     {
@@ -44,18 +47,35 @@ public class FileService : IFileService
 
         try
         {
-            // Check if file is already tracked
-            var existsResult = await IsFileAlreadyTrackedAsync(filePath, cancellationToken);
-            if (!existsResult.IsSuccess)
-                return Result<TrackedFile>.Failure(existsResult.Error!);
-
-            if (existsResult.Value)
-                return Result<TrackedFile>.Failure($"File is already being tracked: {filePath}");
-
-            // Calculate file hash and create tracked file entity
+            // Calculate file hash first to check for existing file by hash (more reliable than path)
             var hash = await CalculateFileHashAsync(filePath, cancellationToken);
+
+            // Check if file with same hash already exists (idempotent registration)
+            var existingFile = await _trackedFileRepository.GetByHashAsync(hash, cancellationToken);
+            if (existingFile != null)
+            {
+                _logger.LogDebug(
+                    "File with hash {Hash} already registered as {ExistingFileName}. Returning existing record instead of creating duplicate.",
+                    hash, existingFile.FileName);
+
+                // Update the OriginalPath if it's different (file might have been copied/moved)
+                if (existingFile.OriginalPath != filePath)
+                {
+                    _logger.LogInformation(
+                        "Updating OriginalPath for file {Hash} from {OldPath} to {NewPath}",
+                        hash, existingFile.OriginalPath, filePath);
+                    existingFile.OriginalPath = filePath;
+                    existingFile.FileName = Path.GetFileName(filePath);
+                    _trackedFileRepository.Update(existingFile);
+                    await _unitOfWork.SaveChangesAsync(cancellationToken);
+                }
+
+                return Result<TrackedFile>.Success(existingFile);
+            }
+
+            // File is new, create TrackedFile entity
             var fileInfo = new FileInfo(filePath);
-            
+
             var trackedFile = new TrackedFile
             {
                 Hash = hash,
@@ -66,10 +86,32 @@ public class FileService : IFileService
             };
 
             _trackedFileRepository.Add(trackedFile);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-            _logger.LogInformation("Registered file for tracking: {FileName} (Hash: {Hash})", trackedFile.FileName, hash);
-            return Result<TrackedFile>.Success(trackedFile);
+            try
+            {
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                _logger.LogInformation("Registered file for tracking: {FileName} (Hash: {Hash})", trackedFile.FileName, hash);
+                return Result<TrackedFile>.Success(trackedFile);
+            }
+            catch (Microsoft.EntityFrameworkCore.DbUpdateException dbEx)
+                when (dbEx.InnerException?.Message?.Contains("UNIQUE constraint failed: TrackedFiles.Hash") == true)
+            {
+                // Race condition: Another process registered this hash between our check and insert
+                // Retrieve and return the existing record
+                _logger.LogWarning(
+                    "UNIQUE constraint violation for hash {Hash}. Another process registered this file concurrently. Retrieving existing record.",
+                    hash);
+
+                var concurrentlyAddedFile = await _trackedFileRepository.GetByHashAsync(hash, cancellationToken);
+                if (concurrentlyAddedFile != null)
+                {
+                    return Result<TrackedFile>.Success(concurrentlyAddedFile);
+                }
+
+                // Fallback: if we still can't find it, something is very wrong
+                _logger.LogError("Failed to retrieve file after UNIQUE constraint violation for hash {Hash}", hash);
+                throw;
+            }
         }
         catch (Exception ex)
         {

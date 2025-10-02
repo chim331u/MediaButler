@@ -155,6 +155,12 @@ public class TrackedFileConfiguration : BaseEntityConfiguration<TrackedFile>
             .HasDatabaseName("IX_TrackedFiles_Status_IsActive")
             .HasFilter("[IsActive] = 1");
 
+        // Multi-status query optimization (for /api/files/by-statuses endpoint)
+        // Covers Status IN (...) queries with optional Category filter
+        builder.HasIndex(t => new { t.Status, t.Category, t.CreatedDate })
+            .HasDatabaseName("IX_TrackedFiles_MultiStatus_Query")
+            .HasFilter("[IsActive] = 1");
+
         // ML classification workflow index
         builder.HasIndex(t => new { t.Status, t.Confidence, t.ClassifiedAt })
             .HasDatabaseName("IX_TrackedFiles_Classification_Workflow")
