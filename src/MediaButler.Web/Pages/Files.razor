@@ -213,8 +213,7 @@
                 <RadzenSelectBarItem Text="ALL" Value="@("ALL")" Icon="list"/>
                 <RadzenSelectBarItem Text="New" Value="@("New")" Icon="fiber_new"/>
                 @* <RadzenSelectBarItem Text="Processing" Value="@("Processing")" Icon="sync"/> *@
-                <RadzenSelectBarItem Text="ML Classified" Value="@("Classified")" Icon="psychology"/>
-                <RadzenSelectBarItem Text="Ready To Move" Value="@("ReadyToMove")" Icon="check_circle"/>
+                <RadzenSelectBarItem Text="Classified" Value="@("Classified,ReadyToMove")" Icon="psychology"/>
                 @* <RadzenSelectBarItem Text="Moving" Value="@("Moving")" Icon="swap_horiz"/> *@
                 <RadzenSelectBarItem Text="Moved" Value="@("Moved")" Icon="done"/>
                 <RadzenSelectBarItem Text="Error" Value="@("Error")" Icon="error"/>
@@ -557,7 +556,7 @@
     private string _newCategory = string.Empty;
     private string _consoleText = string.Empty;
     private int _addCategory = 0;
-    private string _selectedStatusGroup = "ReadyToMove"; // Default to "ALL" ReadyToMove
+    private string _selectedStatusGroup = "Classified"; // Default to "ALL" ReadyToMove
     private FileStatus[] _selectedStatuses = { FileStatus.New, FileStatus.Processing, FileStatus.Classified, FileStatus.ReadyToMove, FileStatus.Moving, FileStatus.Moved, FileStatus.Error, FileStatus.Retry, FileStatus.Ignored }; // Default to ALL statuses
 
     // Centralized SignalR notification subscriptions

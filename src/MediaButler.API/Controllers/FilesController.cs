@@ -503,7 +503,7 @@ public class ConfirmCategoryRequest
     /// </summary>
     [Required(ErrorMessage = "Category is required")]
     [StringLength(100, MinimumLength = 1, ErrorMessage = "Category must be between 1 and 100 characters")]
-    [RegularExpression(@"^[A-Z0-9\s\-_\.]+$", ErrorMessage = "Category can only contain uppercase letters, numbers, spaces, hyphens, underscores, and dots")]
+    [RegularExpression(@"^[A-Za-z0-9\s\-_\.]+$", ErrorMessage = "Category can only contain letters, numbers, spaces, hyphens, underscores, and dots")]
     public required string Category { get; set; }
 }
 
