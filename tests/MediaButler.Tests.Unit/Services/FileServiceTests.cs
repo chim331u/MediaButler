@@ -396,6 +396,7 @@ public class FileServiceTests : TestBase
                 0, 20,
                 It.IsAny<System.Linq.Expressions.Expression<Func<TrackedFile, bool>>>(),
                 It.IsAny<System.Linq.Expressions.Expression<Func<TrackedFile, object>>>(),
+                It.IsAny<bool>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(expectedFiles);
 
@@ -405,8 +406,8 @@ public class FileServiceTests : TestBase
         // Assert
         result.IsSuccess.Should().BeTrue();
         result.Value.Should().NotBeNull();
-        result.Value.Should().HaveCount(3);
-        result.Value.Should().AllSatisfy(file => expectedStatuses.Should().Contain(file.Status));
+        result.Value.Items.Should().HaveCount(3);
+        result.Value.Items.Should().AllSatisfy(file => expectedStatuses.Should().Contain(file.Status));
     }
 
     [Fact]
@@ -496,6 +497,7 @@ public class FileServiceTests : TestBase
                 0, 20,
                 It.IsAny<System.Linq.Expressions.Expression<Func<TrackedFile, bool>>>(),
                 It.IsAny<System.Linq.Expressions.Expression<Func<TrackedFile, object>>>(),
+                It.IsAny<bool>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(expectedFiles);
 
@@ -505,8 +507,8 @@ public class FileServiceTests : TestBase
         // Assert
         result.IsSuccess.Should().BeTrue();
         result.Value.Should().NotBeNull();
-        result.Value.Should().HaveCount(2);
-        result.Value.Should().AllSatisfy(file => file.Category.Should().Be(category));
+        result.Value.Items.Should().HaveCount(2);
+        result.Value.Items.Should().AllSatisfy(file => file.Category.Should().Be(category));
     }
 
     [Fact]
@@ -526,6 +528,7 @@ public class FileServiceTests : TestBase
                 0, 20,
                 It.IsAny<System.Linq.Expressions.Expression<Func<TrackedFile, bool>>>(),
                 It.IsAny<System.Linq.Expressions.Expression<Func<TrackedFile, object>>>(),
+                It.IsAny<bool>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(testFiles);
 
@@ -535,8 +538,8 @@ public class FileServiceTests : TestBase
         // Assert
         result.IsSuccess.Should().BeTrue();
         result.Value.Should().NotBeNull();
-        result.Value.Should().HaveCount(2);
-        result.Value.Should().AllSatisfy(file => file.Status.Should().Be(FileStatus.ReadyToMove));
+        result.Value.Items.Should().HaveCount(2);
+        result.Value.Items.Should().AllSatisfy(file => file.Status.Should().Be(FileStatus.ReadyToMove));
     }
 
     #endregion

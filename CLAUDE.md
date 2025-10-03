@@ -145,10 +145,9 @@ dotnet watch --project src/MediaButler.Web
 The Web UI now features granular individual status filtering with intelligent auto-refresh capabilities:
 
 **Individual Status Filters**:
-- **ALL**: Displays files across all statuses and categories (default view)
+- **ALL**: Displays files across all statuses and categories
 - **New**: Shows files just discovered but not yet processed
-- **ML Classified**: Shows files with completed ML classification awaiting user confirmation
-- **Ready To Move**: Shows files confirmed and ready for organization
+- **Classified**: Shows files with completed ML classification (combines Classified + ReadyToMove statuses)
 - **Moved**: Shows files successfully organized to their final location
 - **Error**: Shows files with processing errors requiring attention
 - **Ignored**: Shows files marked as ignored by user
@@ -163,13 +162,19 @@ The Web UI now features granular individual status filtering with intelligent au
 - **File Processing Updates**: Refreshes current view when file processing completes
 - **Scan Results**: Auto-switches to "ALL" when folder scan discovers new files
 
+**Server-Side Pagination**:
+- **20 records per page**: Efficient loading with server-side pagination
+- **Case-insensitive search**: Real-time search across filename and category (500ms debounce)
+- **Column sorting**: Click column headers to sort by FileName, Category, Status, CreatedDate, LastUpdateDate
+- **Default sorting**: LastUpdateDate descending (most recently updated first)
+
 **Technical Implementation**:
-- **Granular Filtering**: Each status filter maps to a single FileStatus enum value
-- **Default to ALL**: Shows comprehensive file overview on initial load
-- Uses `GET /api/files/by-statuses` endpoint for efficient multi-status filtering
+- **Granular Filtering**: Status filter supports single values or comma-separated groups (e.g., "Classified,ReadyToMove")
+- **Default to Classified**: Shows files awaiting user confirmation on initial load
+- Uses `GET /api/files/by-statuses` endpoint with pagination, search, and ordering parameters
 - SignalR integration for real-time updates without manual refresh
-- Respects API pagination limits (max 100 records per request)
-- Backward compatibility maintained for legacy group status values
+- Search uses `EF.Functions.Like()` for case-insensitive SQLite queries
+- Debounced search (500ms) prevents API flooding during typing
 
 ### Testing
 ```bash

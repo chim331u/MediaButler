@@ -71,3 +71,14 @@ public class FileFilterParams
     public const int Categorized = 2;
     public const int ToCategorize = 3;
 }
+
+/// <summary>
+/// Paginated response for file listing with server-side pagination
+/// </summary>
+public class PaginatedFilesDto
+{
+    public List<FileManagementDto> Items { get; set; } = new();
+    public int Total { get; set; }
+    public int Skip { get; set; }
+    public int Take { get; set; }
+}

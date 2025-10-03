@@ -107,10 +107,11 @@ public class Repository<TEntity> : IRepository<TEntity> where TEntity : BaseEnti
 
     /// <inheritdoc />
     public virtual async Task<IEnumerable<TEntity>> GetPagedAsync(
-        int skip, 
-        int take, 
+        int skip,
+        int take,
         Expression<Func<TEntity, bool>>? predicate = null,
         Expression<Func<TEntity, object>>? orderBy = null,
+        bool descending = false,
         CancellationToken cancellationToken = default)
     {
         if (skip < 0) throw new ArgumentException("Skip must be non-negative", nameof(skip));
@@ -127,11 +128,11 @@ public class Repository<TEntity> : IRepository<TEntity> where TEntity : BaseEnti
         // Apply ordering if provided, otherwise order by CreatedDate for consistent pagination
         if (orderBy != null)
         {
-            query = query.OrderBy(orderBy);
+            query = descending ? query.OrderByDescending(orderBy) : query.OrderBy(orderBy);
         }
         else
         {
-            query = query.OrderBy(e => e.CreatedDate);
+            query = descending ? query.OrderByDescending(e => e.CreatedDate) : query.OrderBy(e => e.CreatedDate);
         }
 
         return await query.Skip(skip).Take(take).ToListAsync(cancellationToken);

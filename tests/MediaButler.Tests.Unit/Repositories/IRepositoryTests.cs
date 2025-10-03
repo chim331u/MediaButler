@@ -154,10 +154,11 @@ public class IRepositoryTests : TestBase
 
         _mockRepository
             .Setup(repo => repo.GetPagedAsync(
-                It.IsAny<int>(), 
-                It.IsAny<int>(), 
-                It.IsAny<Expression<Func<TrackedFile, bool>>>(), 
-                It.IsAny<Expression<Func<TrackedFile, object>>>(), 
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<Expression<Func<TrackedFile, bool>>>(),
+                It.IsAny<Expression<Func<TrackedFile, object>>>(),
+                It.IsAny<bool>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(pagedFiles);
 
@@ -167,7 +168,7 @@ public class IRepositoryTests : TestBase
         // Assert
         result.Should().NotBeNull();
         result.Should().HaveCount(5);
-        _mockRepository.Verify(repo => repo.GetPagedAsync(skip, take, null, null, It.IsAny<CancellationToken>()), Times.Once);
+        _mockRepository.Verify(repo => repo.GetPagedAsync(skip, take, null, null, false, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

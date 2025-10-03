@@ -52,7 +52,7 @@ DEPLOYMENT_PLATFORM="${DEPLOYMENT_PLATFORM:-}"  # Will be set by user selection
 
 # Git Repository Configuration
 GITHUB_REPO="${GITHUB_REPO:-https://github.com/chim331u/MediaButler.git}"
-GIT_BRANCH="${GIT_BRANCH:-delploy}"  # Default branch for MediaButler (current: delploy)
+GIT_BRANCH="${GIT_BRANCH:-qnapoptimization}"  # Default branch for MediaButler (current: delploy)
 LOCAL_REPO_DIR="${LOCAL_REPO_DIR:-/tmp/MediaButler}"
 
 # Docker Configuration
@@ -65,7 +65,7 @@ DOCKERFILE_PATH="${DOCKERFILE_PATH:-Delivery/docker/api-optimized.dockerfile}"
 BUILD_CONTEXT="${BUILD_CONTEXT:-.}"
 
 # Container Runtime Configuration
-HOST_PORT="${HOST_PORT:-30129}"
+HOST_PORT="${HOST_PORT:-30139}"
 CONTAINER_PORT="${CONTAINER_PORT:-8080}"
 
 # Volume Mappings - will be set based on platform selection

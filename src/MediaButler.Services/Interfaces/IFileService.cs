@@ -182,20 +182,26 @@ public interface IFileService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets paginated list of tracked files filtered by multiple statuses.
+    /// Gets paginated list of tracked files filtered by multiple statuses with search and ordering support.
     /// Enables efficient querying of files across multiple processing states.
     /// </summary>
     /// <param name="skip">Number of files to skip for pagination.</param>
     /// <param name="take">Number of files to take (page size).</param>
     /// <param name="statuses">Collection of file statuses to filter by.</param>
     /// <param name="category">Optional category filter.</param>
+    /// <param name="searchTerm">Optional search term for filename or category.</param>
+    /// <param name="orderBy">Column to sort by (FileName, Category, Status, CreatedDate, LastUpdateDate).</param>
+    /// <param name="descending">Sort direction (true for descending, false for ascending).</param>
     /// <param name="cancellationToken">Cancellation token for async operation.</param>
-    /// <returns>Result containing paginated file collection matching any of the specified statuses.</returns>
-    Task<Result<IEnumerable<TrackedFile>>> GetFilesPagedByStatusesAsync(
+    /// <returns>Result containing paginated file collection with total count.</returns>
+    Task<Result<PagedResult<TrackedFile>>> GetFilesPagedByStatusesAsync(
         int skip,
         int take,
         IEnumerable<FileStatus> statuses,
         string? category = null,
+        string? searchTerm = null,
+        string? orderBy = null,
+        bool descending = true,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -215,4 +221,21 @@ public interface IFileService
     /// <param name="cancellationToken">Cancellation token for async operation.</param>
     /// <returns>Result containing updated tracked file if successful.</returns>
     Task<Result<TrackedFile>> IgnoreFileAsync(string hash, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Represents a paginated result set with items and total count.
+/// </summary>
+/// <typeparam name="T">The type of items in the result set.</typeparam>
+public class PagedResult<T>
+{
+    /// <summary>
+    /// The items for the current page.
+    /// </summary>
+    public IEnumerable<T> Items { get; set; } = Enumerable.Empty<T>();
+
+    /// <summary>
+    /// Total number of items across all pages.
+    /// </summary>
+    public int Total { get; set; }
 }

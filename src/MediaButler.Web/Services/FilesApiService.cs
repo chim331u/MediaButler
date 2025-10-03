@@ -23,14 +23,17 @@ public interface IFilesApiService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets tracked files with pagination and filtering by multiple status values.
+    /// Gets tracked files with pagination, filtering, search, and ordering by multiple status values.
     /// Enables efficient querying across multiple processing states.
     /// </summary>
-    Task<Result<IReadOnlyList<FileManagementDto>>> GetFilesByStatusesAsync(
+    Task<Result<PaginatedFilesDto>> GetFilesByStatusesAsync(
         int skip = 0,
         int take = 20,
         FileStatus[] statuses = null!,
         string? category = null,
+        string? searchTerm = null,
+        string? orderBy = null,
+        bool descending = true,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -183,11 +186,14 @@ public class FilesApiService : IFilesApiService
         }
     }
 
-    public async Task<Result<IReadOnlyList<FileManagementDto>>> GetFilesByStatusesAsync(
+    public async Task<Result<PaginatedFilesDto>> GetFilesByStatusesAsync(
         int skip = 0,
         int take = 20,
         FileStatus[] statuses = null!,
         string? category = null,
+        string? searchTerm = null,
+        string? orderBy = null,
+        bool descending = true,
         CancellationToken cancellationToken = default)
     {
         try
@@ -195,7 +201,8 @@ public class FilesApiService : IFilesApiService
             var queryParams = new List<string>
             {
                 $"skip={skip}",
-                $"take={take}"
+                $"take={take}",
+                $"descending={descending.ToString().ToLower()}"
             };
 
             if (statuses != null && statuses.Length > 0)
@@ -209,20 +216,39 @@ public class FilesApiService : IFilesApiService
             if (!string.IsNullOrWhiteSpace(category))
                 queryParams.Add($"category={Uri.EscapeDataString(category)}");
 
+            if (!string.IsNullOrWhiteSpace(searchTerm))
+                queryParams.Add($"searchTerm={Uri.EscapeDataString(searchTerm)}");
+
+            if (!string.IsNullOrWhiteSpace(orderBy))
+                queryParams.Add($"orderBy={Uri.EscapeDataString(orderBy)}");
+
             var query = string.Join("&", queryParams);
-            var result = await _httpClient.GetAsync<TrackedFileResponse[]>($"/api/files/by-statuses?{query}", cancellationToken);
+            var result = await _httpClient.GetAsync<PaginatedFilesResponse>($"/api/files/by-statuses?{query}", cancellationToken);
 
             if (!result.IsSuccess)
             {
-                return Result<IReadOnlyList<FileManagementDto>>.Failure(result.Error, result.StatusCode);
+                return Result<PaginatedFilesDto>.Failure(result.Error, result.StatusCode);
             }
 
-            var files = result.Value?.Select(MapToFileManagementDto).ToList() ?? new List<FileManagementDto>();
-            return Result<IReadOnlyList<FileManagementDto>>.Success(files);
+            var response = result.Value;
+            if (response == null)
+            {
+                return Result<PaginatedFilesDto>.Failure("Empty response from API");
+            }
+
+            var paginatedDto = new PaginatedFilesDto
+            {
+                Items = response.Items?.Select(MapToFileManagementDto).ToList() ?? new List<FileManagementDto>(),
+                Total = response.Total,
+                Skip = response.Skip,
+                Take = response.Take
+            };
+
+            return Result<PaginatedFilesDto>.Success(paginatedDto);
         }
         catch (Exception ex)
         {
-            return Result<IReadOnlyList<FileManagementDto>>.Failure($"Failed to get files by statuses: {ex.Message}");
+            return Result<PaginatedFilesDto>.Failure($"Failed to get files by statuses: {ex.Message}");
         }
     }
 
@@ -761,6 +787,17 @@ public class BatchJobResponse
     public TimeSpan? EstimatedTimeRemaining { get; set; }
     public TimeSpan? AverageProcessingTime { get; set; }
     public List<FileProcessingResult>? DetailedResults { get; set; }
+}
+
+/// <summary>
+/// DTO for paginated files response from API
+/// </summary>
+public class PaginatedFilesResponse
+{
+    public List<TrackedFileResponse> Items { get; set; } = new();
+    public int Total { get; set; }
+    public int Skip { get; set; }
+    public int Take { get; set; }
 }
 
 /// <summary>

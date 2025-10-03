@@ -6,6 +6,7 @@ using MediaButler.Data.UnitOfWork;
 using MediaButler.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using System.Linq.Expressions;
 using System.Security.Cryptography;
 
 namespace MediaButler.Services;
@@ -556,42 +557,75 @@ public class FileService : IFileService
     /// <summary>
     /// Gets paginated list of tracked files filtered by multiple statuses.
     /// </summary>
-    public async Task<Result<IEnumerable<TrackedFile>>> GetFilesPagedByStatusesAsync(
+    public async Task<Result<PagedResult<TrackedFile>>> GetFilesPagedByStatusesAsync(
         int skip,
         int take,
         IEnumerable<FileStatus> statuses,
         string? category = null,
+        string? searchTerm = null,
+        string? orderBy = null,
+        bool descending = true,
         CancellationToken cancellationToken = default)
     {
         if (skip < 0)
-            return Result<IEnumerable<TrackedFile>>.Failure("Skip must be non-negative");
+            return Result<PagedResult<TrackedFile>>.Failure("Skip must be non-negative");
 
         if (take <= 0 || take > 1000)
-            return Result<IEnumerable<TrackedFile>>.Failure("Take must be between 1 and 1000");
+            return Result<PagedResult<TrackedFile>>.Failure("Take must be between 1 and 1000");
 
         if (statuses == null)
-            return Result<IEnumerable<TrackedFile>>.Failure("Statuses collection cannot be null");
+            return Result<PagedResult<TrackedFile>>.Failure("Statuses collection cannot be null");
 
         var statusList = statuses.ToList();
         if (!statusList.Any())
-            return Result<IEnumerable<TrackedFile>>.Failure("At least one status must be provided");
+            return Result<PagedResult<TrackedFile>>.Failure("At least one status must be provided");
 
         try
         {
+            // Build predicate with status, category, and search filters
+            // Use EF.Functions.Like for case-insensitive search in SQLite
+            Expression<Func<TrackedFile, bool>> predicate = f =>
+                statusList.Contains(f.Status) &&
+                (category == null || f.Category == category) &&
+                (searchTerm == null ||
+                 EF.Functions.Like(f.FileName, $"%{searchTerm}%") ||
+                 (f.Category != null && EF.Functions.Like(f.Category, $"%{searchTerm}%")));
+
+            // Build order expression
+            Expression<Func<TrackedFile, object>>? orderExpression = orderBy?.ToLowerInvariant() switch
+            {
+                "filename" => f => f.FileName,
+                "category" => f => f.Category ?? string.Empty,
+                "status" => f => f.Status,
+                "createddate" => f => f.CreatedDate,
+                "lastupdatedate" => f => f.LastUpdateDate,
+                _ => f => f.LastUpdateDate // Default: LastUpdateDate DESC (BaseEntity initializes this)
+            };
+
+            // Get total count first
+            var total = await _trackedFileRepository.CountAsync(predicate, cancellationToken);
+
+            // Get paged data
             var files = await _trackedFileRepository.GetPagedAsync(
                 skip,
                 take,
-                predicate: f => statusList.Contains(f.Status) &&
-                              (category == null || f.Category == category),
-                orderBy: f => f.CreatedDate,
+                predicate: predicate,
+                orderBy: orderExpression,
+                descending: descending,
                 cancellationToken: cancellationToken);
 
-            return Result<IEnumerable<TrackedFile>>.Success(files);
+            var result = new PagedResult<TrackedFile>
+            {
+                Items = files,
+                Total = total
+            };
+
+            return Result<PagedResult<TrackedFile>>.Success(result);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get paged files by statuses");
-            return Result<IEnumerable<TrackedFile>>.Failure($"Failed to retrieve paged files by statuses: {ex.Message}");
+            return Result<PagedResult<TrackedFile>>.Failure($"Failed to retrieve paged files by statuses: {ex.Message}");
         }
     }
 

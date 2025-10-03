@@ -94,8 +94,8 @@ public class ProcessingController : ControllerBase
                 return StatusCode(500, new { error = $"Failed to retrieve files: {result.Error}" });
             }
 
-            var filesToProcess = result.Value.ToList();
-            var totalFiles = filesToProcess.Count;
+            var filesToProcess = result.Value.Items.ToList();
+            var totalFiles = result.Value.Total;
 
             if (totalFiles == 0)
             {

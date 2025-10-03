@@ -5,6 +5,7 @@
 @using MediaButler.Core.Enums
 @using Microsoft.AspNetCore.SignalR.Client
 @using Microsoft.Extensions.Options
+@using Radzen
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @inject IFilesApiService FilesApiService
@@ -246,53 +247,48 @@
         </RadzenButton>
     </RadzenRow>
 
-    @if (_fileList == null)
-    {
-        <div class="d-flex justify-content-center p-4">
-            <RadzenProgressBarCircular ShowValue="true" Value="100" Size="ProgressBarCircularSize.Large"
-                                       Mode="ProgressBarMode.Indeterminate"/>
-            <span class="ms-3">Loading files...</span>
-        </div>
-    }
-    else
-    {
-        <RadzenRow class="row p-2">
-            <RadzenTextArea @bind-Value="@_consoleText" ReadOnly="true" Rows="3"
-                            Placeholder="Console output will appear here..."></RadzenTextArea>
-        </RadzenRow>
+    <RadzenRow class="row p-2">
+        <RadzenTextArea @bind-Value="@_consoleText" ReadOnly="true" Rows="3"
+                        Placeholder="Console output will appear here..."></RadzenTextArea>
+    </RadzenRow>
 
-        <RadzenDataGrid @ref="_filesGrid"
-                        AllowFiltering="true"
-                        AllowColumnResize="true"
-                        AllowAlternatingRows="true"
-                        Density="Density.Compact"
-                        FilterMode="FilterMode.SimpleWithMenu"
-                        AllowSorting="true"
-                        AllowGrouping="true"
-                        AllowColumnPicking="true"
-                        AllowMultiColumnSorting="true"
-                        PageSize="25"
-                        AllowPaging="true"
-                        PagerHorizontalAlign="HorizontalAlign.Left"
-                        ShowPagingSummary="true"
-                        PagerAlwaysVisible="false"
-                        SelectionMode="DataGridSelectionMode.Multiple"
-                        AllowRowSelectOnRowClick="true"
-                        ColumnWidth="200px"
-                        EmptyText="No files found matching the current filter criteria"
-                        LoadingText="Loading files..."
-                        Data="@_fileList"
-                        TItem="FileManagementDto"
-                        LogicalFilterOperator="LogicalFilterOperator.And"
-                        FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
-                        @bind-Value="@_selectedFiles"
-                        RowRender="@OnRowRender"
-                        CellRender="@OnCellRender"
-                        IsLoading="@(_fileList == null)"
-                        Style="height: 70vh"
-                        class="modern-data-grid"
-                        aria-label="File management data grid"
-                        role="grid">
+    <RadzenRow class="row p-2">
+        <RadzenColumn Size="12" SizeMD="6">
+            <RadzenTextBox Value="@_searchTerm"
+                           Placeholder="Search by filename or category..."
+                           Style="width: 100%"
+                           Change="@OnSearchInput"
+                           aria-label="Search files"/>
+        </RadzenColumn>
+    </RadzenRow>
+
+    <RadzenDataGrid @ref="_filesGrid"
+                    AllowColumnResize="true"
+                    AllowAlternatingRows="true"
+                    Density="Density.Compact"
+                    AllowSorting="true"
+                    PageSize="20"
+                    AllowPaging="true"
+                    PagerHorizontalAlign="HorizontalAlign.Left"
+                    ShowPagingSummary="true"
+                    PagerAlwaysVisible="true"
+                    SelectionMode="DataGridSelectionMode.Multiple"
+                    AllowRowSelectOnRowClick="true"
+                    ColumnWidth="200px"
+                    EmptyText="No files found matching the current filter criteria"
+                    LoadingText="Loading files..."
+                    Count="@_totalCount"
+                    Data="@_fileList"
+                    LoadData="@LoadDataAsync"
+                    TItem="FileManagementDto"
+                    @bind-Value="@_selectedFiles"
+                    RowRender="@OnRowRender"
+                    CellRender="@OnCellRender"
+                    IsLoading="@_isLoading"
+                    Style="height: 70vh"
+                    class="modern-data-grid"
+                    aria-label="File management data grid"
+                    role="grid">
 
             <Columns>
 
@@ -303,7 +299,7 @@
                                       Frozen="true"
                                       MinWidth="200px"
                                       Resizable="true"
-                                      FilterValue="@_fileNameFilter">
+                                      Sortable="true">
                     <HeaderTemplate>
                         <div class="d-flex align-items-center">
                             <RadzenIcon Icon="description" class="me-2"/>
@@ -373,7 +369,8 @@
                                       Property="FileCategory"
                                       Title="Category"
                                       MinWidth="250px"
-                                      Resizable="true">
+                                      Resizable="true"
+                                      Sortable="true">
                     <HeaderTemplate>
                         <div class="d-flex align-items-center">
                             <RadzenIcon Icon="category" class="me-2"/>
@@ -533,7 +530,7 @@
 
             </Columns>
         </RadzenDataGrid>
-    }
+    
 </div>
 
 @code {
@@ -542,8 +539,13 @@
     private RadzenDataGrid<FileManagementDto>? _filesGrid;
     private IList<FileManagementDto> _selectedFiles = new List<FileManagementDto>();
 
-    // Filtering properties (for future use)
-    private string? _fileNameFilter;
+    // Server-side pagination properties
+    private bool _isLoading = false;
+    private int _totalCount = 0;
+    private string? _searchTerm;
+    private string? _orderBy;
+    private bool _descending = true;
+    private System.Threading.Timer? _searchDebounceTimer;
 
     // Existing properties (renamed for consistency)
     private bool _busyRefresh = false;
@@ -555,7 +557,7 @@
     private string _newCategory = string.Empty;
     private string _consoleText = string.Empty;
     private int _addCategory = 0;
-    private string _selectedStatusGroup = "Classified"; // Default to "ALL" ReadyToMove
+    private string _selectedStatusGroup = "Classified"; // Default to "Classified" (ML Classified + Ready To Move)
     private FileStatus[] _selectedStatuses = { FileStatus.New, FileStatus.Processing, FileStatus.Classified, FileStatus.ReadyToMove, FileStatus.Moving, FileStatus.Moved, FileStatus.Error, FileStatus.Retry, FileStatus.Ignored }; // Default to ALL statuses
 
     // Centralized SignalR notification subscriptions
@@ -810,42 +812,87 @@
         }
     }
 
-    private async Task RefreshFileListAsync()
+    private async Task LoadDataAsync(LoadDataArgs args)
     {
+        _isLoading = true;
+
         try
         {
-            // Define status groups for the new API approach
+            // Get status groups for the selected filter
             var statusGroups = GetStatusesForGroup(_selectedStatusGroup);
 
+            // Extract sorting info from args
+            if (!string.IsNullOrEmpty(args.OrderBy))
+            {
+                _orderBy = args.OrderBy;
+                // Radzen uses "Descending" suffix to indicate descending sort
+                _descending = args.OrderBy.Contains(" desc", StringComparison.OrdinalIgnoreCase);
+                // Remove the " desc" suffix if present
+                _orderBy = _orderBy.Replace(" desc", "", StringComparison.OrdinalIgnoreCase).Trim();
+            }
+
             var apiResult = await FilesApiService.GetFilesByStatusesAsync(
-                skip: 0,
-                take: 100, // API maximum limit is 100 records per request
+                skip: args.Skip ?? 0,
+                take: args.Top ?? 20,
                 statuses: statusGroups,
-                category: null // No category filter - get all categories
+                category: null,
+                searchTerm: _searchTerm,
+                orderBy: _orderBy,
+                descending: _descending
             );
 
             if (apiResult.IsSuccess && apiResult.Value != null)
             {
-                _fileList = apiResult.Value;
-                WriteConsole($"Loaded {apiResult.Value.Count} files for '{_selectedStatusGroup}' group");
+                _fileList = apiResult.Value.Items;
+                _totalCount = apiResult.Value.Total;
+                WriteConsole($"Loaded {apiResult.Value.Items.Count} of {apiResult.Value.Total} files for '{_selectedStatusGroup}' group");
             }
             else
             {
                 WriteConsole($"Failed to load files from API: {apiResult.Error}");
                 _fileList = new List<FileManagementDto>();
+                _totalCount = 0;
             }
         }
         catch (Exception ex)
         {
             WriteConsole($"Error loading files: {ex.Message}");
             _fileList = new List<FileManagementDto>();
+            _totalCount = 0;
+        }
+        finally
+        {
+            _isLoading = false;
         }
 
         StateHasChanged();
     }
 
+    private async Task RefreshFileListAsync()
+    {
+        await _filesGrid?.Reload();
+    }
+
     private FileStatus[] GetStatusesForGroup(string statusGroup)
     {
+        // Handle comma-separated status groups (e.g., "Classified,ReadyToMove")
+        if (statusGroup.Contains(','))
+        {
+            var statusNames = statusGroup.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var statusList = new List<FileStatus>();
+
+            foreach (var statusName in statusNames)
+            {
+                if (Enum.TryParse<FileStatus>(statusName, out var status))
+                {
+                    statusList.Add(status);
+                }
+            }
+
+            _selectedStatuses = statusList.ToArray();
+            return _selectedStatuses;
+        }
+
         var statuses = statusGroup switch
         {
             "ALL" => new[] { FileStatus.New, FileStatus.Processing, FileStatus.Classified, FileStatus.ReadyToMove, FileStatus.Moving, FileStatus.Moved, FileStatus.Error, FileStatus.Retry, FileStatus.Ignored },
@@ -859,11 +906,6 @@
             "Error" => new[] { FileStatus.Error },
             "Retry" => new[] { FileStatus.Retry },
             "Ignored" => new[] { FileStatus.Ignored },
-            // // Legacy group values (for backward compatibility)
-            // "TO_CLASSIFY" => new[] { FileStatus.New, FileStatus.Processing, FileStatus.Classified },
-            // "READY_TO_MOVE" => new[] { FileStatus.ReadyToMove },
-            // "ERROR" => new[] { FileStatus.Retry, FileStatus.Error },
-            // "IGNORED" => new[] { FileStatus.Ignored },
             _ => new[] { FileStatus.New, FileStatus.Processing, FileStatus.Classified, FileStatus.ReadyToMove, FileStatus.Moving, FileStatus.Moved, FileStatus.Error, FileStatus.Retry, FileStatus.Ignored } // Default to ALL
         };
 
@@ -874,7 +916,25 @@
     private async Task OnChangeStatusFilter(object value)
     {
         WriteConsole($"Status filter changed to: {_selectedStatusGroup}");
-        await RefreshFileListAsync();
+        await _filesGrid?.Reload();
+    }
+
+    private async Task OnSearchInput(string searchValue)
+    {
+        _searchTerm = searchValue;
+
+        // Dispose existing timer
+        _searchDebounceTimer?.Dispose();
+
+        // Create new timer that will trigger reload after 500ms of no typing
+        _searchDebounceTimer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await _filesGrid?.Reload();
+                StateHasChanged();
+            });
+        }, null, 500, System.Threading.Timeout.Infinite);
     }
 
     // Helper method to refresh files with ALL status (for SignalR notifications)
@@ -1302,6 +1362,9 @@
 
     public async ValueTask DisposeAsync()
     {
+        // Dispose search debounce timer
+        _searchDebounceTimer?.Dispose();
+
         // Unsubscribe from all notification events
         foreach (var subscription in _notificationSubscriptions)
         {

@@ -74,10 +74,11 @@ public interface IRepository<TEntity> where TEntity : BaseEntity
     /// <param name="cancellationToken">Cancellation token for async operation.</param>
     /// <returns>Paged collection of entities.</returns>
     Task<IEnumerable<TEntity>> GetPagedAsync(
-        int skip, 
-        int take, 
+        int skip,
+        int take,
         Expression<Func<TEntity, bool>>? predicate = null,
         Expression<Func<TEntity, object>>? orderBy = null,
+        bool descending = false,
         CancellationToken cancellationToken = default);
 
     /// <summary>

@@ -321,7 +321,7 @@ public class TrainingController : ControllerBase
                     return MediaButler.Core.Common.Result<IEnumerable<ML.Models.TrainingSample>>.Failure(filesResult.Error);
                 }
 
-                var batch = filesResult.Value.ToList();
+                var batch = filesResult.Value.Items.ToList();
                 allMovedFiles.AddRange(batch);
 
                 // If we got less than the batch size, we've reached the end
@@ -352,7 +352,7 @@ public class TrainingController : ControllerBase
 
                 if (fallbackResult.IsSuccess)
                 {
-                    var fallbackFiles = fallbackResult.Value
+                    var fallbackFiles = fallbackResult.Value.Items
                         .Where(f => !string.IsNullOrEmpty(f.Category) && !string.IsNullOrEmpty(f.FileName))
                         .ToList();
 
