@@ -84,17 +84,23 @@ public class FilesController : ControllerBase
     /// <param name="take">Number of files to take (page size, max 100)</param>
     /// <param name="statuses">Array of file status values to filter by</param>
     /// <param name="category">Optional category filter</param>
-    /// <returns>List of tracked files matching any of the specified statuses</returns>
+    /// <param name="searchTerm">Optional search term for filename or category</param>
+    /// <param name="orderBy">Column to sort by (FileName, Category, Status, CreatedDate, LastUpdateDate)</param>
+    /// <param name="descending">Sort direction (true for descending, false for ascending)</param>
+    /// <returns>Paginated list of tracked files matching any of the specified statuses</returns>
     /// <response code="200">Files retrieved successfully</response>
     /// <response code="400">Invalid pagination or filter parameters</response>
     [HttpGet("by-statuses")]
-    [ProducesResponseType(typeof(IEnumerable<TrackedFileResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(PaginatedFilesResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetFilesByStatuses(
         [FromQuery] int skip = 0,
         [FromQuery] int take = 20,
         [FromQuery] string[] statuses = null!,
-        [FromQuery] string? category = null)
+        [FromQuery] string? category = null,
+        [FromQuery] string? searchTerm = null,
+        [FromQuery] string? orderBy = null,
+        [FromQuery] bool descending = true)
     {
         if (skip < 0 || take < 1 || take > 100)
         {
@@ -125,15 +131,31 @@ public class FilesController : ControllerBase
             }
         }
 
-        var result = await _fileService.GetFilesPagedByStatusesAsync(skip, take, parsedStatuses, category);
+        var result = await _fileService.GetFilesPagedByStatusesAsync(
+            skip,
+            take,
+            parsedStatuses,
+            category,
+            searchTerm,
+            orderBy,
+            descending);
 
         if (!result.IsSuccess)
         {
             return BadRequest(new { Error = result.Error });
         }
 
-        var responseFiles = result.Value.Select(f => f.ToResponse()).ToList();
-        return Ok(responseFiles);
+        var responseFiles = result.Value.Items.Select(f => f.ToResponse()).ToList();
+
+        var paginatedResponse = new PaginatedFilesResponse
+        {
+            Items = responseFiles,
+            Total = result.Value.Total,
+            Skip = skip,
+            Take = take
+        };
+
+        return Ok(paginatedResponse);
     }
 
     /// <summary>
@@ -600,4 +622,30 @@ public class ScanResult
     /// Duration of the scan operation in milliseconds.
     /// </summary>
     public double ScanDurationMs => (ScanCompletedAt - ScanStartedAt).TotalMilliseconds;
+}
+
+/// <summary>
+/// Paginated response for file queries with total count.
+/// </summary>
+public class PaginatedFilesResponse
+{
+    /// <summary>
+    /// List of files for the current page.
+    /// </summary>
+    public List<TrackedFileResponse> Items { get; set; } = new();
+
+    /// <summary>
+    /// Total number of files matching the query (across all pages).
+    /// </summary>
+    public int Total { get; set; }
+
+    /// <summary>
+    /// Number of files skipped (pagination offset).
+    /// </summary>
+    public int Skip { get; set; }
+
+    /// <summary>
+    /// Number of files requested (page size).
+    /// </summary>
+    public int Take { get; set; }
 }

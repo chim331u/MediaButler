@@ -523,9 +523,9 @@
                     category: category,
                     cancellationToken: default);
 
-                if (categoryFilesResult.IsSuccess && categoryFilesResult.Value != null && categoryFilesResult.Value.Any())
+                if (categoryFilesResult.IsSuccess && categoryFilesResult.Value != null && categoryFilesResult.Value.Items.Any())
                 {
-                    _categoryLatestFiles[category] = categoryFilesResult.Value.First();
+                    _categoryLatestFiles[category] = categoryFilesResult.Value.Items.First();
                     _categoryOtherFiles[category] = new List<FileManagementDto>(); // Initialize empty
                     _categoryOtherFilesLoaded[category] = false; // Mark as not loaded
                 }
@@ -684,7 +684,7 @@
 
             if (categoryFilesResult.IsSuccess && categoryFilesResult.Value != null)
             {
-                _categoryOtherFiles[category] = categoryFilesResult.Value.ToList();
+                _categoryOtherFiles[category] = categoryFilesResult.Value.Items.ToList();
                 _categoryOtherFilesLoaded[category] = true;
             }
             else
