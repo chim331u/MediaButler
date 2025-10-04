@@ -292,8 +292,9 @@ public class CustomBatchFileProcessor
 
     private static int GetOptimalConcurrency(int? requestedConcurrency)
     {
-        // ARM32 optimization - limit concurrency based on system resources
-        var systemOptimal = Math.Max(1, Math.Min(Environment.ProcessorCount, 2));
+        // ARM32 optimization - sequential processing to avoid file system contention
+        // and ensure accurate progress reporting via SignalR
+        var systemOptimal = 1;
 
         if (requestedConcurrency.HasValue)
         {
