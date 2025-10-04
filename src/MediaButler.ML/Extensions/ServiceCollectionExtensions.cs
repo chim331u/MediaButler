@@ -49,12 +49,16 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPredictionService, ML.Services.PredictionService>();
         services.AddScoped<ICategoryService, ML.Services.CategoryService>();
         services.AddScoped<IModelEvaluationService, ML.Services.ModelEvaluationService>();
-        services.AddScoped<IClassificationService, ML.Services.ClassificationService>();
-        
-        // Note: GracefulMLService will be registered separately in API project due to cross-project dependencies
 
-        // TODO: Register background services when created
-        // services.AddHostedService<MLProcessingBackgroundService>();
+        // Register Real ML Classification Service (replaces mock implementation)
+        // Uses PredictionService orchestrator with graceful fallback to mock if model not ready
+        services.AddScoped<IClassificationService, ML.Services.RealClassificationService>();
+
+        // Register ML model warmup service for startup optimization
+        // Pre-loads FastText model to avoid first-request latency (500-2000ms warmup time)
+        services.AddHostedService<ML.Services.MLModelWarmupService>();
+
+        // Note: GracefulMLService will be registered separately in API project due to cross-project dependencies
 
         // Register ML health checks
         services.AddHealthChecks()
@@ -76,7 +80,7 @@ public static class ServiceCollectionExtensions
         // Register ML configuration with custom options
         services.Configure(configureOptions);
 
-        // Register ML service implementations  
+        // Register ML service implementations
         services.AddScoped<ITokenizerService, ML.Services.TokenizerService>();
         services.AddScoped<IFeatureEngineeringService, ML.Services.FeatureEngineeringService>();
         services.AddScoped<ITrainingDataService, ML.Services.TrainingDataService>();
@@ -85,7 +89,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPredictionService, ML.Services.PredictionService>();
         services.AddScoped<ICategoryService, ML.Services.CategoryService>();
         services.AddScoped<IModelEvaluationService, ML.Services.ModelEvaluationService>();
-        services.AddScoped<IClassificationService, ML.Services.ClassificationService>();
+
+        // Register Real ML Classification Service (replaces mock implementation)
+        services.AddScoped<IClassificationService, ML.Services.RealClassificationService>();
+
+        // Register ML model warmup service for startup optimization
+        services.AddHostedService<ML.Services.MLModelWarmupService>();
 
         return services;
     }
