@@ -33,8 +33,9 @@ public class QueuedHostedService : BackgroundService
         _serviceProvider = serviceProvider;
         _logger = logger;
 
-        // ARM32 optimization - max 2 concurrent background tasks
-        _maxConcurrency = Math.Max(1, Math.Min(Environment.ProcessorCount, 2));
+        // ARM32 optimization - sequential processing for file operations
+        // Prevents file system contention and ensures accurate progress tracking
+        _maxConcurrency = 1;
         _concurrencySemaphore = new SemaphoreSlim(_maxConcurrency, _maxConcurrency);
 
         // Setup cleanup timer to run every hour

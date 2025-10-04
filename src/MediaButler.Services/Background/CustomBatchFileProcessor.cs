@@ -40,6 +40,10 @@ public class CustomBatchFileProcessor
             var notificationService = serviceProvider.GetRequiredService<INotificationService>();
             var fileOrganizationService = serviceProvider.GetRequiredService<IFileOrganizationService>();
 
+            // Get optional SignalR notification service for real-time progress updates
+            var signalRService = serviceProvider.GetService(
+                Type.GetType("MediaButler.API.Services.ISignalRNotificationService, MediaButler.API"));
+
             var processor = new CustomBatchFileProcessor(logger);
             await processor.ProcessBatchInternalAsync(
                 operations,
@@ -48,6 +52,7 @@ public class CustomBatchFileProcessor
                 notificationService,
                 fileOrganizationService,
                 serviceProvider,
+                signalRService,
                 cancellationToken);
         };
     }
@@ -63,6 +68,7 @@ public class CustomBatchFileProcessor
         INotificationService notificationService,
         IFileOrganizationService fileOrganizationService,
         IServiceProvider serviceProvider,
+        object? signalRService,
         CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
@@ -96,7 +102,7 @@ public class CustomBatchFileProcessor
 
             // Process files with controlled concurrency
             await ProcessOperationsInParallel(operations, originalRequest, fileOrganizationService,
-                jobId, results, maxConcurrency, notificationService, cancellationToken);
+                jobId, results, maxConcurrency, notificationService, signalRService, cancellationToken);
 
             // Calculate final counts
             successCount = results.Count(r => r.Success);
@@ -149,6 +155,7 @@ public class CustomBatchFileProcessor
         List<FileProcessingResult> results,
         int maxConcurrency,
         INotificationService notificationService,
+        object? signalRService,
         CancellationToken cancellationToken)
     {
         var semaphore = new SemaphoreSlim(maxConcurrency, maxConcurrency);
@@ -161,7 +168,7 @@ public class CustomBatchFileProcessor
 
             var task = ProcessSingleOperationAsync(operation, currentIndex, operations.Count,
                 originalRequest, fileOrganizationService, jobId, results, semaphore,
-                notificationService, cancellationToken);
+                notificationService, signalRService, cancellationToken);
 
             tasks.Add(task);
         }
@@ -179,6 +186,7 @@ public class CustomBatchFileProcessor
         List<FileProcessingResult> results,
         SemaphoreSlim semaphore,
         INotificationService notificationService,
+        object? signalRService,
         CancellationToken cancellationToken)
     {
         await semaphore.WaitAsync(cancellationToken);
@@ -202,7 +210,7 @@ public class CustomBatchFileProcessor
 
             // Send file processing started notification
             await SendFileProcessingStartedNotification(jobId, operation, currentIndex, totalCount,
-                notificationService, cancellationToken);
+                notificationService, signalRService, cancellationToken);
 
             var result = new FileProcessingResult
             {
@@ -284,8 +292,9 @@ public class CustomBatchFileProcessor
 
     private static int GetOptimalConcurrency(int? requestedConcurrency)
     {
-        // ARM32 optimization - limit concurrency based on system resources
-        var systemOptimal = Math.Max(1, Math.Min(Environment.ProcessorCount, 2));
+        // ARM32 optimization - sequential processing to avoid file system contention
+        // and ensure accurate progress reporting via SignalR
+        var systemOptimal = 1;
 
         if (requestedConcurrency.HasValue)
         {
@@ -321,6 +330,7 @@ public class CustomBatchFileProcessor
         int currentIndex,
         int totalCount,
         INotificationService notificationService,
+        object? signalRService,
         CancellationToken cancellationToken)
     {
         try
@@ -328,6 +338,21 @@ public class CustomBatchFileProcessor
             var progress = (currentIndex * 100) / totalCount;
             var message = $"Processing file {currentIndex}/{totalCount} ({progress}%): {operation.TrackedFile.FileName} → {operation.ConfirmedCategory}";
             await notificationService.NotifyOperationStartedAsync(operation.TrackedFile.Hash, message, cancellationToken);
+
+            // Send SignalR job progress notification if available
+            if (signalRService != null)
+            {
+                var notifyMethod = signalRService.GetType().GetMethod("NotifyJobProgressAsync");
+                if (notifyMethod != null)
+                {
+                    var task = notifyMethod.Invoke(signalRService, new object[] { "move", message, progress }) as Task;
+                    if (task != null)
+                    {
+                        await task;
+                        _logger.LogDebug("Sent SignalR job progress notification: {Progress}%", progress);
+                    }
+                }
+            }
         }
         catch (Exception ex)
         {

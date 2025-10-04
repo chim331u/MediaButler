@@ -735,7 +735,7 @@ public class FileService : IFileService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get distinct categories from tracked files");
-            return Result<IEnumerable<string>>.Failure($"Failed to retrieve categories: {ex.Message}");
+            return Result<IEnumerable<string>>.Failure($"Failed to retrieve distinct categories: {ex.Message}");
         }
     }
 

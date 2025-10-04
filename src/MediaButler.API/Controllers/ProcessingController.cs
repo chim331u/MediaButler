@@ -109,14 +109,7 @@ public class ProcessingController : ControllerBase
                 });
             }
 
-            // Check if ML model is ready before processing
-            if (!_classificationService.IsModelReady())
-            {
-                _logger.LogWarning("ML model is not ready for classification");
-                return StatusCode(503, new { error = "ML classification service is not ready. Please try again later." });
-            }
-
-            _logger.LogInformation("Starting ML evaluation for {TotalFiles} files", totalFiles);
+            _logger.LogInformation("Starting ML evaluation for {TotalFiles} files (warmup will occur automatically if needed)", totalFiles);
 
             var processedFiles = 0;
             var failedFiles = 0;

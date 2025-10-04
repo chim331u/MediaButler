@@ -14,6 +14,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - File identification via SHA256 hashing
 - Handles related files (subtitles, metadata) automatically
 
+## Development Requirements
+
+- **.NET 8 SDK**: Required for API, Services, Core, Data, ML projects
+- **.NET 10 Preview**: Required for Web UI (Blazor WebAssembly)
+- **Docker**: Required for deployment and containerization
+- **SQLite**: Database engine (included with .NET)
+- **Git**: Version control
+
+**Verify Installation:**
+```bash
+dotnet --list-sdks  # Should show 8.x and 10.x
+docker --version
+```
+
 ## Architecture - "Simple Made Easy"
 
 **Vertical Slice Architecture** over traditional layered architecture, following Rich Hickey's "Simple Made Easy" principles:
@@ -140,6 +154,11 @@ dotnet run --project src/MediaButler.Web
 dotnet watch --project src/MediaButler.Web
 ```
 
+**CORS Configuration**: Pre-configured in `appsettings.json` for local development:
+- Allows `localhost:*`, `127.0.0.1:*`, and local network IPs (`192.168.x.x`)
+- Web UI default port: 5109
+- API listens on configured port (varies by environment)
+
 #### Web UI Status Filtering (Enhanced)
 
 The Web UI now features granular individual status filtering with intelligent auto-refresh capabilities:
@@ -211,6 +230,19 @@ dotnet ef database drop --project src/MediaButler.Data --startup-project src/Med
 dotnet ef migrations list --project src/MediaButler.Data --startup-project src/MediaButler.API
 ```
 
+### Legacy Data Migration (FileCat → MediaButler)
+```bash
+# Preview migration without changes (dry-run)
+cd scripts
+dotnet run --project MigrationTool.csproj -- --dry-run
+
+# Execute live migration
+dotnet run --project MigrationTool.csproj -- --live
+```
+
+Migrates FileCat database to MediaButler with status mapping and audit trail preservation.
+See `scripts/README.md` for complete migration documentation.
+
 ### Package Management
 ```bash
 # Add package to specific project
@@ -222,6 +254,50 @@ dotnet remove src/MediaButler.API package <PackageName>
 # Restore packages
 dotnet restore
 ```
+
+## Deployment
+
+### Quick Deploy Scripts
+The `Delivery/scripts/` directory contains automated deployment scripts:
+
+```bash
+# Deploy API to QNAP NAS or MacBook
+cd Delivery/scripts
+chmod +x deploy-mediabutler-api.sh
+./deploy-mediabutler-api.sh
+
+# Deploy Web UI
+./deploy-mediabutler-web.sh
+
+# Monitor running system
+./monitor-mediabutler.sh
+
+# Backup system data
+./backup-mediabutler.sh --full
+
+# Update MediaButler to latest version
+./update-mediabutler.sh
+```
+
+**Platforms Supported:**
+- **QNAP NAS (ARM32)**: Production deployment on port 30129
+  - ARM32 optimized (1GB RAM target)
+  - QNAP volume paths (`/share/...`)
+- **MacBook ARM64**: Local development environment
+  - ARM64 native build
+  - Local paths (`~/mediabutler/...`)
+
+**Post-Deployment Access:**
+- API: `http://localhost:30129`
+- Swagger UI: `http://localhost:30129/swagger`
+- Health Check: `http://localhost:30129/health`
+
+**Docker Files**: Three Dockerfile variants available in `docker/`:
+- `api-optimized.dockerfile` - Production (recommended)
+- `api-simple.dockerfile` - Development
+- `api-minimal.dockerfile` - Minimal build
+
+See `Delivery/README.md` for complete deployment documentation.
 
 ## File Organization Logic
 
@@ -261,6 +337,43 @@ The system uses a 6-stage classification process:
 - `> 0.85`: Auto-classify (pending confirmation)
 - `0.50-0.85`: Suggest with alternatives
 - `< 0.50`: Likely new series
+
+### Real ML Implementation
+
+The system uses **RealClassificationService** as the primary ML orchestrator with graceful fallback:
+
+**Components:**
+- `RealClassificationService.cs` - Production ML orchestrator using PredictionService
+- `MLModelWarmupService.cs` - Background service for model pre-loading on startup
+- `MLModelHealthCheck.cs` - Enhanced health check with ML status reporting
+
+**Architecture:**
+```
+User Action (Force Category)
+    ↓
+ProcessingController
+    ↓
+IClassificationService (RealClassificationService)
+    ↓
+├─ Model Ready? → PredictionService → Real ML Predictions
+└─ Model Not Ready? → Mock Fallback → "MOCK SERIES"
+```
+
+**Key Features:**
+- **Automatic Model Warmup**: Pre-loads FastText model on application startup (500-2000ms)
+- **Graceful Degradation**: Falls back to mock predictions if model not trained
+- **Performance Monitoring**: Logs prediction times, confidence scores, and throughput
+- **ARM32 Optimized**: Respects memory constraints (<300MB) and batch processing limits
+
+**Performance Characteristics:**
+- **With Model Loaded**: 75-245ms per file, 40-80 files/minute
+- **With Caching**: 5-15ms per file (90%+ cache hit rate)
+- **Fallback Mode**: 10ms per file (mock predictions)
+
+**Health Check Integration:**
+- `/api/health/ml` - Shows ML implementation type (Real vs Mock)
+- Reports model ready status and prediction result types
+- Provides actionable warnings when model needs training
 
 ## File States and Workflow
 
@@ -480,6 +593,15 @@ Performance and memory optimization settings for ARM32 NAS deployment.
 | `AutoGCTriggerMB` | Memory level to trigger garbage collection | Proactive memory management for ARM32 constraints | `250` |
 | `PerformanceThresholdMs` | Maximum acceptable operation time | Performance monitoring and alerting threshold | `1000` |
 | `MaxLogFileSizeMB` | Maximum log file size before rotation | Prevents log files from consuming excessive disk space | `50` |
+
+### Logging Configuration
+Serilog is configured with ARM32-optimized logging:
+
+- **Console Output**: Structured logging for development with timestamp, level, and context
+- **File Output**: Rolling daily logs in `/data/logs/mediabutler-.log` (7-day retention)
+- **Error Logs**: Separate file for warnings/errors in `/data/logs/mediabutler-errors-.log` (30-day retention)
+- **ARM32 Optimized**: Configurable log file size limits to prevent disk space exhaustion
+- **Log Enrichment**: Automatic inclusion of machine name, process ID, and thread ID
 
 **Configuration Files:**
 - `src/MediaButler.API/appsettings.json` - Base configuration with ARM32 optimization
