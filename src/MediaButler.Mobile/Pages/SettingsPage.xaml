@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="MediaButler.Mobile.Pages.SettingsPage"
+             Title="API Settings"
+             BackgroundColor="{DynamicResource PageBackgroundColor}">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="20" Spacing="20">
+
+            <!-- Current Connection Status Card -->
+            <Frame Padding="15"
+                   CornerRadius="10"
+                   HasShadow="True"
+                   BorderColor="{DynamicResource Gray300}">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="Current Connection"
+                           FontSize="18"
+                           FontAttributes="Bold"/>
+
+                    <HorizontalStackLayout Spacing="8">
+                        <Label x:Name="StatusDot"
+                               Text="●"
+                               FontSize="20"
+                               TextColor="Gray"
+                               VerticalOptions="Center"/>
+                        <Label x:Name="StatusLabel"
+                               Text="Not connected"
+                               FontSize="14"
+                               VerticalOptions="Center"/>
+                    </HorizontalStackLayout>
+
+                    <HorizontalStackLayout Spacing="8"
+                                          x:Name="ActiveEndpointContainer"
+                                          IsVisible="False">
+                        <Label Text="Active Endpoint:"
+                               FontSize="12"
+                               TextColor="{DynamicResource Gray600}"/>
+                        <Label x:Name="ActiveEndpointLabel"
+                               FontSize="12"
+                               FontAttributes="Bold"/>
+                    </HorizontalStackLayout>
+
+                    <HorizontalStackLayout Spacing="8"
+                                          x:Name="LatencyContainer"
+                                          IsVisible="False">
+                        <Label Text="Latency:"
+                               FontSize="12"
+                               TextColor="{DynamicResource Gray600}"/>
+                        <Label x:Name="LatencyLabel"
+                               FontSize="12"
+                               FontAttributes="Bold"/>
+                    </HorizontalStackLayout>
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- Action Buttons -->
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                <Button Grid.Column="0"
+                        Text="Test Connection"
+                        Clicked="OnTestConnectionClicked"
+                        BackgroundColor="{DynamicResource Primary}"
+                        TextColor="White"/>
+                <Button Grid.Column="1"
+                        Text="Reload Config"
+                        Clicked="OnReloadConfigClicked"
+                        BackgroundColor="{DynamicResource Secondary}"
+                        TextColor="White"/>
+            </Grid>
+
+            <!-- Endpoints Section -->
+            <Label Text="Configured Endpoints"
+                   FontSize="18"
+                   FontAttributes="Bold"
+                   Margin="0,10,0,0"/>
+
+            <!-- Endpoints List -->
+            <Frame Padding="0"
+                   CornerRadius="10"
+                   HasShadow="True"
+                   BorderColor="{DynamicResource Gray300}">
+                <VerticalStackLayout x:Name="EndpointsContainer"
+                                    Spacing="0">
+                    <!-- Endpoints will be added dynamically -->
+                    <Label Text="No endpoints configured"
+                           FontSize="14"
+                           TextColor="{DynamicResource Gray600}"
+                           HorizontalOptions="Center"
+                           Margin="20"
+                           x:Name="EmptyStateLabel"/>
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- Add Endpoint Button -->
+            <Button Text="+ Add New Endpoint"
+                    Clicked="OnAddEndpointClicked"
+                    BackgroundColor="#28a745"
+                    TextColor="White"
+                    FontAttributes="Bold"/>
+
+            <!-- Test All Endpoints Button -->
+            <Button Text="Test All Endpoints"
+                    Clicked="OnTestAllEndpointsClicked"
+                    BackgroundColor="Transparent"
+                    TextColor="{DynamicResource Primary}"
+                    BorderColor="{DynamicResource Primary}"
+                    BorderWidth="1"/>
+
+            <!-- Loading Indicator -->
+            <ActivityIndicator x:Name="LoadingIndicator"
+                              IsRunning="False"
+                              IsVisible="False"
+                              Color="{DynamicResource Primary}"
+                              HeightRequest="40"/>
+
+            <!-- Advanced Settings (Collapsed by default) -->
+            <Frame Padding="15"
+                   CornerRadius="10"
+                   HasShadow="True"
+                   BorderColor="{DynamicResource Gray300}"
+                   Margin="0,10,0,0">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="Advanced Settings"
+                           FontSize="18"
+                           FontAttributes="Bold">
+                        <Label.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnAdvancedToggled"/>
+                        </Label.GestureRecognizers>
+                    </Label>
+
+                    <VerticalStackLayout x:Name="AdvancedContainer"
+                                        IsVisible="False"
+                                        Spacing="10">
+                        <HorizontalStackLayout Spacing="10">
+                            <Label Text="Health Check Path:"
+                                   FontSize="12"
+                                   VerticalOptions="Center"
+                                   WidthRequest="150"/>
+                            <Label x:Name="HealthCheckPathLabel"
+                                   FontSize="12"
+                                   FontAttributes="Bold"
+                                   VerticalOptions="Center"/>
+                        </HorizontalStackLayout>
+
+                        <HorizontalStackLayout Spacing="10">
+                            <Label Text="Timeout:"
+                                   FontSize="12"
+                                   VerticalOptions="Center"
+                                   WidthRequest="150"/>
+                            <Label x:Name="TimeoutLabel"
+                                   FontSize="12"
+                                   FontAttributes="Bold"
+                                   VerticalOptions="Center"/>
+                        </HorizontalStackLayout>
+
+                        <HorizontalStackLayout Spacing="10">
+                            <Label Text="Retry Attempts:"
+                                   FontSize="12"
+                                   VerticalOptions="Center"
+                                   WidthRequest="150"/>
+                            <Label x:Name="RetryAttemptsLabel"
+                                   FontSize="12"
+                                   FontAttributes="Bold"
+                                   VerticalOptions="Center"/>
+                        </HorizontalStackLayout>
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
+            </Frame>
+
+        </VerticalStackLayout>
+    </ScrollView>
+
+</ContentPage>

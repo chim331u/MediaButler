@@ -25,6 +25,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MediaButler.Tests.Integrati
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MediaButler.Tests.Acceptance", "tests\MediaButler.Tests.Acceptance\MediaButler.Tests.Acceptance.csproj", "{DA90A3C4-837F-45F3-94A3-98BDEC25D520}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MediaButler.Mobile", "src\MediaButler.Mobile\MediaButler.Mobile.csproj", "{6403BF97-C4F5-4A76-9252-BE561B09044F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -143,6 +145,18 @@ Global
 		{DA90A3C4-837F-45F3-94A3-98BDEC25D520}.Release|x64.Build.0 = Release|Any CPU
 		{DA90A3C4-837F-45F3-94A3-98BDEC25D520}.Release|x86.ActiveCfg = Release|Any CPU
 		{DA90A3C4-837F-45F3-94A3-98BDEC25D520}.Release|x86.Build.0 = Release|Any CPU
+		{6403BF97-C4F5-4A76-9252-BE561B09044F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6403BF97-C4F5-4A76-9252-BE561B09044F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6403BF97-C4F5-4A76-9252-BE561B09044F}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{6403BF97-C4F5-4A76-9252-BE561B09044F}.Debug|x64.Build.0 = Debug|Any CPU
+		{6403BF97-C4F5-4A76-9252-BE561B09044F}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{6403BF97-C4F5-4A76-9252-BE561B09044F}.Debug|x86.Build.0 = Debug|Any CPU
+		{6403BF97-C4F5-4A76-9252-BE561B09044F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6403BF97-C4F5-4A76-9252-BE561B09044F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6403BF97-C4F5-4A76-9252-BE561B09044F}.Release|x64.ActiveCfg = Release|Any CPU
+		{6403BF97-C4F5-4A76-9252-BE561B09044F}.Release|x64.Build.0 = Release|Any CPU
+		{6403BF97-C4F5-4A76-9252-BE561B09044F}.Release|x86.ActiveCfg = Release|Any CPU
+		{6403BF97-C4F5-4A76-9252-BE561B09044F}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -157,5 +171,6 @@ Global
 		{FF6E5BE7-A0F0-403D-A446-AD3D93ECBAAF} = {B2DE757D-9767-49D3-B275-999F50B3375F}
 		{8BB87F70-8744-484B-BEA8-44753D702DE3} = {B2DE757D-9767-49D3-B275-999F50B3375F}
 		{DA90A3C4-837F-45F3-94A3-98BDEC25D520} = {B2DE757D-9767-49D3-B275-999F50B3375F}
+		{6403BF97-C4F5-4A76-9252-BE561B09044F} = {3B7B96C8-DF94-48EA-AEFC-F0BC855A5FCF}
 	EndGlobalSection
 EndGlobal
