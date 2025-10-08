@@ -8,7 +8,8 @@
       "Bash(netstat:*)",
       "Bash(findstr:*)",
       "Bash(curl:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(dotnet --list-sdks)"
     ],
     "deny": [],
     "ask": []

@@ -48,7 +48,8 @@ public partial class App : Application
 			{
 				// Load existing configuration
 				await _configService.LoadConfigurationAsync();
-				initialPage = new NavigationPage(new MainPage());
+				var mainPage = _serviceProvider.GetRequiredService<MainPage>();
+				initialPage = new NavigationPage(mainPage);
 			}
 
 			// Update window with initial page
@@ -65,7 +66,8 @@ public partial class App : Application
 
 			if (_mainWindow != null)
 			{
-				_mainWindow.Page = new NavigationPage(new MainPage());
+				var mainPage = _serviceProvider.GetRequiredService<MainPage>();
+				_mainWindow.Page = new NavigationPage(mainPage);
 			}
 		}
 	}

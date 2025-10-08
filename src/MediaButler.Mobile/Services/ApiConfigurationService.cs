@@ -130,11 +130,16 @@ public class ApiConfigurationService : IApiConfigurationService
 
     public ApiConfiguration GetCurrentConfiguration()
     {
-        // Return cached configuration or create default if not loaded yet
+        // Return cached configuration or throw if not loaded yet
         if (_cachedConfiguration == null)
         {
-            // Auto-initialize with default configuration
-            _cachedConfiguration = ApiConfiguration.CreateDefault();
+            // Configuration must be loaded before use - return empty configuration
+            // This will cause DiscoverActiveEndpointAsync to fail with "No enabled endpoints configured"
+            return new ApiConfiguration
+            {
+                ApiEndpoints = new List<ApiEndpoint>(),
+                ConnectionSettings = new ConnectionSettings()
+            };
         }
 
         return _cachedConfiguration;

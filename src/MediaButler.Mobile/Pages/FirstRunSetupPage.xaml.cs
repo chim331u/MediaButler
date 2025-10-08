@@ -8,15 +8,18 @@ public partial class FirstRunSetupPage : ContentPage
 {
     private readonly IApiConfigurationService _configService;
     private readonly IApiConnectionService _connectionService;
+    private readonly IServiceProvider _serviceProvider;
     private ConnectionResult? _lastTestResult;
 
     public FirstRunSetupPage(
         IApiConfigurationService configService,
-        IApiConnectionService connectionService)
+        IApiConnectionService connectionService,
+        IServiceProvider serviceProvider)
     {
         InitializeComponent();
         _configService = configService ?? throw new ArgumentNullException(nameof(configService));
         _connectionService = connectionService ?? throw new ArgumentNullException(nameof(connectionService));
+        _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
 
         // Pre-fill with common values
         ProtocolPicker.SelectedIndex = 0; // http
@@ -115,7 +118,7 @@ public partial class FirstRunSetupPage : ContentPage
     {
         var result = await DisplayAlert(
             "Use Default Configuration?",
-            "This will use the default server configuration (http://192.168.1.100:5271). You can change this later in settings.",
+            "This will use the default server configuration (http://10.0.2.2:5271 for Android emulator). You can change this later in settings.",
             "Continue",
             "Cancel");
 
@@ -244,7 +247,8 @@ public partial class FirstRunSetupPage : ContentPage
         // Use modern Windows API to update the page
         if (Application.Current?.Windows.Count > 0)
         {
-            Application.Current.Windows[0].Page = new NavigationPage(new MainPage());
+            var mainPage = _serviceProvider.GetRequiredService<MainPage>();
+            Application.Current.Windows[0].Page = new NavigationPage(mainPage);
         }
 
         return Task.CompletedTask;

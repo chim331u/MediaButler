@@ -29,6 +29,8 @@ public record ApiConfiguration
 
     /// <summary>
     /// Creates a default configuration with a single local endpoint.
+    /// Uses 10.0.2.2 for Android emulator (maps to host machine's localhost).
+    /// For physical devices or production, users should configure their actual server IP via Settings.
     /// </summary>
     public static ApiConfiguration CreateDefault()
     {
@@ -38,9 +40,9 @@ public record ApiConfiguration
             {
                 new ApiEndpoint
                 {
-                    Name = "Local",
+                    Name = "Local Development",
                     Protocol = "http",
-                    Host = "192.168.1.100",
+                    Host = "10.0.2.2", // Android emulator's localhost alias
                     Port = 5271,
                     Priority = 1,
                     Enabled = true

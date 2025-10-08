@@ -32,6 +32,7 @@ public static class MauiProgram
 		builder.Services.AddSingleton<IApiClient, ApiClient>();
 
 		// Register pages
+		builder.Services.AddTransient<MainPage>();
 		builder.Services.AddTransient<FirstRunSetupPage>();
 		builder.Services.AddTransient<SettingsPage>();
 		builder.Services.AddTransient<AddEditEndpointModal>();
