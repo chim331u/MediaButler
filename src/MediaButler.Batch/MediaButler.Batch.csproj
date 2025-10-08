@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>dotnet-MediaButler.Batch-52045cd4-4951-41cb-85b5-a7daddb333e5</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Hangfire.AspNetCore" Version="1.8.14" />
+    <PackageReference Include="Hangfire.Core" Version="1.8.14" />
+    <PackageReference Include="Hangfire.Storage.SQLite" Version="0.4.2" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MediaButler.Services\MediaButler.Services.csproj" />
+    <ProjectReference Include="..\MediaButler.Data\MediaButler.Data.csproj" />
+    <ProjectReference Include="..\MediaButler.Core\MediaButler.Core.csproj" />
+  </ItemGroup>
+</Project>

@@ -26,13 +26,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```
 MediaButler/
 ├── src/
-│   ├── MediaButler.API/           # .NET 8 Minimal API with vertical slices
+│   ├── MediaButler.API/           # .NET 8 REST API with controllers
+│   ├── MediaButler.Batch/         # .NET 8 Hangfire background worker (NEW)
 │   ├── MediaButler.Core/          # Domain models, interfaces, BaseEntity
 │   ├── MediaButler.Data/          # EF Core, SQLite, Repository pattern
 │   ├── MediaButler.ML/            # Classification engine, separate from domain
 │   ├── MediaButler.Services/      # Business logic, application services
-│   ├── MediaButler.Web/           # Web UI (Blazor Server/WebAssembly)
-│   └── MediaButler.Mobile/        # Android app (future)
+│   ├── MediaButler.Web/           # Web UI (Blazor WebAssembly .NET 10)
+│   └── MediaButler.Mobile/        # Android app (MAUI)
 ├── tests/
 │   ├── MediaButler.Tests.Unit/           # 45+ fast unit tests
 │   ├── MediaButler.Tests.Integration/    # 30+ integration tests
@@ -48,6 +49,7 @@ MediaButler/
 │   ├── appsettings.json
 │   ├── appsettings.Development.json
 │   └── appsettings.Production.json
+├── next_step.md                  # Current implementation roadmap
 └── README.md
 ```
 
@@ -72,21 +74,34 @@ MediaButler.API/Controllers/
 - **Repository Pattern**: Data access abstraction with UnitOfWork
 - **Dependency Injection**: Service layer composition via built-in DI
 - **Global Filters**: Model validation and exception handling
-- **Background Services**: Custom lightweight task queue system for ARM32 optimization
+- **Hangfire Background Jobs**: Persistent job processing with separate worker process (ARM32 optimized)
 - **Options Pattern**: Strongly-typed configuration
 - **BaseEntity Pattern**: Consistent audit trail and soft delete across all entities
 
-#### Simple Dependencies Flow
+#### Architecture: Dual-Process Design
 ```
-Controllers → Services → Repositories → Data Access
-           ↘ Shared Models ↙
+MediaButler.API (HTTP Server)
+├── Controllers → Hangfire Client (Enqueue jobs)
+├── SignalR Hubs → Real-time notifications
+└── Services → Business logic
+
+MediaButler.Batch (Background Worker)
+├── Hangfire Server → Job execution
+├── Job Processors → Batch operations, ML training, maintenance
+└── SignalR Client → Send notifications to API
+
+Shared Infrastructure
+├── Hangfire Database (SQLite) → Job persistence
+├── MediaButler Database (SQLite) → Application data
+└── Services Layer → Shared business logic
 ```
 
 **Technology Stack:**
-- .NET 8 with C# 12 (API, Services, Core, Data, ML components)
+- .NET 8 with C# 12 (API, Batch, Services, Core, Data, ML components)
 - .NET 10 preview (Web UI - Blazor WebAssembly)
 - SQLite with Entity Framework Core
 - ASP.NET Core Web API with Controllers
+- Hangfire 1.8.14 with SQLite storage (background job processing)
 - Radzen.Blazor for modern Web UI components
 - SignalR for real-time Web UI updates
 - Serilog for logging
@@ -94,14 +109,21 @@ Controllers → Services → Repositories → Data Access
 - FastText for ML classification (20MB model)
 - File system monitoring via FileSystemWatcher
 
-**Database Schema (Enhanced with BaseEntity):**
+**Database Architecture:**
+
+**MediaButler Database** (`/data/mediabutler.db`):
 - `TrackedFiles`: Main file tracking with BaseEntity audit properties
 - `ProcessingLogs`: Operation audit trail with BaseEntity
 - `UserPreferences`: User-specific settings with BaseEntity
 - `SeriesPatterns`: Learned patterns for ML classification
 - `TrainingData`: ML model training samples
-- `Jobs`: Background job tracking
 - `FileOperations`: Operation log for rollback capability
+
+**Hangfire Database** (`/data/mediabutler-hangfire.db`):
+- Managed by Hangfire (auto-created)
+- Job state, queues, statistics
+- Retention: 7 days succeeded, 30 days failed
+- Optimized with WAL mode for ARM32
 
 **Note**: `ConfigurationSettings` table removed in favor of static configuration from `appsettings.json` only.
 

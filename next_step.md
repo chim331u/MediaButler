@@ -1,0 +1,217 @@
+# Hangfire Integration - Sprint Plan
+
+## Sprint 1: Infrastructure Setup (Week 1)
+
+### Step 1.1: Create MediaButler.Batch Project
+- [ ] `dotnet new worker -n MediaButler.Batch -f net8.0`
+- [ ] Add NuGet packages: Hangfire.Core, Hangfire.AspNetCore, Hangfire.Storage.SQLite
+- [ ] Add project references: Services, Data, Core
+- [ ] Create directory structure (Jobs/, Services/, Filters/, Configuration/)
+
+### Step 1.2: Configure Separate Hangfire Database
+- [ ] Add `HangfireConnection` to appsettings.json (both projects)
+- [ ] Configure SQLite with WAL mode: `Data Source=/data/mediabutler-hangfire.db;Cache=Shared;Journal Mode=WAL;`
+- [ ] Verify database paths for Dev vs Production
+
+### Step 1.3: Configure Hangfire in API (Client Mode)
+- [ ] Remove custom queue: `AddCustomBackgroundTaskQueue(100)`
+- [ ] Add Hangfire client: `AddHangfire(config => config.UseSQLiteStorage(...))`
+- [ ] Set `WorkerCount = 0` (API only enqueues)
+- [ ] Add dashboard: `app.UseHangfireDashboard("/hangfire")`
+
+### Step 1.4: Configure Hangfire in Batch (Server Mode)
+- [ ] Setup Hangfire storage with ARM32 optimization
+- [ ] Configure server: `WorkerCount = 2`, queues: `["critical", "default", "low-priority"]`
+- [ ] Add retention policies: 7 days succeeded, 30 days failed
+- [ ] Setup recurring job registration
+
+---
+
+## Sprint 2: SignalR Integration (Week 2)
+
+### Step 2.1: Create SignalRNotificationClient (Batch)
+- [ ] Implement `SignalRNotificationClient.cs` in `MediaButler.Batch/Services/`
+- [ ] Add notification batching (10 items or 500ms flush)
+- [ ] Implement methods: `NotifyBatchJobStartedAsync`, `NotifyBatchJobProgressAsync`, `NotifyBatchJobCompletedAsync`, `NotifyBatchJobFailedAsync`
+- [ ] Add `JobNotification` model class
+
+### Step 2.2: Create API Notification Endpoint
+- [ ] Create `NotificationsController.cs` in `MediaButler.API/Controllers/`
+- [ ] Add `[HttpPost("batch")]` endpoint
+- [ ] Implement `RouteNotificationAsync` to forward to SignalR hubs
+- [ ] Add `BatchProgressData` model for deserialization
+
+### Step 2.3: Configure HTTP Client in Batch
+- [ ] Register HttpClient for SignalR API calls
+- [ ] Add configuration: `SignalRClient:ApiBaseUrl`, `NotificationEndpoint`
+- [ ] Add DI registration in `Program.cs`
+- [ ] Test connectivity: Batch → API endpoint
+
+---
+
+## Sprint 3: Migrate Batch Processing (Week 3)
+
+### Step 3.1: Create BatchFileProcessingJob
+- [ ] Create `BatchFileProcessingJob.cs` in `MediaButler.Batch/Jobs/Batch/`
+- [ ] Add attributes: `[Queue("default")]`, `[AutomaticRetry(Attempts = 3)]`
+- [ ] Inject: `IFileOrganizationService`, `SignalRNotificationClient`
+- [ ] Implement `ProcessBatchAsync` with progress notifications (every 5 files)
+- [ ] Add ARM32 delay: `await Task.Delay(50)` between files
+
+### Step 3.2: Refactor FileActionsController
+- [ ] Replace `IBackgroundTaskQueue` with `IBackgroundJobClient`
+- [ ] Change `OrganizeBatch`: `_jobClient.Enqueue<BatchFileProcessingJob>(...)`
+- [ ] Update response: return Hangfire job ID
+- [ ] Remove custom queue dependencies
+
+### Step 3.3: Update Job Status Endpoints
+- [ ] Modify `/api/v1/file-actions/batch-status/{id}`: query Hangfire `JobStorage`
+- [ ] Modify `/api/v1/file-actions/batch-jobs`: use Hangfire monitoring API
+- [ ] Remove custom `BackgroundJobInfo` queries
+
+### Step 3.4: Test Batch Operations
+- [ ] Test batch organize via Web UI
+- [ ] Verify SignalR progress updates received
+- [ ] Validate job persistence across restart
+- [ ] Check Hangfire dashboard at `/hangfire`
+
+---
+
+## Sprint 4: Additional Job Types (Week 4)
+
+### Step 4.1: File Discovery Job
+- [ ] Create `FileDiscoveryJob.cs` in `MediaButler.Batch/Jobs/FileProcessing/`
+- [ ] Add recurring job: `*/10 * * * *` (every 10 minutes)
+- [ ] Send notifications: scan started, files discovered, scan completed
+- [ ] Migrate logic from `FileDiscoveryHostedService`
+
+### Step 4.2: Model Training Job
+- [ ] Create `ModelTrainingJob.cs` in `MediaButler.Batch/Jobs/MachineLearning/`
+- [ ] Add recurring job: `0 3 * * 0` (Sunday 3 AM)
+- [ ] Send notifications: training started, epoch progress, completed/failed
+- [ ] Add queue: `[Queue("low-priority")]`
+
+### Step 4.3: Database Maintenance Jobs
+- [ ] Create `DatabaseMaintenanceJob.cs` in `MediaButler.Batch/Jobs/Maintenance/`
+- [ ] Implement VACUUM: `PRAGMA vacuum;`, ANALYZE: `PRAGMA optimize;`
+- [ ] Add recurring job: `0 2 * * 0` (Sunday 2 AM)
+- [ ] Target both databases: MediaButler + Hangfire
+
+### Step 4.4: Health Check Job
+- [ ] Create `HealthCheckJob.cs` in `MediaButler.Batch/Jobs/Monitoring/`
+- [ ] Check: disk space, memory usage, database connectivity
+- [ ] Add recurring job: `*/5 * * * *` (every 5 minutes)
+- [ ] Send notifications: system status updates
+
+---
+
+## Sprint 5: Cleanup & Testing (Week 5)
+
+### Step 5.1: Remove Custom Queue Infrastructure
+- [ ] Delete `BackgroundTaskQueue.cs`, `QueuedHostedService.cs`, `IBackgroundTaskQueue.cs`
+- [ ] Delete `BackgroundTaskQueueExtensions.cs`, `CustomBatchFileProcessor.cs`
+- [ ] Remove `AddCustomBackgroundTaskQueue()` from API Program.cs
+- [ ] Remove 6 custom queue files from `MediaButler.Services/Background/`
+
+### Step 5.2: Migrate ARM32MemoryFilter
+- [ ] Move `ARM32MemoryMonitor.cs` to `MediaButler.Batch/Filters/`
+- [ ] Create `ARM32MemoryFilter.cs` inheriting `JobFilterAttribute, IServerFilter`
+- [ ] Implement `OnPerforming`: check memory, requeue if pressure detected
+- [ ] Register filter globally: `GlobalJobFilters.Filters.Add(new ARM32MemoryFilter())`
+
+### Step 5.3: Integration Testing
+- [ ] Test batch file processing (50 files)
+- [ ] Test job persistence: restart Batch worker during job
+- [ ] Test SignalR notifications: verify Web UI receives updates
+- [ ] Test concurrent jobs: 2 workers processing simultaneously
+- [ ] Test retry logic: simulate failure, verify 3 retries
+
+### Step 5.4: Performance Benchmarking
+- [ ] Measure memory: API + Batch combined (target: < 300MB)
+- [ ] Measure job latency: enqueue to start (target: < 5s)
+- [ ] Measure notification latency: job to Web UI (target: < 100ms)
+- [ ] Compare vs custom queue: throughput, memory, CPU
+
+---
+
+## Sprint 6: Deployment & Documentation (Week 6)
+
+### Step 6.1: Docker Configuration
+- [ ] Create `Dockerfile.batch` for ARM32 deployment
+- [ ] Update `docker-compose.yml`: add `mediabutler-batch` service
+- [ ] Set memory limits: API 150MB, Batch 150MB
+- [ ] Test: `docker-compose up` on ARM32 device
+
+### Step 6.2: Systemd Services
+- [ ] Create `/etc/systemd/system/mediabutler-batch.service`
+- [ ] Configure: `MemoryMax=150M`, `Restart=always`
+- [ ] Add dependency: `After=mediabutler-api.service`
+- [ ] Test: `systemctl start mediabutler-batch`
+
+### Step 6.3: Update CLAUDE.md
+- [ ] Replace "Background Processing Architecture" section
+- [ ] Document Hangfire configuration options
+- [ ] Update job types table with SignalR notifications
+- [ ] Add dashboard access instructions: `/hangfire`
+- [ ] Document dual-database architecture
+
+### Step 6.4: Acceptance Criteria Validation
+- [ ] ✅ All batch operations work with Hangfire
+- [ ] ✅ Memory footprint < 300MB on ARM32
+- [ ] ✅ Job state survives restart
+- [ ] ✅ Dashboard accessible at `/hangfire`
+- [ ] ✅ SignalR real-time notifications working
+- [ ] ✅ 790+ tests pass (update test mocks for Hangfire)
+
+---
+
+## Rollback Plan
+
+### If Hangfire Integration Fails:
+1. **Revert code**: `git revert <commit-hash>`
+2. **Restore custom queue**: Uncomment `AddCustomBackgroundTaskQueue(100)`
+3. **Remove Hangfire packages**: `dotnet remove package Hangfire.*`
+4. **Delete Hangfire DB**: `rm /data/mediabutler-hangfire.db`
+5. **Restart services**: Both API and old queue system
+
+### Rollback Decision Points:
+- Memory > 350MB consistently
+- Job processing fails > 10% of time
+- SignalR notifications fail > 20% of time
+- Tests fail < 80% pass rate
+
+---
+
+## Success Metrics
+
+| Metric | Target | Measurement |
+|--------|--------|-------------|
+| Memory (API + Batch) | < 300MB | `docker stats` or `htop` |
+| Job Processing Time | < 2s per file | Hangfire dashboard |
+| Notification Latency | < 100ms | Browser DevTools Network tab |
+| Job Success Rate | > 95% | Hangfire statistics |
+| Code Reduction | -6 files (custom queue) | Git diff |
+| Test Pass Rate | 100% (790+ tests) | `dotnet test` |
+
+---
+
+## Estimated Timeline
+
+- **Total Duration**: 6 weeks (30 working days)
+- **Sprint Length**: 1 week per sprint
+- **Effort Distribution**:
+  - Infrastructure: 20%
+  - SignalR Integration: 20%
+  - Job Migration: 30%
+  - Testing & Cleanup: 20%
+  - Deployment & Docs: 10%
+
+---
+
+## Dependencies
+
+- ✅ Existing SignalR hubs (`NotificationHub`, `FileProcessingHub`)
+- ✅ Existing services (`IFileOrganizationService`, `INotificationService`)
+- ✅ SQLite database (`MediaButlerDbContext`)
+- ⚠️ Hangfire.Storage.SQLite ARM32 compatibility (verify before Sprint 1)
+- ⚠️ Web UI SignalR client updates (minor changes for new notification types)
