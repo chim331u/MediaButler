@@ -54,6 +54,21 @@ try
         options.SchedulePollingInterval = TimeSpan.FromSeconds(15);
     });
 
+    // Configure HttpClient for SignalR notifications to API
+    var signalRConfig = builder.Configuration.GetSection("SignalRClient");
+    var apiBaseUrl = signalRConfig["ApiBaseUrl"] ?? "http://localhost:5000";
+    var timeoutSeconds = signalRConfig.GetValue<int>("TimeoutSeconds", 30);
+
+    builder.Services.AddHttpClient<SignalRNotificationClient>(client =>
+    {
+        client.BaseAddress = new Uri(apiBaseUrl);
+        client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
+        client.DefaultRequestHeaders.Add("User-Agent", "MediaButler-Batch/1.0");
+    });
+
+    // Register SignalR notification client as singleton for reuse
+    builder.Services.AddSingleton<SignalRNotificationClient>();
+
     // Register application services (will be added in future steps)
     // TODO: Add services from MediaButler.Services (IFileOrganizationService, etc.)
 

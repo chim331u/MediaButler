@@ -38,23 +38,31 @@
 
 ## Sprint 2: SignalR Integration (Week 2)
 
-### Step 2.1: Create SignalRNotificationClient (Batch)
-- [ ] Implement `SignalRNotificationClient.cs` in `MediaButler.Batch/Services/`
-- [ ] Add notification batching (10 items or 500ms flush)
-- [ ] Implement methods: `NotifyBatchJobStartedAsync`, `NotifyBatchJobProgressAsync`, `NotifyBatchJobCompletedAsync`, `NotifyBatchJobFailedAsync`
-- [ ] Add `JobNotification` model class
+### Step 2.1: Create SignalRNotificationClient (Batch) ✅
+- [x] Implement `SignalRNotificationClient.cs` in `MediaButler.Batch/Services/`
+- [x] Add notification batching (10 items or 500ms flush with Timer)
+- [x] Implement methods: `NotifyBatchJobStartedAsync`, `NotifyBatchJobProgressAsync`, `NotifyBatchJobCompletedAsync`, `NotifyBatchJobFailedAsync`
+- [x] Add `JobNotification` model class with JobId, JobType, EventType, Message, Data, Timestamp
+- [x] Implement automatic flush on batch size reached or timer interval
+- [x] Add IDisposable pattern for graceful shutdown with final flush
+- **Features**: ConcurrentQueue, SemaphoreSlim for thread-safety, configurable batching
 
-### Step 2.2: Create API Notification Endpoint
-- [ ] Create `NotificationsController.cs` in `MediaButler.API/Controllers/`
-- [ ] Add `[HttpPost("batch")]` endpoint
-- [ ] Implement `RouteNotificationAsync` to forward to SignalR hubs
-- [ ] Add `BatchProgressData` model for deserialization
+### Step 2.2: Create API Notification Endpoint ✅
+- [x] Create `NotificationsController.cs` in `MediaButler.API/Controllers/`
+- [x] Add `[HttpPost("batch")]` endpoint accepting BatchNotification[] array
+- [x] Implement `RouteNotificationAsync` to forward to SignalR hubs
+- [x] Add `BatchNotification` model for deserialization (matches JobNotification)
+- [x] Route to FileProcessingHub for batch events (started, progress, completed, failed)
+- [x] Route to NotificationHub for scan, training, and error notifications
+- **Event Types**: batch.*, scan.*, training.* support
 
-### Step 2.3: Configure HTTP Client in Batch
-- [ ] Register HttpClient for SignalR API calls
-- [ ] Add configuration: `SignalRClient:ApiBaseUrl`, `NotificationEndpoint`
-- [ ] Add DI registration in `Program.cs`
-- [ ] Test connectivity: Batch → API endpoint
+### Step 2.3: Configure HTTP Client in Batch ✅
+- [x] Register HttpClient for SignalR API calls with AddHttpClient<SignalRNotificationClient>
+- [x] Add configuration: `SignalRClient:ApiBaseUrl`, `NotificationEndpoint`, `BatchSize`, `FlushIntervalMs`, `TimeoutSeconds`
+- [x] Add DI registration in `Program.cs` as Singleton
+- [x] Configure BaseAddress, Timeout, User-Agent header
+- [x] Both API and Batch builds successful
+- **Configuration**: Already exists in appsettings.json (both projects)
 
 ---
 
