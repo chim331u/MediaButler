@@ -106,13 +106,9 @@ builder.Services.AddHangfire(config => config
         }
     ));
 
-// Add Hangfire server in client mode (WorkerCount = 0 - no job execution in API)
-builder.Services.AddHangfireServer(options =>
-{
-    options.ServerName = "mediabutler-api-client";
-    options.WorkerCount = 0; // API only enqueues jobs, doesn't execute them
-    options.Queues = new[] { "critical", "default", "low-priority" };
-});
+// NOTE: Do NOT add Hangfire server in API (client mode)
+// API only enqueues jobs via IBackgroundJobClient
+// The MediaButler.Batch worker executes the jobs
 
 // Add SignalR services
 builder.Services.AddSignalR();
