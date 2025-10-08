@@ -2,11 +2,12 @@
 
 ## Sprint 1: Infrastructure Setup (Week 1)
 
-### Step 1.1: Create MediaButler.Batch Project
-- [ ] `dotnet new worker -n MediaButler.Batch -f net8.0`
-- [ ] Add NuGet packages: Hangfire.Core, Hangfire.AspNetCore, Hangfire.Storage.SQLite
-- [ ] Add project references: Services, Data, Core
-- [ ] Create directory structure (Jobs/, Services/, Filters/, Configuration/)
+### Step 1.1: Create MediaButler.Batch Project ✅
+- [x] `dotnet new worker -n MediaButler.Batch -f net8.0`
+- [x] Add NuGet packages: Hangfire.Core, Hangfire.AspNetCore, Hangfire.Storage.SQLite
+- [x] Add project references: Services, Data, Core
+- [x] Create directory structure (Jobs/, Services/, Filters/, Configuration/)
+- **Commit:** `89b50cb` - MediaButler.Batch project created
 
 ### Step 1.2: Configure Separate Hangfire Database
 - [ ] Add `HangfireConnection` to appsettings.json (both projects)
