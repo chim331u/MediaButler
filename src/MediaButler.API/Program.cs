@@ -18,6 +18,9 @@ using Serilog.Events;
 using FluentValidation;
 using FluentValidation.AspNetCore;
 using MediaButler.API.Configuration;
+using Hangfire;
+using Hangfire.Storage.SQLite;
+using Hangfire.Dashboard;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -88,8 +91,28 @@ builder.Services.AddScoped<INotificationService, NotificationService>();
 // Add batch file processing services
 builder.Services.AddScoped<IFileActionsService, FileActionsService>();
 
-// Add custom background task queue (lightweight alternative to Hangfire)
-builder.Services.AddCustomBackgroundTaskQueue(100); // ARM32 optimized queue
+// Add Hangfire services with SQLite storage (client mode - job enqueueing only)
+builder.Services.AddHangfire(config => config
+    .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+    .UseSimpleAssemblyNameTypeSerializer()
+    .UseRecommendedSerializerSettings()
+    .UseSQLiteStorage(
+        builder.Configuration.GetConnectionString("HangfireConnection"),
+        new SQLiteStorageOptions
+        {
+            QueuePollInterval = TimeSpan.FromSeconds(15),
+            JobExpirationCheckInterval = TimeSpan.FromHours(1),
+            InvisibilityTimeout = TimeSpan.FromMinutes(30)
+        }
+    ));
+
+// Add Hangfire server in client mode (WorkerCount = 0 - no job execution in API)
+builder.Services.AddHangfireServer(options =>
+{
+    options.ServerName = "mediabutler-api-client";
+    options.WorkerCount = 0; // API only enqueues jobs, doesn't execute them
+    options.Queues = new[] { "critical", "default", "low-priority" };
+});
 
 // Add SignalR services
 builder.Services.AddSignalR();
@@ -187,9 +210,12 @@ if (app.Environment.IsDevelopment())
         c.EnableValidator();
     });
 
-    // Background task queue monitoring available via API endpoints
-    // GET /api/v1/file-actions/batch-status/{id} for job status
-    // GET /api/v1/file-actions/batch-jobs for job list
+    // Add Hangfire Dashboard for job monitoring (dev only - no auth)
+    app.UseHangfireDashboard("/hangfire", new DashboardOptions
+    {
+        DashboardTitle = "MediaButler Background Jobs",
+        StatsPollingInterval = 10000 // 10 seconds
+    });
 }
 
 // Add request/response logging first for complete request tracking

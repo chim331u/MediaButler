@@ -9,16 +9,21 @@
 - [x] Create directory structure (Jobs/, Services/, Filters/, Configuration/)
 - **Commit:** `89b50cb` - MediaButler.Batch project created
 
-### Step 1.2: Configure Separate Hangfire Database
-- [ ] Add `HangfireConnection` to appsettings.json (both projects)
-- [ ] Configure SQLite with WAL mode: `Data Source=/data/mediabutler-hangfire.db;Cache=Shared;Journal Mode=WAL;`
-- [ ] Verify database paths for Dev vs Production
+### Step 1.2: Configure Separate Hangfire Database ✅
+- [x] Add `HangfireConnection` to appsettings.json (both projects)
+- [x] Configure SQLite with WAL mode: `Data Source=/data/mediabutler-hangfire.db;Cache=Shared;Journal Mode=WAL;`
+- [x] Verify database paths for Dev vs Production
+- **Production DB**: `/data/mediabutler-hangfire.db`
+- **Development DB**: `../../temp/mediabutler-hangfire.dev.db`
 
-### Step 1.3: Configure Hangfire in API (Client Mode)
-- [ ] Remove custom queue: `AddCustomBackgroundTaskQueue(100)`
-- [ ] Add Hangfire client: `AddHangfire(config => config.UseSQLiteStorage(...))`
-- [ ] Set `WorkerCount = 0` (API only enqueues)
-- [ ] Add dashboard: `app.UseHangfireDashboard("/hangfire")`
+### Step 1.3: Configure Hangfire in API (Client Mode) ✅
+- [x] Remove custom queue: `AddCustomBackgroundTaskQueue(100)`
+- [x] Add Hangfire client: `AddHangfire(config => config.UseSQLiteStorage(...))`
+- [x] Set `WorkerCount = 0` (API only enqueues)
+- [x] Add dashboard: `app.UseHangfireDashboard("/hangfire")`
+- [x] Add Hangfire NuGet packages to API project
+- [x] Add required using statements (Hangfire, Hangfire.Storage.SQLite, Hangfire.Dashboard)
+- **Dashboard URL**: `http://localhost:5000/hangfire` (Development only)
 
 ### Step 1.4: Configure Hangfire in Batch (Server Mode)
 - [ ] Setup Hangfire storage with ARM32 optimization
