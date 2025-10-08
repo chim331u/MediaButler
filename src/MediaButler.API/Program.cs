@@ -131,6 +131,10 @@ builder.Services.AddMediaButlerML(builder.Configuration);
 // Add background processing services with configuration
 builder.Services.AddBackgroundServices(builder.Configuration);
 
+// Add custom background task queue (temporary - will be removed in Sprint 3)
+// This is needed by FileActionsService until batch processing is migrated to Hangfire
+builder.Services.AddCustomBackgroundTaskQueue(100);
+
 // Add FluentValidation
 builder.Services.AddFluentValidationAutoValidation()
     .AddFluentValidationClientsideAdapters();
