@@ -43,10 +43,6 @@ try
             }
         ));
 
-    // Register custom job activator before AddHangfireServer
-    builder.Services.AddSingleton<Hangfire.JobActivator>(serviceProvider =>
-        new MediaButler.Batch.Infrastructure.InterfaceResolvingJobActivator(serviceProvider));
-
     // Add Hangfire server (server mode - WorkerCount = 2 for ARM32)
     var hangfireConfig = builder.Configuration.GetSection("Hangfire:Server");
     builder.Services.AddHangfireServer(options =>
@@ -98,12 +94,15 @@ try
         MediaButler.Services.RollbackService>();
 
     // Register Hangfire jobs
-    // Register concrete type for DI injection
+    // Register concrete job implementation
     builder.Services.AddScoped<MediaButler.Batch.Jobs.Batch.BatchFileProcessingJob>();
 
-    // Register interface mapping so Hangfire can resolve IBatchFileProcessor to concrete implementation
+    // Register interface mapping so IBatchFileProcessor resolves to concrete implementation
     builder.Services.AddScoped<MediaButler.Core.Services.IBatchFileProcessor,
         MediaButler.Batch.Jobs.Batch.BatchFileProcessingJob>();
+
+    // Register proxy class that API enqueues (delegates to IBatchFileProcessor)
+    builder.Services.AddScoped<MediaButler.Services.Background.BatchFileProcessingJobProxy>();
 
     // Add hosted service for recurring job registration
     builder.Services.AddHostedService<RecurringJobRegistrationService>();

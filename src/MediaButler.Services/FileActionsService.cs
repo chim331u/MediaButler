@@ -146,9 +146,9 @@ public class FileActionsService : IFileActionsService
 
             var batchName = request.BatchName ?? $"Batch-{DateTime.UtcNow:yyyyMMdd-HHmmss}";
 
-            // Enqueue job using interface - Batch worker will resolve to concrete implementation via DI
-            // The Batch worker registers both the interface and concrete type in DI container
-            var hangfireJobId = _backgroundJobClient.Enqueue<IBatchFileProcessor>(
+            // Enqueue job using concrete proxy class to avoid interface instantiation issues
+            // The proxy class in Services project delegates to IBatchFileProcessor implementation
+            var hangfireJobId = _backgroundJobClient.Enqueue<Background.BatchFileProcessingJobProxy>(
                 job => job.ProcessBatchAsync(
                     fileOperations,
                     batchName,
