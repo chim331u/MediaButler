@@ -43,6 +43,10 @@ try
             }
         ));
 
+    // Register custom job activator before AddHangfireServer
+    builder.Services.AddSingleton<Hangfire.JobActivator>(serviceProvider =>
+        new MediaButler.Batch.Infrastructure.InterfaceResolvingJobActivator(serviceProvider));
+
     // Add Hangfire server (server mode - WorkerCount = 2 for ARM32)
     var hangfireConfig = builder.Configuration.GetSection("Hangfire:Server");
     builder.Services.AddHangfireServer(options =>
@@ -105,10 +109,6 @@ try
     builder.Services.AddHostedService<RecurringJobRegistrationService>();
 
     var host = builder.Build();
-
-    // Set custom job activator globally after host is built
-    GlobalConfiguration.Configuration.UseActivator(
-        new MediaButler.Batch.Infrastructure.InterfaceResolvingJobActivator(host.Services));
 
     Log.Information("Hangfire server configured with {WorkerCount} workers",
         hangfireConfig.GetValue<int>("WorkerCount", 2));
