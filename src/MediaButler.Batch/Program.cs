@@ -93,12 +93,9 @@ try
     builder.Services.AddScoped<MediaButler.Core.Services.IRollbackService,
         MediaButler.Services.RollbackService>();
 
-    // Register Hangfire jobs
+    // Register Hangfire jobs - ONLY register the concrete type, not the interface
+    // Hangfire needs to resolve the concrete class, not the interface
     builder.Services.AddScoped<MediaButler.Batch.Jobs.Batch.BatchFileProcessingJob>();
-
-    // Register IBatchFileProcessor implementation for Hangfire job resolution
-    builder.Services.AddScoped<MediaButler.Core.Services.IBatchFileProcessor,
-        MediaButler.Batch.Jobs.Batch.BatchFileProcessingJob>();
 
     // Add hosted service for recurring job registration
     builder.Services.AddHostedService<RecurringJobRegistrationService>();

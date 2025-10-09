@@ -12,6 +12,7 @@ using Hangfire;
 using Hangfire.Storage;
 using Hangfire.Storage.Monitoring;
 using Hangfire.Common;
+using Hangfire.States;
 
 namespace MediaButler.Services;
 
@@ -145,16 +146,19 @@ public class FileActionsService : IFileActionsService
 
             var batchName = request.BatchName ?? $"Batch-{DateTime.UtcNow:yyyyMMdd-HHmmss}";
 
-            // Enqueue job to Hangfire (will be picked up by MediaButler.Batch worker)
-            // We use Hangfire's expression-based API which will serialize the method call
-            // Hangfire returns a unique job ID that we'll use for tracking
-            var hangfireJobId = _backgroundJobClient.Enqueue<IBatchFileProcessor>(
-                processor => processor.ProcessBatchAsync(
-                    fileOperations,
-                    batchName,
-                    batchName, // Use batch name as job identifier for logging
-                    request.ContinueOnError,
-                    CancellationToken.None));
+            // Enqueue job to Hangfire using runtime type resolution to avoid circular dependency
+            // Load the concrete BatchFileProcessingJob type at runtime
+            var jobType = Type.GetType("MediaButler.Batch.Jobs.Batch.BatchFileProcessingJob, MediaButler.Batch")
+                ?? throw new InvalidOperationException("Failed to load BatchFileProcessingJob type");
+
+            var method = jobType.GetMethod("ProcessBatchAsync")
+                ?? throw new InvalidOperationException("Failed to find ProcessBatchAsync method");
+
+            // Create Hangfire Job instance with concrete type
+            var job = new Job(jobType, method, fileOperations, batchName, batchName, request.ContinueOnError, CancellationToken.None);
+
+            // Enqueue the job
+            var hangfireJobId = _backgroundJobClient.Create(job, new EnqueuedState());
 
             // 7. Create response
             var response = new BatchJobResponse
