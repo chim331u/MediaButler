@@ -29,6 +29,7 @@ public class BatchFileProcessingJobProxy
     /// Processes a batch of file organization operations.
     /// This method is called by Hangfire and delegates to the actual processor.
     /// </summary>
+    [Queue("default")]
     public async Task ProcessBatchAsync(
         List<FileOrganizeOperation> operations,
         string batchName,
