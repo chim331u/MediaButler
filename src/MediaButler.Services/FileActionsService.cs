@@ -3,11 +3,12 @@ using MediaButler.Core.Common;
 using MediaButler.Core.Models;
 using MediaButler.Core.Models.Requests;
 using MediaButler.Core.Models.Responses;
+using MediaButler.Core.Services;
 using MediaButler.Data.Repositories;
 using MediaButler.Services.Interfaces;
 using MediaButler.Services.FileOperations;
 using MediaButler.Services.Background;
-using MediaButler.Services.Extensions;
+using Hangfire;
 
 namespace MediaButler.Services;
 
@@ -19,7 +20,7 @@ public class FileActionsService : IFileActionsService
 {
     private readonly ITrackedFileRepository _fileRepository;
     private readonly IPathGenerationService _pathGenerationService;
-    private readonly IBackgroundTaskQueue _backgroundTaskQueue;
+    private readonly IBackgroundJobClient _backgroundJobClient;
     private readonly ILogger<FileActionsService> _logger;
 
     /// <summary>
@@ -28,12 +29,12 @@ public class FileActionsService : IFileActionsService
     public FileActionsService(
         ITrackedFileRepository fileRepository,
         IPathGenerationService pathGenerationService,
-        IBackgroundTaskQueue backgroundTaskQueue,
+        IBackgroundJobClient backgroundJobClient,
         ILogger<FileActionsService> logger)
     {
         _fileRepository = fileRepository;
         _pathGenerationService = pathGenerationService;
-        _backgroundTaskQueue = backgroundTaskQueue;
+        _backgroundJobClient = backgroundJobClient;
         _logger = logger;
     }
 
@@ -136,15 +137,26 @@ public class FileActionsService : IFileActionsService
                 return Result<BatchJobResponse>.Failure(errorMessage);
             }
 
-            // 6. Queue background job using custom task queue
-            _logger.LogInformation("Queueing background job for {OperationCount} file operations", fileOperations.Count);
+            // 6. Enqueue Hangfire background job
+            _logger.LogInformation("Enqueueing Hangfire job for {OperationCount} file operations", fileOperations.Count);
 
-            var jobId = _backgroundTaskQueue.QueueBatchFileProcessing(fileOperations, request);
+            var batchName = request.BatchName ?? $"Batch-{DateTime.UtcNow:yyyyMMdd-HHmmss}";
+            var customJobId = Guid.NewGuid().ToString("N")[..12]; // 12-character job ID for our tracking
+
+            // Enqueue job to Hangfire (will be picked up by MediaButler.Batch worker)
+            // We use Hangfire's expression-based API which will serialize the method call
+            var hangfireJobId = _backgroundJobClient.Enqueue<IBatchFileProcessor>(
+                processor => processor.ProcessBatchAsync(
+                    fileOperations,
+                    batchName,
+                    customJobId,
+                    request.ContinueOnError,
+                    CancellationToken.None));
 
             // 7. Create response
             var response = new BatchJobResponse
             {
-                JobId = jobId,
+                JobId = customJobId,
                 Status = "Queued",
                 QueuedAt = DateTime.UtcNow,
                 TotalFiles = fileOperations.Count,
@@ -170,7 +182,7 @@ public class FileActionsService : IFileActionsService
             }
 
             _logger.LogInformation("Batch job {JobId} queued successfully for {FileCount} files",
-                jobId, fileOperations.Count);
+                customJobId, fileOperations.Count);
 
             return Result<BatchJobResponse>.Success(response);
         }
@@ -186,97 +198,23 @@ public class FileActionsService : IFileActionsService
         string jobId,
         bool includeDetails = false)
     {
-        try
-        {
-            _logger.LogDebug("Retrieving status for batch job {JobId}", jobId);
+        // TODO: Implement Hangfire monitoring API in Step 3.3
+        _logger.LogWarning("GetBatchStatusAsync not yet implemented for Hangfire jobs. JobId: {JobId}", jobId);
+        await Task.CompletedTask; // Remove warning
 
-            // Get job information from custom task queue
-            if (_backgroundTaskQueue is BackgroundTaskQueue queue)
-            {
-                var jobInfo = queue.GetJobInfo(jobId);
-                if (jobInfo == null)
-                {
-                    return Result<BatchJobResponse>.Failure($"Job {jobId} not found");
-                }
-
-                // Create response from custom queue job info
-                var response = new BatchJobResponse
-                {
-                    JobId = jobId,
-                    Status = MapCustomJobStatus(jobInfo.Status),
-                    QueuedAt = jobInfo.QueuedAt,
-                    StartedAt = jobInfo.StartedAt,
-                    CompletedAt = jobInfo.CompletedAt,
-                    TotalFiles = jobInfo.TotalFiles,
-                    ProcessedFiles = jobInfo.ProcessedFiles,
-                    SuccessfulFiles = jobInfo.SuccessfulFiles,
-                    FailedFiles = jobInfo.FailedFiles,
-                    // Note: ErrorMessage moved to Errors list for BatchJobResponse
-                };
-
-                // Add error message to errors list if present
-                if (!string.IsNullOrEmpty(jobInfo.ErrorMessage))
-                {
-                    response.Errors.Add(jobInfo.ErrorMessage);
-                }
-
-                return Result<BatchJobResponse>.Success(response);
-            }
-
-            // Fallback if queue is not BackgroundTaskQueue
-            return Result<BatchJobResponse>.Failure("Unable to retrieve job status from task queue");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error retrieving status for batch job {JobId}", jobId);
-            return Result<BatchJobResponse>.Failure($"Error retrieving job status: {ex.Message}");
-        }
+        return Result<BatchJobResponse>.Failure(
+            "Job status tracking will be implemented in Step 3.3 using Hangfire monitoring API");
     }
 
     /// <inheritdoc />
     public async Task<Result<string>> CancelBatchJobAsync(string jobId)
     {
-        try
-        {
-            _logger.LogInformation("Attempting to cancel batch job {JobId}", jobId);
+        // TODO: Implement Hangfire job cancellation in Step 3.3
+        _logger.LogWarning("CancelBatchJobAsync not yet implemented for Hangfire jobs. JobId: {JobId}", jobId);
+        await Task.CompletedTask; // Remove warning
 
-            // Check if job exists in custom task queue
-            if (_backgroundTaskQueue is BackgroundTaskQueue queue)
-            {
-                var jobInfo = queue.GetJobInfo(jobId);
-                if (jobInfo == null)
-                {
-                    return Result<string>.Failure($"Job {jobId} not found");
-                }
-
-                // Check if job can be cancelled
-                if (jobInfo.Status == JobStatus.Completed || jobInfo.Status == JobStatus.Failed)
-                {
-                    return Result<string>.Failure($"Job {jobId} cannot be cancelled as it has already {jobInfo.Status.ToString().ToLower()}");
-                }
-
-                // Mark job as cancelled (custom queue implementation would need this method)
-                var cancelled = queue.TryCancelJob(jobId);
-
-                if (cancelled)
-                {
-                    _logger.LogInformation("Batch job {JobId} cancelled successfully", jobId);
-                    return Result<string>.Success($"Job {jobId} has been cancelled");
-                }
-                else
-                {
-                    _logger.LogWarning("Failed to cancel batch job {JobId}", jobId);
-                    return Result<string>.Failure($"Failed to cancel job {jobId}");
-                }
-            }
-
-            return Result<string>.Failure("Unable to cancel job - task queue does not support cancellation");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error cancelling batch job {JobId}", jobId);
-            return Result<string>.Failure($"Error cancelling job: {ex.Message}");
-        }
+        return Result<string>.Failure(
+            "Job cancellation will be implemented in Step 3.3 using Hangfire BackgroundJob.Delete");
     }
 
     /// <inheritdoc />
@@ -443,18 +381,4 @@ public class FileActionsService : IFileActionsService
         return recommendations;
     }
 
-    /// <summary>
-    /// Maps custom job status to API response status.
-    /// </summary>
-    private static string MapCustomJobStatus(JobStatus status)
-    {
-        return status switch
-        {
-            JobStatus.Queued => "Queued",
-            JobStatus.Running => "Processing",
-            JobStatus.Completed => "Completed",
-            JobStatus.Failed => "Failed",
-            _ => "Unknown"
-        };
-    }
 }

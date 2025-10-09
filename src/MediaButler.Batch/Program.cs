@@ -96,6 +96,10 @@ try
     // Register Hangfire jobs
     builder.Services.AddScoped<MediaButler.Batch.Jobs.Batch.BatchFileProcessingJob>();
 
+    // Register IBatchFileProcessor implementation for Hangfire job resolution
+    builder.Services.AddScoped<MediaButler.Core.Services.IBatchFileProcessor,
+        MediaButler.Batch.Jobs.Batch.BatchFileProcessingJob>();
+
     // Add hosted service for recurring job registration
     builder.Services.AddHostedService<RecurringJobRegistrationService>();
 

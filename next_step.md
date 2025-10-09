@@ -80,11 +80,15 @@
 - [x] Build successful
 - **Features**: Error handling, continueOnError, success/fail tracking, SignalR integration
 
-### Step 3.2: Refactor FileActionsController
-- [ ] Replace `IBackgroundTaskQueue` with `IBackgroundJobClient`
-- [ ] Change `OrganizeBatch`: `_jobClient.Enqueue<BatchFileProcessingJob>(...)`
-- [ ] Update response: return Hangfire job ID
-- [ ] Remove custom queue dependencies
+### Step 3.2: Refactor FileActionsController ✅
+- [x] Replace `IBackgroundTaskQueue` with `IBackgroundJobClient`
+- [x] Change `OrganizeBatch`: `_jobClient.Enqueue<IBatchFileProcessor>(...)`
+- [x] Update response: return custom job ID
+- [x] Create IBatchFileProcessor interface in Core to avoid circular dependency
+- [x] Implement interface in BatchFileProcessingJob
+- [x] Add Hangfire.Core package to Services project
+- [x] Stub out GetBatchStatusAsync and CancelBatchJobAsync for Step 3.3
+- **Commit:** Step 3.2 refactoring complete - API now enqueues Hangfire jobs
 
 ### Step 3.3: Update Job Status Endpoints
 - [ ] Modify `/api/v1/file-actions/batch-status/{id}`: query Hangfire `JobStorage`

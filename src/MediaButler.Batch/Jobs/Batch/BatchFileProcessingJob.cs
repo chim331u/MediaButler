@@ -13,7 +13,7 @@ namespace MediaButler.Batch.Jobs.Batch;
 /// </summary>
 [Queue("default")]
 [AutomaticRetry(Attempts = 3, DelaysInSeconds = new[] { 30, 60, 120 })]
-public class BatchFileProcessingJob
+public class BatchFileProcessingJob : IBatchFileProcessor
 {
     private readonly IFileOrganizationService _fileOrganizationService;
     private readonly SignalRNotificationClient _signalRClient;
