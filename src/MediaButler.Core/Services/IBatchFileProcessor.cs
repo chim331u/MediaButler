@@ -16,6 +16,7 @@ public interface IBatchFileProcessor
     /// <param name="jobId">Unique identifier for this job</param>
     /// <param name="continueOnError">Whether to continue processing if individual files fail</param>
     /// <param name="cancellationToken">Cancellation token</param>
+    /// <param name="context">Hangfire perform context (optional, injected by Hangfire)</param>
     Task ProcessBatchAsync(
         List<FileOrganizeOperation> operations,
         string batchName,

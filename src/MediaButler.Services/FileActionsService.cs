@@ -9,6 +9,9 @@ using MediaButler.Services.Interfaces;
 using MediaButler.Services.FileOperations;
 using MediaButler.Services.Background;
 using Hangfire;
+using Hangfire.Storage;
+using Hangfire.Storage.Monitoring;
+using Hangfire.Common;
 
 namespace MediaButler.Services;
 
@@ -141,22 +144,22 @@ public class FileActionsService : IFileActionsService
             _logger.LogInformation("Enqueueing Hangfire job for {OperationCount} file operations", fileOperations.Count);
 
             var batchName = request.BatchName ?? $"Batch-{DateTime.UtcNow:yyyyMMdd-HHmmss}";
-            var customJobId = Guid.NewGuid().ToString("N")[..12]; // 12-character job ID for our tracking
 
             // Enqueue job to Hangfire (will be picked up by MediaButler.Batch worker)
             // We use Hangfire's expression-based API which will serialize the method call
+            // Hangfire returns a unique job ID that we'll use for tracking
             var hangfireJobId = _backgroundJobClient.Enqueue<IBatchFileProcessor>(
                 processor => processor.ProcessBatchAsync(
                     fileOperations,
                     batchName,
-                    customJobId,
+                    batchName, // Use batch name as job identifier for logging
                     request.ContinueOnError,
                     CancellationToken.None));
 
             // 7. Create response
             var response = new BatchJobResponse
             {
-                JobId = customJobId,
+                JobId = hangfireJobId, // Use Hangfire's job ID for tracking
                 Status = "Queued",
                 QueuedAt = DateTime.UtcNow,
                 TotalFiles = fileOperations.Count,
@@ -182,7 +185,7 @@ public class FileActionsService : IFileActionsService
             }
 
             _logger.LogInformation("Batch job {JobId} queued successfully for {FileCount} files",
-                customJobId, fileOperations.Count);
+                hangfireJobId, fileOperations.Count);
 
             return Result<BatchJobResponse>.Success(response);
         }
@@ -198,23 +201,139 @@ public class FileActionsService : IFileActionsService
         string jobId,
         bool includeDetails = false)
     {
-        // TODO: Implement Hangfire monitoring API in Step 3.3
-        _logger.LogWarning("GetBatchStatusAsync not yet implemented for Hangfire jobs. JobId: {JobId}", jobId);
-        await Task.CompletedTask; // Remove warning
+        try
+        {
+            _logger.LogDebug("Retrieving status for Hangfire job {JobId}", jobId);
 
-        return Result<BatchJobResponse>.Failure(
-            "Job status tracking will be implemented in Step 3.3 using Hangfire monitoring API");
+            // Get Hangfire monitoring API
+            using var connection = JobStorage.Current.GetConnection();
+            var monitoringApi = JobStorage.Current.GetMonitoringApi();
+
+            // Get job data
+            var jobData = connection.GetJobData(jobId);
+            if (jobData == null)
+            {
+                return Result<BatchJobResponse>.Failure($"Job {jobId} not found");
+            }
+
+            // Map Hangfire state to our status
+            var status = MapHangfireState(jobData.State);
+
+            // Get job details if available
+            var response = new BatchJobResponse
+            {
+                JobId = jobId,
+                Status = status,
+                QueuedAt = jobData.CreatedAt,
+                TotalFiles = 0,
+                ProcessedFiles = 0,
+                SuccessfulFiles = 0,
+                FailedFiles = 0,
+                Metadata = new Dictionary<string, object>()
+            };
+
+            // Extract metadata from job arguments if available
+            if (jobData.Job?.Args != null && jobData.Job.Args.Count >= 2)
+            {
+                // Args: [0] = operations list, [1] = batchName, [2] = jobId, [3] = continueOnError
+                if (jobData.Job.Args[0] is List<FileOrganizeOperation> operations)
+                {
+                    response.TotalFiles = operations.Count;
+                }
+
+                if (jobData.Job.Args[1] is string batchName)
+                {
+                    response.Metadata["batchName"] = batchName;
+                }
+
+                if (jobData.Job.Args.Count > 3 && jobData.Job.Args[3] is bool continueOnError)
+                {
+                    response.Metadata["continueOnError"] = continueOnError;
+                }
+            }
+
+            // Add state history if includeDetails (using monitoring API)
+            if (includeDetails)
+            {
+                var jobDetails = monitoringApi.JobDetails(jobId);
+                if (jobDetails != null && jobDetails.History != null)
+                {
+                    response.Metadata["stateHistory"] = jobDetails.History.Select(s => new
+                    {
+                        s.StateName,
+                        s.CreatedAt,
+                        s.Reason,
+                        Data = s.Data
+                    }).ToList();
+                }
+            }
+
+            // Add exception information if failed
+            if (status == "Failed" && jobData.State == "Failed")
+            {
+                var jobDetails = monitoringApi.JobDetails(jobId);
+                if (jobDetails?.History != null)
+                {
+                    var failedState = jobDetails.History.FirstOrDefault(s => s.StateName == "Failed");
+                    if (failedState?.Data != null && failedState.Data.TryGetValue("ExceptionMessage", out var exceptionMessage))
+                    {
+                        response.Errors.Add(exceptionMessage);
+                    }
+                }
+            }
+
+            await Task.CompletedTask; // Satisfy async signature
+            return Result<BatchJobResponse>.Success(response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving batch job status for {JobId}", jobId);
+            return Result<BatchJobResponse>.Failure($"Error retrieving job status: {ex.Message}");
+        }
     }
 
     /// <inheritdoc />
     public async Task<Result<string>> CancelBatchJobAsync(string jobId)
     {
-        // TODO: Implement Hangfire job cancellation in Step 3.3
-        _logger.LogWarning("CancelBatchJobAsync not yet implemented for Hangfire jobs. JobId: {JobId}", jobId);
-        await Task.CompletedTask; // Remove warning
+        try
+        {
+            _logger.LogInformation("Attempting to cancel Hangfire job {JobId}", jobId);
 
-        return Result<string>.Failure(
-            "Job cancellation will be implemented in Step 3.3 using Hangfire BackgroundJob.Delete");
+            // Check if job exists
+            using var connection = JobStorage.Current.GetConnection();
+            var jobData = connection.GetJobData(jobId);
+
+            if (jobData == null)
+            {
+                return Result<string>.Failure($"Job {jobId} not found");
+            }
+
+            // Check if job is already in a terminal state
+            if (jobData.State == "Succeeded" || jobData.State == "Deleted")
+            {
+                return Result<string>.Failure($"Job {jobId} is already {jobData.State.ToLower()} and cannot be cancelled");
+            }
+
+            // Delete the job (this will cancel it if running or remove it if queued)
+            var deleted = BackgroundJob.Delete(jobId);
+
+            if (deleted)
+            {
+                _logger.LogInformation("Successfully cancelled job {JobId}", jobId);
+                await Task.CompletedTask; // Satisfy async signature
+                return Result<string>.Success($"Job {jobId} has been cancelled");
+            }
+            else
+            {
+                _logger.LogWarning("Failed to cancel job {JobId}", jobId);
+                return Result<string>.Failure($"Failed to cancel job {jobId}");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error cancelling batch job {JobId}", jobId);
+            return Result<string>.Failure($"Error cancelling job: {ex.Message}");
+        }
     }
 
     /// <inheritdoc />
@@ -229,15 +348,45 @@ public class FileActionsService : IFileActionsService
                 status, limit, offset);
 
             var jobs = new List<BatchJobResponse>();
+            var monitoringApi = JobStorage.Current.GetMonitoringApi();
 
-            // For now, return a simple implementation noting that full job listing requires more complex setup
-            // This can be enhanced later with proper job tracking storage
-            _logger.LogInformation("Getting batch jobs - simplified implementation returns empty list for status: {Status}", status);
+            // Retrieve jobs based on status filter
+            if (string.IsNullOrEmpty(status) || status.Equals("all", StringComparison.OrdinalIgnoreCase))
+            {
+                // Get jobs from all states
+                var enqueuedJobs = monitoringApi.EnqueuedJobs("default", offset, limit);
+                var processingJobs = monitoringApi.ProcessingJobs(offset, limit);
+                var succeededJobs = monitoringApi.SucceededJobs(offset, limit);
+                var failedJobs = monitoringApi.FailedJobs(offset, limit);
 
-            // TODO: Implement proper job tracking with a separate storage mechanism
-            // The in-memory Hangfire storage doesn't provide easy access to job history
+                jobs.AddRange(enqueuedJobs.Select(j => CreateJobResponse(j.Key, j.Value.Job, j.Value.EnqueuedAt, "Queued")));
+                jobs.AddRange(processingJobs.Select(j => CreateJobResponse(j.Key, j.Value.Job, j.Value.StartedAt, "Processing")));
+                jobs.AddRange(succeededJobs.Select(j => CreateJobResponse(j.Key, j.Value.Job, j.Value.SucceededAt, "Completed")));
+                jobs.AddRange(failedJobs.Select(j => CreateJobResponse(j.Key, j.Value.Job, j.Value.FailedAt, "Failed")));
+            }
+            else
+            {
+                // Get jobs for specific status
+                var hangfireState = MapStatusToHangfireState(status);
+                var stateJobs = hangfireState switch
+                {
+                    "Enqueued" => monitoringApi.EnqueuedJobs("default", offset, limit)
+                        .Select(j => CreateJobResponse(j.Key, j.Value.Job, j.Value.EnqueuedAt, "Queued")),
+                    "Processing" => monitoringApi.ProcessingJobs(offset, limit)
+                        .Select(j => CreateJobResponse(j.Key, j.Value.Job, j.Value.StartedAt, "Processing")),
+                    "Succeeded" => monitoringApi.SucceededJobs(offset, limit)
+                        .Select(j => CreateJobResponse(j.Key, j.Value.Job, j.Value.SucceededAt, "Completed")),
+                    "Failed" => monitoringApi.FailedJobs(offset, limit)
+                        .Select(j => CreateJobResponse(j.Key, j.Value.Job, j.Value.FailedAt, "Failed")),
+                    _ => Enumerable.Empty<BatchJobResponse>()
+                };
 
-            return Result<IEnumerable<BatchJobResponse>>.Success(jobs.OrderByDescending(j => j.QueuedAt));
+                jobs.AddRange(stateJobs);
+            }
+
+            await Task.CompletedTask; // Satisfy async signature
+            return Result<IEnumerable<BatchJobResponse>>.Success(
+                jobs.OrderByDescending(j => j.QueuedAt).Take(limit));
         }
         catch (Exception ex)
         {
@@ -347,6 +496,76 @@ public class FileActionsService : IFileActionsService
         }
     }
 
+
+    /// <summary>
+    /// Maps Hangfire job state to our status string.
+    /// </summary>
+    private static string MapHangfireState(string? hangfireState)
+    {
+        return hangfireState switch
+        {
+            "Enqueued" => "Queued",
+            "Processing" => "Processing",
+            "Succeeded" => "Completed",
+            "Failed" => "Failed",
+            "Deleted" => "Cancelled",
+            "Scheduled" => "Scheduled",
+            "Awaiting" => "Waiting",
+            null => "Unknown",
+            _ => hangfireState
+        };
+    }
+
+    /// <summary>
+    /// Maps our status string to Hangfire job state.
+    /// </summary>
+    private static string MapStatusToHangfireState(string status)
+    {
+        return status.ToLower() switch
+        {
+            "queued" => "Enqueued",
+            "processing" => "Processing",
+            "completed" => "Succeeded",
+            "failed" => "Failed",
+            "cancelled" => "Deleted",
+            "scheduled" => "Scheduled",
+            _ => status
+        };
+    }
+
+    /// <summary>
+    /// Creates a BatchJobResponse from Hangfire job data.
+    /// </summary>
+    private static BatchJobResponse CreateJobResponse(string jobId, Job? job, DateTime? timestamp, string status)
+    {
+        var response = new BatchJobResponse
+        {
+            JobId = jobId,
+            Status = status,
+            QueuedAt = timestamp ?? DateTime.UtcNow,
+            TotalFiles = 0,
+            ProcessedFiles = 0,
+            SuccessfulFiles = 0,
+            FailedFiles = 0,
+            Metadata = new Dictionary<string, object>()
+        };
+
+        // Extract batch name from job if available
+        if (job?.Args != null && job.Args.Count >= 2)
+        {
+            if (job.Args[0] is List<FileOrganizeOperation> operations)
+            {
+                response.TotalFiles = operations.Count;
+            }
+
+            if (job.Args[1] is string batchName)
+            {
+                response.Metadata["batchName"] = batchName;
+            }
+        }
+
+        return response;
+    }
 
     /// <summary>
     /// Generates recommendations based on validation results.

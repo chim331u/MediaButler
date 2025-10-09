@@ -90,10 +90,15 @@
 - [x] Stub out GetBatchStatusAsync and CancelBatchJobAsync for Step 3.3
 - **Commit:** Step 3.2 refactoring complete - API now enqueues Hangfire jobs
 
-### Step 3.3: Update Job Status Endpoints
-- [ ] Modify `/api/v1/file-actions/batch-status/{id}`: query Hangfire `JobStorage`
-- [ ] Modify `/api/v1/file-actions/batch-jobs`: use Hangfire monitoring API
-- [ ] Remove custom `BackgroundJobInfo` queries
+### Step 3.3: Update Job Status Endpoints ✅
+- [x] Implement GetBatchStatusAsync using Hangfire `JobStorage.Current.GetConnection()`
+- [x] Implement CancelBatchJobAsync using `BackgroundJob.Delete(jobId)`
+- [x] Implement GetBatchJobsAsync using Hangfire monitoring API
+- [x] Add helper methods: MapHangfireState, MapStatusToHangfireState, CreateJobResponse
+- [x] Handle different DTO types from monitoring API (EnqueuedJobDto, ProcessingJobDto, etc.)
+- [x] Use Hangfire job ID as primary tracking identifier
+- [x] Remove optional parameters from IBatchFileProcessor (Hangfire limitation)
+- **Commit:** Step 3.3 complete - Job monitoring via Hangfire API
 
 ### Step 3.4: Test Batch Operations
 - [ ] Test batch organize via Web UI

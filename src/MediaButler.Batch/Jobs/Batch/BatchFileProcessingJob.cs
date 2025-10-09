@@ -1,4 +1,5 @@
 using Hangfire;
+using Hangfire.Server;
 using MediaButler.Batch.Services;
 using MediaButler.Core.Models;
 using MediaButler.Core.Services;
@@ -35,7 +36,7 @@ public class BatchFileProcessingJob : IBatchFileProcessor
     /// </summary>
     /// <param name="operations">List of file operations to process</param>
     /// <param name="batchName">Human-readable name for the batch</param>
-    /// <param name="jobId">Unique identifier for this job (passed by caller)</param>
+    /// <param name="jobId">Unique identifier for this job</param>
     /// <param name="continueOnError">Whether to continue processing if individual files fail</param>
     /// <param name="cancellationToken">Cancellation token from Hangfire</param>
     [JobDisplayName("Batch File Processing: {1}")]
@@ -43,8 +44,8 @@ public class BatchFileProcessingJob : IBatchFileProcessor
         List<FileOrganizeOperation> operations,
         string batchName,
         string jobId,
-        bool continueOnError = true,
-        CancellationToken cancellationToken = default)
+        bool continueOnError,
+        CancellationToken cancellationToken)
     {
 
         var stopwatch = Stopwatch.StartNew();
