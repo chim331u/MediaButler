@@ -68,12 +68,17 @@
 
 ## Sprint 3: Migrate Batch Processing (Week 3)
 
-### Step 3.1: Create BatchFileProcessingJob
-- [ ] Create `BatchFileProcessingJob.cs` in `MediaButler.Batch/Jobs/Batch/`
-- [ ] Add attributes: `[Queue("default")]`, `[AutomaticRetry(Attempts = 3)]`
-- [ ] Inject: `IFileOrganizationService`, `SignalRNotificationClient`
-- [ ] Implement `ProcessBatchAsync` with progress notifications (every 5 files)
-- [ ] Add ARM32 delay: `await Task.Delay(50)` between files
+### Step 3.1: Create BatchFileProcessingJob ✅
+- [x] Create `BatchFileProcessingJob.cs` in `MediaButler.Batch/Jobs/Batch/`
+- [x] Add attributes: `[Queue("default")]`, `[AutomaticRetry(Attempts = 3, DelaysInSeconds = [30, 60, 120])]`
+- [x] Inject: `IFileOrganizationService`, `SignalRNotificationClient`, `ILogger`
+- [x] Implement `ProcessBatchAsync` with progress notifications (every 5 files)
+- [x] Add ARM32 delay: `await Task.Delay(50)` between files
+- [x] Register all required services in Program.cs (DbContext, Repositories, Services)
+- [x] Add EF Core SQLite package to MediaButler.Batch
+- [x] Fix namespace issues (IFileOrganizationService in Core.Services)
+- [x] Build successful
+- **Features**: Error handling, continueOnError, success/fail tracking, SignalR integration
 
 ### Step 3.2: Refactor FileActionsController
 - [ ] Replace `IBackgroundTaskQueue` with `IBackgroundJobClient`

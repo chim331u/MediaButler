@@ -4,6 +4,7 @@ using Hangfire.Storage.SQLite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.EntityFrameworkCore;
 using Serilog;
 
 // Configure Serilog from appsettings.json
@@ -69,8 +70,31 @@ try
     // Register SignalR notification client as singleton for reuse
     builder.Services.AddSingleton<SignalRNotificationClient>();
 
-    // Register application services (will be added in future steps)
-    // TODO: Add services from MediaButler.Services (IFileOrganizationService, etc.)
+    // Add database context for file operations
+    builder.Services.AddDbContext<MediaButler.Data.MediaButlerDbContext>(options =>
+        options.UseSqlite(
+            builder.Configuration.GetConnectionString("MediaButlerConnection")));
+
+    // Add repository and unit of work
+    builder.Services.AddScoped<MediaButler.Data.Repositories.ITrackedFileRepository,
+        MediaButler.Data.Repositories.TrackedFileRepository>();
+    builder.Services.AddScoped<MediaButler.Data.UnitOfWork.IUnitOfWork,
+        MediaButler.Data.UnitOfWork.UnitOfWork>();
+
+    // Add file organization services
+    builder.Services.AddScoped<MediaButler.Core.Services.IFileOrganizationService,
+        MediaButler.Services.FileOrganizationService>();
+    builder.Services.AddScoped<MediaButler.Services.Interfaces.IPathGenerationService,
+        MediaButler.Services.PathGenerationService>();
+    builder.Services.AddScoped<MediaButler.Services.FileOperations.IFileOperationService,
+        MediaButler.Services.FileOperations.FileOperationService>();
+    builder.Services.AddScoped<MediaButler.Core.Services.IErrorClassificationService,
+        MediaButler.Services.ErrorClassificationService>();
+    builder.Services.AddScoped<MediaButler.Core.Services.IRollbackService,
+        MediaButler.Services.RollbackService>();
+
+    // Register Hangfire jobs
+    builder.Services.AddScoped<MediaButler.Batch.Jobs.Batch.BatchFileProcessingJob>();
 
     // Add hosted service for recurring job registration
     builder.Services.AddHostedService<RecurringJobRegistrationService>();
