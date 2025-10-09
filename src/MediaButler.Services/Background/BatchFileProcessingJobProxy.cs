@@ -1,3 +1,4 @@
+using Hangfire;
 using MediaButler.Core.Models;
 using MediaButler.Core.Services;
 using Microsoft.Extensions.Logging;
@@ -9,6 +10,8 @@ namespace MediaButler.Services.Background;
 /// This avoids circular dependency by being in Services project.
 /// The actual work is delegated to IBatchFileProcessor which is implemented in Batch project.
 /// </summary>
+[Queue("default")]
+[AutomaticRetry(Attempts = 3, DelaysInSeconds = new[] { 30, 60, 120 })]
 public class BatchFileProcessingJobProxy
 {
     private readonly IBatchFileProcessor _processor;
