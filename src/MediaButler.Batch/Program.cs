@@ -29,7 +29,7 @@ try
     builder.Services.AddSerilog();
 
     // Add Hangfire services with SQLite storage (server mode - job execution)
-    builder.Services.AddHangfire((serviceProvider, config) => config
+    builder.Services.AddHangfire(config => config
         .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
         .UseSimpleAssemblyNameTypeSerializer()
         .UseRecommendedSerializerSettings()
@@ -41,8 +41,7 @@ try
                 JobExpirationCheckInterval = TimeSpan.FromHours(1),
                 InvisibilityTimeout = TimeSpan.FromMinutes(30)
             }
-        )
-        .UseActivator(new MediaButler.Batch.Infrastructure.InterfaceResolvingJobActivator(serviceProvider)));
+        ));
 
     // Add Hangfire server (server mode - WorkerCount = 2 for ARM32)
     var hangfireConfig = builder.Configuration.GetSection("Hangfire:Server");
@@ -106,6 +105,10 @@ try
     builder.Services.AddHostedService<RecurringJobRegistrationService>();
 
     var host = builder.Build();
+
+    // Set custom job activator globally after host is built
+    GlobalConfiguration.Configuration.UseActivator(
+        new MediaButler.Batch.Infrastructure.InterfaceResolvingJobActivator(host.Services));
 
     Log.Information("Hangfire server configured with {WorkerCount} workers",
         hangfireConfig.GetValue<int>("WorkerCount", 2));
