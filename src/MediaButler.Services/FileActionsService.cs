@@ -146,19 +146,15 @@ public class FileActionsService : IFileActionsService
 
             var batchName = request.BatchName ?? $"Batch-{DateTime.UtcNow:yyyyMMdd-HHmmss}";
 
-            // Enqueue job to Hangfire using runtime type resolution to avoid circular dependency
-            // Load the concrete BatchFileProcessingJob type at runtime
-            var jobType = Type.GetType("MediaButler.Batch.Jobs.Batch.BatchFileProcessingJob, MediaButler.Batch")
-                ?? throw new InvalidOperationException("Failed to load BatchFileProcessingJob type");
-
-            var method = jobType.GetMethod("ProcessBatchAsync")
-                ?? throw new InvalidOperationException("Failed to find ProcessBatchAsync method");
-
-            // Create Hangfire Job instance with concrete type
-            var job = new Job(jobType, method, fileOperations, batchName, batchName, request.ContinueOnError, CancellationToken.None);
-
-            // Enqueue the job
-            var hangfireJobId = _backgroundJobClient.Create(job, new EnqueuedState());
+            // Enqueue job using interface - Batch worker will resolve to concrete implementation via DI
+            // The Batch worker registers both the interface and concrete type in DI container
+            var hangfireJobId = _backgroundJobClient.Enqueue<IBatchFileProcessor>(
+                job => job.ProcessBatchAsync(
+                    fileOperations,
+                    batchName,
+                    batchName,
+                    request.ContinueOnError,
+                    CancellationToken.None));
 
             // 7. Create response
             var response = new BatchJobResponse
