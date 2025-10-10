@@ -146,9 +146,9 @@ public class FileActionsService : IFileActionsService
 
             var batchName = request.BatchName ?? $"Batch-{DateTime.UtcNow:yyyyMMdd-HHmmss}";
 
-            // Enqueue job using concrete proxy class to avoid interface instantiation issues
-            // The proxy class in Services project delegates to IBatchFileProcessor implementation
-            var hangfireJobId = _backgroundJobClient.Enqueue<Background.BatchFileProcessingJobProxy>(
+            // Enqueue job directly to BatchFileProcessingJob (now in API project)
+            // Both enqueueing and execution happen in the same process (API)
+            var hangfireJobId = _backgroundJobClient.Enqueue<IBatchFileProcessor>(
                 job => job.ProcessBatchAsync(
                     fileOperations,
                     batchName,

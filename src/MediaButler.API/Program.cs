@@ -106,9 +106,37 @@ builder.Services.AddHangfire(config => config
         }
     ));
 
-// NOTE: Do NOT add Hangfire server in API (client mode)
-// API only enqueues jobs via IBackgroundJobClient
-// The MediaButler.Batch worker executes the jobs
+// Add Hangfire server (combined mode - both enqueue and execute jobs)
+var hangfireConfig = builder.Configuration.GetSection("Hangfire:Server");
+builder.Services.AddHangfireServer(options =>
+{
+    options.ServerName = hangfireConfig["ServerName"] ?? "mediabutler-api-worker";
+    options.WorkerCount = hangfireConfig.GetValue<int>("WorkerCount", 2);
+    options.Queues = hangfireConfig.GetSection("Queues").Get<string[]>() ?? new[] { "critical", "default", "low-priority" };
+    options.HeartbeatInterval = TimeSpan.Parse(hangfireConfig["HeartbeatInterval"] ?? "00:00:30");
+    options.ServerCheckInterval = TimeSpan.Parse(hangfireConfig["ServerCheckInterval"] ?? "00:05:00");
+    options.SchedulePollingInterval = TimeSpan.FromSeconds(15);
+});
+
+// Register Hangfire job classes
+builder.Services.AddScoped<MediaButler.API.Jobs.Batch.BatchFileProcessingJob>();
+builder.Services.AddScoped<IBatchFileProcessor, MediaButler.API.Jobs.Batch.BatchFileProcessingJob>();
+
+// Register SignalR notification client for job-to-hub communication
+builder.Services.AddHttpClient<MediaButler.API.Services.SignalRNotificationClient>(client =>
+{
+    var signalRConfig = builder.Configuration.GetSection("SignalRClient");
+    var apiBaseUrl = signalRConfig["ApiBaseUrl"] ?? "http://localhost:5000";
+    var timeoutSeconds = signalRConfig.GetValue<int>("TimeoutSeconds", 30);
+
+    client.BaseAddress = new Uri(apiBaseUrl);
+    client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
+    client.DefaultRequestHeaders.Add("User-Agent", "MediaButler-API/1.0");
+});
+builder.Services.AddSingleton<MediaButler.API.Services.SignalRNotificationClient>();
+
+// Register recurring job registration service
+builder.Services.AddHostedService<MediaButler.API.Services.RecurringJobRegistrationService>();
 
 // Add SignalR services
 builder.Services.AddSignalR();
