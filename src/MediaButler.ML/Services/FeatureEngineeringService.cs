@@ -190,12 +190,24 @@ public class FeatureEngineeringService : IFeatureEngineeringService
 
             _logger.LogDebug("Generating {N}-grams from {TokenCount} tokens", n, tokens.Count);
 
-            var ngrams = new List<NGramFeature>();
+            // ARM32 optimization: Pre-allocate list to avoid resizing
+            var maxNGrams = Math.Max(0, tokens.Count - n + 1);
+            var ngrams = new List<NGramFeature>(capacity: maxNGrams);
 
-            // Generate N-grams
-            for (int i = 0; i <= tokens.Count - n; i++)
+            // ARM32 optimization: Use span for zero-allocation iteration
+            // Convert to array once for efficient span slicing
+            var tokenArray = tokens as string[] ?? tokens.ToArray();
+            var tokenSpan = tokenArray.AsSpan();
+
+            // Generate N-grams with span slicing (zero allocation)
+            for (int i = 0; i <= tokenSpan.Length - n; i++)
             {
-                var ngramTokens = tokens.Skip(i).Take(n).ToList();
+                // ARM32 optimization: Slice span instead of Skip/Take (no LINQ allocation)
+                var ngramSlice = tokenSpan.Slice(i, n);
+
+                // Only allocate the final array once
+                var ngramTokens = ngramSlice.ToArray();
+
                 var context = DetermineNGramContext(ngramTokens);
                 var discriminativePower = CalculateDiscriminativePower(ngramTokens);
                 var isCrossBoundary = DetermineIfCrossBoundary(ngramTokens, context);
@@ -203,9 +215,9 @@ public class FeatureEngineeringService : IFeatureEngineeringService
                 var ngram = new NGramFeature
                 {
                     N = n,
-                    Tokens = ngramTokens.AsReadOnly(),
+                    Tokens = Array.AsReadOnly(ngramTokens),
                     Frequency = 1, // Single occurrence in this filename
-                    RelativeFrequency = 1.0 / (tokens.Count - n + 1), // Relative to possible N-grams
+                    RelativeFrequency = 1.0 / maxNGrams, // Relative to possible N-grams
                     DiscriminativePower = discriminativePower,
                     Context = context,
                     IsCrossBoundary = isCrossBoundary
@@ -214,11 +226,11 @@ public class FeatureEngineeringService : IFeatureEngineeringService
                 ngrams.Add(ngram);
             }
 
-            // Remove duplicate N-grams and aggregate frequencies
+            // ARM32 optimization: Aggregate and deduplicate with limited LINQ
             var uniqueNGrams = ngrams.GroupBy(ng => ng.NGramText.ToLowerInvariant())
                                     .Select(g => CreateAggregatedNGram(g.ToList()))
                                     .OrderByDescending(ng => ng.DiscriminativePower)
-                                    .Take(Math.Min(20, ngrams.Count)) // Limit for performance
+                                    .Take(Math.Min(20, ngrams.Count)) // Limit for performance and memory
                                     .ToList();
 
             return Result<IReadOnlyList<NGramFeature>>.Success(uniqueNGrams.AsReadOnly());
@@ -380,7 +392,7 @@ public class FeatureEngineeringService : IFeatureEngineeringService
         return indicators.ToList();
     }
 
-    private NGramContext DetermineNGramContext(List<string> ngramTokens)
+    private NGramContext DetermineNGramContext(string[] ngramTokens)
     {
         var text = string.Join(" ", ngramTokens).ToLowerInvariant();
         
@@ -404,12 +416,12 @@ public class FeatureEngineeringService : IFeatureEngineeringService
         return NGramContext.SeriesName;
     }
 
-    private double CalculateDiscriminativePower(List<string> ngramTokens)
+    private double CalculateDiscriminativePower(string[] ngramTokens)
     {
         var power = 0.5; // Base power
-        
+
         // Higher power for longer N-grams
-        power += ngramTokens.Count * 0.1;
+        power += ngramTokens.Length * 0.1;
         
         // Higher power for high-value tokens
         foreach (var token in ngramTokens)
@@ -426,10 +438,10 @@ public class FeatureEngineeringService : IFeatureEngineeringService
         return Math.Max(0.1, Math.Min(1.0, power));
     }
 
-    private bool DetermineIfCrossBoundary(List<string> ngramTokens, NGramContext context)
+    private bool DetermineIfCrossBoundary(string[] ngramTokens, NGramContext context)
     {
         // Check if N-gram spans different semantic categories
-        var contexts = ngramTokens.Select(token => DetermineNGramContext(new List<string> { token })).ToList();
+        var contexts = ngramTokens.Select(token => DetermineNGramContext(new[] { token })).ToList();
         return contexts.Distinct().Count() > 1;
     }
 
