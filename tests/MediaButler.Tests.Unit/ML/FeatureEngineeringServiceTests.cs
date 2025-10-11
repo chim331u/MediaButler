@@ -101,7 +101,8 @@ public class FeatureEngineeringServiceTests
         result.Value.TotalTokens.Should().Be(6);
         result.Value.FrequentTokens.Should().NotBeEmpty();
         result.Value.FrequentTokens.First().Token.Should().BeOneOf("trono", "spade"); // Most frequent
-        result.Value.AverageTokenLength.Should().BeApproximately(4.5, 0.1); // Average of token lengths
+        // Average: il(2) + trono(5) + di(2) + spade(5) + trono(5) + spade(5) = 24 / 6 = 4.0
+        result.Value.AverageTokenLength.Should().BeApproximately(4.0, 0.1);
         result.Value.DiversityScore.Should().BeGreaterThan(0);
     }
 
@@ -358,10 +359,24 @@ public class FeatureEngineeringServiceTests
                                   .Select(t => t.ToLowerInvariant())
                                   .ToList();
 
+        // Identify series tokens (tokens before episode/quality/language indicators)
+        var seriesTokens = new List<string>();
+        foreach (var token in tokens)
+        {
+            // Stop at episode patterns, quality, or language indicators
+            if (System.Text.RegularExpressions.Regex.IsMatch(token, @"^\d+x\d+$|^s\d+e\d+$|1080p|720p|ita|eng|web|hdtv|sub", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                break;
+            seriesTokens.Add(token);
+        }
+
+        // If no series tokens found (all are metadata), use first 3 as fallback
+        if (seriesTokens.Count == 0)
+            seriesTokens = tokens.Take(3).ToList();
+
         return new TokenizedFilename
         {
             OriginalFilename = filename,
-            SeriesTokens = tokens.Take(4).ToList().AsReadOnly(), // First few as series
+            SeriesTokens = seriesTokens.AsReadOnly(),
             AllTokens = tokens.AsReadOnly(),
             FilteredTokens = tokens.Where(t => t.Contains("ita") || t.Contains("1080") || t.Contains("web")).ToList().AsReadOnly(),
             FileExtension = Path.GetExtension(filename).TrimStart('.'),

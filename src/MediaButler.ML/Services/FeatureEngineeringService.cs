@@ -128,35 +128,45 @@ public class FeatureEngineeringService : IFeatureEngineeringService
 
             _logger.LogDebug("Analyzing token frequency for {TokenCount} tokens", seriesTokens.Count);
 
-            // Count token frequencies
-            var tokenCounts = seriesTokens.GroupBy(t => t.ToLowerInvariant())
-                                         .ToDictionary(g => g.Key, g => g.Count());
-
+            // ARM32 optimization: Single-pass analysis for frequency counting and metrics
+            var tokenCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var totalLength = 0;
+            var alphaCount = 0;
+            var numericCount = 0;
             var totalTokens = seriesTokens.Count;
-            var uniqueTokens = tokenCounts.Count;
-            
-            // Calculate importance scores
+
+            // Single pass: collect frequencies and calculate metrics simultaneously
+            foreach (var token in seriesTokens)
+            {
+                var lowerToken = token.ToLowerInvariant();
+
+                // Token frequency counting
+                tokenCounts.TryGetValue(lowerToken, out var count);
+                tokenCounts[lowerToken] = count + 1;
+
+                // Accumulate metrics (avoid separate LINQ passes)
+                totalLength += token.Length;
+                if (token.All(char.IsLetter)) alphaCount++;
+                if (token.Any(char.IsDigit)) numericCount++;
+            }
+
+            // Calculate derived metrics from accumulated values
+            var avgTokenLength = (double)totalLength / totalTokens;
+            var alphaNumericRatio = numericCount > 0 ? (double)alphaCount / numericCount : double.MaxValue;
+            var diversityScore = CalculateDiversityScore(tokenCounts, totalTokens);
+
+            // Language indicators detection (separate method handles this correctly)
+            var languageIndicators = DetectLanguageIndicators(seriesTokens);
+
+            // Extract top and rare tokens (single sort operation)
             var frequentTokens = tokenCounts.OrderByDescending(kvp => kvp.Value)
                                            .Take(10)
                                            .Select(kvp => CreateTokenFrequency(kvp.Key, kvp.Value, totalTokens))
                                            .ToList();
-
             var rareTokens = tokenCounts.Where(kvp => kvp.Value == 1)
                                        .Take(5)
                                        .Select(kvp => CreateTokenFrequency(kvp.Key, kvp.Value, totalTokens))
                                        .ToList();
-
-            // Calculate metrics
-            var avgTokenLength = seriesTokens.Average(t => t.Length);
-            var alphaTokens = seriesTokens.Count(t => t.All(char.IsLetter));
-            var numericTokens = seriesTokens.Count(t => t.Any(char.IsDigit));
-            var alphaNumericRatio = numericTokens > 0 ? (double)alphaTokens / numericTokens : double.MaxValue;
-            
-            // Diversity score (Shannon entropy approximation)
-            var diversityScore = CalculateDiversityScore(tokenCounts, totalTokens);
-            
-            // Language indicators
-            var languageIndicators = DetectLanguageIndicators(seriesTokens);
 
             var analysis = new TokenFrequencyAnalysis
             {
