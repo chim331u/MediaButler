@@ -31,6 +31,7 @@ public class UnitOfWork : IUnitOfWork
     private ITrackedFileRepository? _trackedFiles;
     private IRepository<ProcessingLog>? _processingLogs;
     private IRepository<UserPreference>? _userPreferences;
+    private IFileOrganizationStateRepository? _fileOrganizationStates;
 
     /// <summary>
     /// Initializes a new instance of the UnitOfWork class.
@@ -70,6 +71,16 @@ public class UnitOfWork : IUnitOfWork
         {
             ThrowIfDisposed();
             return _userPreferences ??= new Repository<UserPreference>(_context);
+        }
+    }
+
+    /// <inheritdoc />
+    public IFileOrganizationStateRepository FileOrganizationStates
+    {
+        get
+        {
+            ThrowIfDisposed();
+            return _fileOrganizationStates ??= new FileOrganizationStateRepository(_context);
         }
     }
 

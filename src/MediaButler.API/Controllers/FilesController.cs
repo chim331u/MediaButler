@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using MediaButler.Services.Interfaces;
 using MediaButler.Services.Background;
 using MediaButler.API.Models.Response;
+using MediaButler.API.Models.Request;
 using MediaButler.Core.Enums;
 using System.ComponentModel.DataAnnotations;
 
@@ -80,65 +81,29 @@ public class FilesController : ControllerBase
     /// Gets tracked files with pagination and filtering by multiple status values.
     /// Enables efficient querying of files across multiple processing states.
     /// </summary>
-    /// <param name="skip">Number of files to skip for pagination</param>
-    /// <param name="take">Number of files to take (page size, max 100)</param>
-    /// <param name="statuses">Array of file status values to filter by</param>
-    /// <param name="category">Optional category filter</param>
-    /// <param name="searchTerm">Optional search term for filename or category</param>
-    /// <param name="orderBy">Column to sort by (FileName, Category, Status, CreatedDate, LastUpdateDate)</param>
-    /// <param name="descending">Sort direction (true for descending, false for ascending)</param>
+    /// <param name="request">Query parameters including pagination, statuses, and filters</param>
     /// <returns>Paginated list of tracked files matching any of the specified statuses</returns>
     /// <response code="200">Files retrieved successfully</response>
     /// <response code="400">Invalid pagination or filter parameters</response>
     [HttpGet("by-statuses")]
     [ProducesResponseType(typeof(PaginatedFilesResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> GetFilesByStatuses(
-        [FromQuery] int skip = 0,
-        [FromQuery] int take = 20,
-        [FromQuery] string[] statuses = null!,
-        [FromQuery] string? category = null,
-        [FromQuery] string? searchTerm = null,
-        [FromQuery] string? orderBy = null,
-        [FromQuery] bool descending = true)
+    public async Task<IActionResult> GetFilesByStatuses([FromQuery] GetFilesByStatusesRequest request)
     {
-        if (skip < 0 || take < 1 || take > 100)
+        // FluentValidation handles validation automatically via ModelValidationFilter
+        if (!ModelState.IsValid)
         {
-            return BadRequest(new { Error = "Invalid pagination parameters. Skip must be >= 0 and take must be between 1 and 100." });
-        }
-
-        if (statuses == null || statuses.Length == 0)
-        {
-            return BadRequest(new { Error = "At least one status must be provided." });
-        }
-
-        var parsedStatuses = new List<FileStatus>();
-        foreach (var status in statuses)
-        {
-            if (string.IsNullOrWhiteSpace(status))
-            {
-                return BadRequest(new { Error = "Status values cannot be empty." });
-            }
-
-            if (!Enum.TryParse<FileStatus>(status, true, out var statusValue))
-            {
-                return BadRequest(new { Error = $"Invalid status value: {status}. Valid values are: {string.Join(", ", Enum.GetNames<FileStatus>())}" });
-            }
-
-            if (!parsedStatuses.Contains(statusValue))
-            {
-                parsedStatuses.Add(statusValue);
-            }
+            return BadRequest(ModelState);
         }
 
         var result = await _fileService.GetFilesPagedByStatusesAsync(
-            skip,
-            take,
-            parsedStatuses,
-            category,
-            searchTerm,
-            orderBy,
-            descending);
+            request.Skip,
+            request.Take,
+            request.ParsedStatuses,
+            request.Category,
+            request.SearchTerm,
+            request.OrderBy,
+            request.Descending);
 
         if (!result.IsSuccess)
         {
@@ -151,8 +116,8 @@ public class FilesController : ControllerBase
         {
             Items = responseFiles,
             Total = result.Value.Total,
-            Skip = skip,
-            Take = take
+            Skip = request.Skip,
+            Take = request.Take
         };
 
         return Ok(paginatedResponse);

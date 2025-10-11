@@ -34,9 +34,8 @@ public class FileOrganizationService : IFileOrganizationService
     private readonly IFileOperationService _fileOperationService;
     private readonly IErrorClassificationService _errorClassificationService;
     private readonly IRollbackService _rollbackService;
-
-    private static readonly Dictionary<string, OrganizationState> _organizationStates = new();
-    private static readonly object _stateLock = new();
+    private readonly IOrganizationStateService _organizationStateService;
+    private readonly IOrganizationValidator _organizationValidator;
 
     public FileOrganizationService(
         ILogger<FileOrganizationService> logger,
@@ -44,7 +43,9 @@ public class FileOrganizationService : IFileOrganizationService
         IPathGenerationService pathGenerationService,
         IFileOperationService fileOperationService,
         IErrorClassificationService errorClassificationService,
-        IRollbackService rollbackService)
+        IRollbackService rollbackService,
+        IOrganizationStateService organizationStateService,
+        IOrganizationValidator organizationValidator)
     {
         _logger = logger;
         _unitOfWork = unitOfWork;
@@ -52,6 +53,8 @@ public class FileOrganizationService : IFileOrganizationService
         _fileOperationService = fileOperationService;
         _errorClassificationService = errorClassificationService;
         _rollbackService = rollbackService;
+        _organizationStateService = organizationStateService;
+        _organizationValidator = organizationValidator;
     }
 
     public async Task<Result<FileOrganizationResult>> OrganizeFileAsync(string fileHash, string confirmedCategory)
@@ -60,26 +63,26 @@ public class FileOrganizationService : IFileOrganizationService
         
         try
         {
-            _logger.LogInformation("Starting file organization for {FileHash} with category {Category}", 
+            _logger.LogInformation("Starting file organization for {FileHash} with category {Category}",
                 fileHash, confirmedCategory);
 
             // Set state to in-progress
-            SetOrganizationState(fileHash, OrganizationState.InProgress);
+            await _organizationStateService.SetStateAsync(fileHash, OrganizationState.InProgress);
 
             // 1. Get and validate tracked file
             var trackedFile = await _unitOfWork.TrackedFiles.GetByHashAsync(fileHash);
             if (trackedFile == null)
             {
-                SetOrganizationState(fileHash, OrganizationState.Failed);
+                await _organizationStateService.SetStateAsync(fileHash, OrganizationState.Failed);
                 return Result<FileOrganizationResult>.Failure($"File with hash {fileHash} not found");
             }
 
             // 2. Generate target path
             var pathResult = await _pathGenerationService.GenerateTargetPathAsync(trackedFile, confirmedCategory);
-            
+
             if (pathResult.IsFailure)
             {
-                SetOrganizationState(fileHash, OrganizationState.Failed);
+                await _organizationStateService.SetStateAsync(fileHash, OrganizationState.Failed);
                 return Result<FileOrganizationResult>.Failure($"Path generation failed: {pathResult.Error}");
             }
 
@@ -89,9 +92,9 @@ public class FileOrganizationService : IFileOrganizationService
             var validationResult = await ValidateOrganizationSafetyAsync(fileHash, targetPath);
             if (validationResult.IsFailure || !validationResult.Value.IsSafe)
             {
-                SetOrganizationState(fileHash, OrganizationState.Failed);
-                var issues = validationResult.IsSuccess ? 
-                    string.Join(", ", validationResult.Value.SafetyIssues) : 
+                await _organizationStateService.SetStateAsync(fileHash, OrganizationState.Failed);
+                var issues = validationResult.IsSuccess ?
+                    string.Join(", ", validationResult.Value.SafetyIssues) :
                     validationResult.Error;
                 return Result<FileOrganizationResult>.Failure($"Organization validation failed: {issues}");
             }
@@ -118,12 +121,12 @@ public class FileOrganizationService : IFileOrganizationService
 
             if (moveResult.IsFailure)
             {
-                SetOrganizationState(fileHash, OrganizationState.Failed);
-                
+                await _organizationStateService.SetStateAsync(fileHash, OrganizationState.Failed);
+
                 // Handle error with classification and potential rollback
-                var errorResult = await HandleOrganizationErrorAsync(fileHash, 
+                var errorResult = await HandleOrganizationErrorAsync(fileHash,
                     new InvalidOperationException(moveResult.Error));
-                
+
                 return Result<FileOrganizationResult>.Failure(
                     $"File move operation failed: {moveResult.Error}");
             }
@@ -154,7 +157,7 @@ public class FileOrganizationService : IFileOrganizationService
 
             await _unitOfWork.SaveChangesAsync();
 
-            SetOrganizationState(fileHash, OrganizationState.Completed);
+            await _organizationStateService.SetStateAsync(fileHash, OrganizationState.Completed);
 
             stopwatch.Stop();
 
@@ -176,7 +179,7 @@ public class FileOrganizationService : IFileOrganizationService
         }
         catch (Exception ex)
         {
-            SetOrganizationState(fileHash, OrganizationState.Failed);
+            await _organizationStateService.SetStateAsync(fileHash, OrganizationState.Failed);
             stopwatch.Stop();
 
             _logger.LogError(ex, "Unexpected error during file organization for {FileHash}", fileHash);
@@ -289,122 +292,17 @@ public class FileOrganizationService : IFileOrganizationService
     {
         try
         {
-            var safetyIssues = new List<string>();
-            var warnings = new List<string>();
-            var validationDetails = new Dictionary<string, object>();
-            var recommendations = new List<string>();
+            _logger.LogDebug("Validating organization safety for {FileHash} -> {TargetPath}", fileHash, targetPath);
 
-            // 1. Get tracked file for context
+            // Get tracked file for context
             var trackedFile = await _unitOfWork.TrackedFiles.GetByHashAsync(fileHash);
             if (trackedFile == null)
             {
                 return Result<OrganizationValidationResult>.Failure($"File with hash {fileHash} not found");
             }
 
-            // 2. Validate source file exists and is accessible
-            if (!File.Exists(trackedFile.OriginalPath))
-            {
-                safetyIssues.Add($"Source file not found: {trackedFile.OriginalPath}");
-            }
-            else
-            {
-                try
-                {
-                    // Test file access
-                    using var stream = File.OpenRead(trackedFile.OriginalPath);
-                    validationDetails["SourceFileAccessible"] = true;
-                }
-                catch (Exception ex)
-                {
-                    safetyIssues.Add($"Cannot access source file: {ex.Message}");
-                    validationDetails["SourceFileAccessible"] = false;
-                }
-            }
-
-            // 3. Validate target directory
-            var targetDirectory = Path.GetDirectoryName(targetPath);
-            if (string.IsNullOrEmpty(targetDirectory))
-            {
-                safetyIssues.Add("Invalid target path - no directory specified");
-            }
-            else
-            {
-                // Check if target directory exists or can be created
-                try
-                {
-                    if (!Directory.Exists(targetDirectory))
-                    {
-                        warnings.Add($"Target directory will be created: {targetDirectory}");
-                        validationDetails["TargetDirectoryExists"] = false;
-
-                        // Create the directory to test write permissions
-                        Directory.CreateDirectory(targetDirectory);
-                    }
-                    else
-                    {
-                        validationDetails["TargetDirectoryExists"] = true;
-                    }
-
-                    // Test write permissions
-                    var testFile = Path.Combine(targetDirectory, $"test_{Guid.NewGuid()}.tmp");
-                    await File.WriteAllTextAsync(testFile, "test");
-                    File.Delete(testFile);
-                    validationDetails["TargetDirectoryWritable"] = true;
-                }
-                catch (Exception ex)
-                {
-                    safetyIssues.Add($"Cannot write to target directory: {ex.Message}");
-                    recommendations.Add("Check directory permissions and ensure the path is writable");
-                    validationDetails["TargetDirectoryWritable"] = false;
-                }
-            }
-
-            // 4. Check disk space
-            var availableSpace = GetAvailableSpace(targetDirectory ?? "");
-            var requiredSpace = trackedFile.FileSize;
-
-            validationDetails["AvailableSpaceBytes"] = availableSpace;
-            validationDetails["RequiredSpaceBytes"] = requiredSpace;
-
-            if (availableSpace < requiredSpace * 1.1) // 10% buffer
-            {
-                safetyIssues.Add($"Insufficient disk space: {requiredSpace:N0} bytes required, {availableSpace:N0} bytes available");
-                recommendations.Add("Free up disk space before attempting organization");
-            }
-
-            // 5. Check for conflicts
-            if (File.Exists(targetPath))
-            {
-                warnings.Add($"Target file already exists: {targetPath}");
-                recommendations.Add("File will be renamed automatically to avoid conflicts");
-                validationDetails["ConflictExists"] = true;
-            }
-            else
-            {
-                validationDetails["ConflictExists"] = false;
-            }
-
-            // 6. Path length validation
-            if (targetPath.Length > 260) // Windows path length limit
-            {
-                safetyIssues.Add($"Target path too long: {targetPath.Length} characters (limit: 260)");
-                recommendations.Add("Choose a shorter category name or enable long path support");
-            }
-
-            validationDetails["TargetPathLength"] = targetPath.Length;
-
-            var isSafe = safetyIssues.Count == 0;
-
-            var result = new OrganizationValidationResult
-            {
-                IsSafe = isSafe,
-                SafetyIssues = safetyIssues,
-                Warnings = warnings,
-                ValidationDetails = validationDetails,
-                RecommendedActions = recommendations
-            };
-
-            return Result<OrganizationValidationResult>.Success(result);
+            // Delegate to composed validator - simple delegation, no complecting
+            return await _organizationValidator.ValidateAsync(trackedFile, targetPath);
         }
         catch (Exception ex)
         {
@@ -522,7 +420,7 @@ public class FileOrganizationService : IFileOrganizationService
             }
 
             // 2. Get current state
-            var currentState = GetOrganizationState(fileHash);
+            var currentState = await _organizationStateService.GetStateAsync(fileHash);
 
             // 3. Get processing logs for this file
             var logs = (await _unitOfWork.ProcessingLogs.GetAllAsync())
@@ -609,22 +507,6 @@ public class FileOrganizationService : IFileOrganizationService
     }
 
     #region Private Helper Methods
-
-    private void SetOrganizationState(string fileHash, OrganizationState state)
-    {
-        lock (_stateLock)
-        {
-            _organizationStates[fileHash] = state;
-        }
-    }
-
-    private OrganizationState GetOrganizationState(string fileHash)
-    {
-        lock (_stateLock)
-        {
-            return _organizationStates.TryGetValue(fileHash, out var state) ? state : OrganizationState.Pending;
-        }
-    }
 
     private async Task<List<string>> DiscoverRelatedFiles(string originalPath)
     {

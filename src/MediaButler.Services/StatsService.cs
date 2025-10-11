@@ -10,16 +10,27 @@ namespace MediaButler.Services;
 /// Service implementation for statistics and monitoring data in the MediaButler system.
 /// Provides aggregated metrics and analytics following "Simple Made Easy" principles.
 /// </summary>
-public class StatsService : IStatsService
+public class StatsService(IUnitOfWork unitOfWork, ILogger<StatsService> logger) : IStatsService
 {
-    private readonly IUnitOfWork _unitOfWork;
-    private readonly ILogger<StatsService> _logger;
+    // Confidence thresholds for ML classification
+    private const decimal LowConfidenceThreshold = 0.6m;
+    private const decimal HighConfidenceThreshold = 0.8m;
 
-    public StatsService(IUnitOfWork unitOfWork, ILogger<StatsService> logger)
-    {
-        _unitOfWork = unitOfWork ?? throw new ArgumentNullException(nameof(unitOfWork));
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-    }
+    // Time window constants
+    private const int DefaultThroughputHours = 24;
+    private const int DefaultErrorAnalysisDays = 7;
+    private const int DefaultHistoricalTrendDays = 30;
+    private const int DefaultMaxRetryCount = 3;
+
+    // File size thresholds (in MB)
+    private const double SmallFileSizeMB = 100;
+    private const double MediumFileSizeMB = 500;
+    private const double LargeFileSizeMB = 1024; // 1 GB
+    private const double VeryLargeFileSizeMB = 2048; // 2 GB
+    private const double ExtraLargeFileSizeMB = 5120; // 5 GB
+
+    private readonly IUnitOfWork _unitOfWork = unitOfWork ?? throw new ArgumentNullException(nameof(unitOfWork));
+    private readonly ILogger<StatsService> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
     public async Task<Result<ProcessingStats>> GetProcessingStatsAsync(CancellationToken cancellationToken = default)
     {
@@ -65,8 +76,8 @@ public class StatsService : IStatsService
             {
                 AverageConfidence = (double)classifiedFiles.Average(f => f.Confidence),
                 ConfidenceDistribution = BuildConfidenceDistribution(classifiedFiles),
-                LowConfidenceCount = classifiedFiles.Count(f => f.Confidence < 0.6m),
-                HighConfidenceCount = classifiedFiles.Count(f => f.Confidence >= 0.8m)
+                LowConfidenceCount = classifiedFiles.Count(f => f.Confidence < LowConfidenceThreshold),
+                HighConfidenceCount = classifiedFiles.Count(f => f.Confidence >= HighConfidenceThreshold)
             };
 
             // Calculate accuracy based on confirmed vs suggested categories
@@ -210,7 +221,7 @@ public class StatsService : IStatsService
         }
     }
 
-    public async Task<Result<ThroughputStats>> GetThroughputStatsAsync(int withinHours = 24, CancellationToken cancellationToken = default)
+    public async Task<Result<ThroughputStats>> GetThroughputStatsAsync(int withinHours = DefaultThroughputHours, CancellationToken cancellationToken = default)
     {
         if (withinHours <= 0)
             return Result<ThroughputStats>.Failure("Hours must be greater than 0");
@@ -248,7 +259,7 @@ public class StatsService : IStatsService
         }
     }
 
-    public async Task<Result<ErrorStats>> GetErrorAnalysisAsync(int withinDays = 7, CancellationToken cancellationToken = default)
+    public async Task<Result<ErrorStats>> GetErrorAnalysisAsync(int withinDays = DefaultErrorAnalysisDays, CancellationToken cancellationToken = default)
     {
         if (withinDays <= 0)
             return Result<ErrorStats>.Failure("Days must be greater than 0");
@@ -274,7 +285,7 @@ public class StatsService : IStatsService
                     totalErrors++;
                 }
 
-                if (file.RetryCount >= 3 || file.Status == FileStatus.Error)
+                if (file.RetryCount >= DefaultMaxRetryCount || file.Status == FileStatus.Error)
                 {
                     filesNeedingIntervention++;
                 }
@@ -324,12 +335,12 @@ public class StatsService : IStatsService
             
             var sizeDistribution = new Dictionary<string, int>
             {
-                ["< 100 MB"] = fileSizesMB.Count(s => s < 100),
-                ["100 MB - 500 MB"] = fileSizesMB.Count(s => s >= 100 && s < 500),
-                ["500 MB - 1 GB"] = fileSizesMB.Count(s => s >= 500 && s < 1024),
-                ["1 GB - 2 GB"] = fileSizesMB.Count(s => s >= 1024 && s < 2048),
-                ["2 GB - 5 GB"] = fileSizesMB.Count(s => s >= 2048 && s < 5120),
-                ["> 5 GB"] = fileSizesMB.Count(s => s >= 5120)
+                [$"< {SmallFileSizeMB} MB"] = fileSizesMB.Count(s => s < SmallFileSizeMB),
+                [$"{SmallFileSizeMB} MB - {MediumFileSizeMB} MB"] = fileSizesMB.Count(s => s >= SmallFileSizeMB && s < MediumFileSizeMB),
+                [$"{MediumFileSizeMB} MB - 1 GB"] = fileSizesMB.Count(s => s >= MediumFileSizeMB && s < LargeFileSizeMB),
+                ["1 GB - 2 GB"] = fileSizesMB.Count(s => s >= LargeFileSizeMB && s < VeryLargeFileSizeMB),
+                ["2 GB - 5 GB"] = fileSizesMB.Count(s => s >= VeryLargeFileSizeMB && s < ExtraLargeFileSizeMB),
+                ["> 5 GB"] = fileSizesMB.Count(s => s >= ExtraLargeFileSizeMB)
             };
 
             var stats = new FileSizeStats
@@ -350,7 +361,7 @@ public class StatsService : IStatsService
         }
     }
 
-    public async Task<Result<TrendStats>> GetHistoricalTrendsAsync(int days = 30, CancellationToken cancellationToken = default)
+    public async Task<Result<TrendStats>> GetHistoricalTrendsAsync(int days = DefaultHistoricalTrendDays, CancellationToken cancellationToken = default)
     {
         if (days <= 0)
             return Result<TrendStats>.Failure("Days must be greater than 0");

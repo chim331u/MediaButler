@@ -26,18 +26,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```
 MediaButler/
 ├── src/
-│   ├── MediaButler.API/           # .NET 8 REST API with controllers
-│   ├── MediaButler.Batch/         # .NET 8 Hangfire background worker (NEW)
+│   ├── MediaButler.API/           # .NET 8 REST API + Hangfire worker (combined)
 │   ├── MediaButler.Core/          # Domain models, interfaces, BaseEntity
 │   ├── MediaButler.Data/          # EF Core, SQLite, Repository pattern
 │   ├── MediaButler.ML/            # Classification engine, separate from domain
 │   ├── MediaButler.Services/      # Business logic, application services
 │   ├── MediaButler.Web/           # Web UI (Blazor WebAssembly .NET 10)
-│   └── MediaButler.Mobile/        # Android app (MAUI)
+│   └── MediaButler.Mobile/        # Android app (MAUI .NET 9)
 ├── tests/
-│   ├── MediaButler.Tests.Unit/           # 45+ fast unit tests
-│   ├── MediaButler.Tests.Integration/    # 30+ integration tests
-│   └── MediaButler.Tests.Acceptance/     # 25+ acceptance tests
+│   ├── MediaButler.Tests.Unit/           # 250+ fast unit tests
+│   ├── MediaButler.Tests.Integration/    # 300+ integration tests
+│   └── MediaButler.Tests.Acceptance/     # 240+ acceptance tests
 ├── docker/
 │   └── Dockerfile.arm32          # ARM32/Raspberry Pi deployment
 ├── docs/
@@ -49,7 +48,6 @@ MediaButler/
 │   ├── appsettings.json
 │   ├── appsettings.Development.json
 │   └── appsettings.Production.json
-├── next_step.md                  # Current implementation roadmap
 └── README.md
 ```
 
@@ -58,15 +56,17 @@ MediaButler/
 #### Controller-Based Organization
 ```
 MediaButler.API/Controllers/
-├── FilesController.cs           # File operations and management
-├── FileActionsController.cs     # Batch file processing operations
-├── StatsController.cs           # Statistics and monitoring
-├── HealthController.cs          # Health checks and diagnostics
-├── ProcessingController.cs      # Processing workflow management
-├── SystemController.cs          # System maintenance operations
-├── MetricsController.cs         # Performance metrics and monitoring
-├── NotificationTestController.cs # SignalR testing endpoints
-└── ExamplesController.cs        # API usage examples
+├── FilesController.cs               # File operations and management
+├── FileActionsController.cs         # Batch file processing operations
+├── TrainingController.cs            # ML model training operations
+├── StatsController.cs               # Statistics and monitoring
+├── HealthController.cs              # Health checks and diagnostics
+├── ProcessingController.cs          # Processing workflow management
+├── SystemController.cs              # System maintenance operations
+├── MetricsController.cs             # Performance metrics and monitoring
+├── NotificationsController.cs       # Batch worker to SignalR bridge
+├── NotificationTestController.cs    # SignalR testing endpoints
+└── ExamplesController.cs            # API usage examples
 ```
 
 #### Key Patterns Used
@@ -74,34 +74,37 @@ MediaButler.API/Controllers/
 - **Repository Pattern**: Data access abstraction with UnitOfWork
 - **Dependency Injection**: Service layer composition via built-in DI
 - **Global Filters**: Model validation and exception handling
-- **Hangfire Background Jobs**: Persistent job processing with separate worker process (ARM32 optimized)
+- **Hangfire Background Jobs**: Persistent job processing in same process (ARM32 optimized)
 - **Options Pattern**: Strongly-typed configuration
 - **BaseEntity Pattern**: Consistent audit trail and soft delete across all entities
 
-#### Architecture: Dual-Process Design
+#### Architecture: Single-Process Combined Mode
 ```
-MediaButler.API (HTTP Server)
-├── Controllers → Hangfire Client (Enqueue jobs)
-├── SignalR Hubs → Real-time notifications
-└── Services → Business logic
+MediaButler.API (Combined HTTP Server + Background Worker)
+├── Controllers → HTTP API endpoints
+├── Hangfire Client → Enqueue jobs
+├── Hangfire Server → Execute jobs in background
+├── Jobs/Batch/ → Batch processing job implementations
+├── SignalR Hubs → Real-time notifications to web clients
+└── Services → Shared business logic
 
-MediaButler.Batch (Background Worker)
-├── Hangfire Server → Job execution
-├── Job Processors → Batch operations, ML training, maintenance
-└── SignalR Client → Send notifications to API
-
-Shared Infrastructure
-├── Hangfire Database (SQLite) → Job persistence
-├── MediaButler Database (SQLite) → Application data
-└── Services Layer → Shared business logic
+Databases
+├── Hangfire Database (SQLite) → Job persistence at /data/mediabutler-hangfire.db
+└── MediaButler Database (SQLite) → Application data at /data/mediabutler.db
 ```
+
+**Architecture Evolution:**
+- **Previous**: Dual-process design (MediaButler.API + MediaButler.Batch)
+- **Current**: Single-process combined mode for simplified deployment and reduced overhead
+- **Rationale**: Eliminates inter-process communication complexity, reduces memory footprint, simplifies ARM32 deployment
 
 **Technology Stack:**
-- .NET 8 with C# 12 (API, Batch, Services, Core, Data, ML components)
+- .NET 8 with C# 12 (API, Services, Core, Data, ML components)
 - .NET 10 preview (Web UI - Blazor WebAssembly)
+- .NET 9 (Mobile - MAUI Android)
 - SQLite with Entity Framework Core
 - ASP.NET Core Web API with Controllers
-- Hangfire 1.8.14 with SQLite storage (background job processing)
+- Hangfire 1.8.14 with SQLite storage (combined client + server mode)
 - Radzen.Blazor for modern Web UI components
 - SignalR for real-time Web UI updates
 - Serilog for logging
@@ -137,11 +140,14 @@ dotnet build
 # Build specific project
 dotnet build src/MediaButler.API/MediaButler.API.csproj
 
-# Run API (development mode with Swagger)
+# Run API with background worker (development mode with Swagger)
 dotnet run --project src/MediaButler.API
 
 # Run in production mode
 dotnet run --project src/MediaButler.API --configuration Release
+
+# Access Hangfire Dashboard (development only)
+# Navigate to http://localhost:5000/hangfire after starting API
 ```
 
 ### Web Development (Blazor WebAssembly - .NET 10)
@@ -153,7 +159,7 @@ dotnet run --project src/MediaButler.Web
 dotnet publish src/MediaButler.Web -c Release -o ./dist/web
 
 # Run both API (.NET 8) and Web (.NET 10) concurrently
-# Terminal 1: Start API server
+# Terminal 1: Start API server (includes background worker)
 dotnet run --project src/MediaButler.API
 # Terminal 2: Start Web UI (configure API base URL in appsettings)
 dotnet run --project src/MediaButler.Web
@@ -216,6 +222,12 @@ reportgenerator -reports:"TestResults/**/coverage.cobertura.xml" -targetdir:"Tes
 
 # Run performance validation tests
 dotnet test --filter "Category=Performance"
+
+# Run a specific test by name
+dotnet test --filter "FullyQualifiedName~TokenizerServiceTests.ExtractSeriesName_WithValidFilename_ReturnsExpectedSeries"
+
+# Run tests in a specific class
+dotnet test --filter "FullyQualifiedName~TokenizerServiceTests"
 ```
 
 ### Database Operations
@@ -231,6 +243,9 @@ dotnet ef database drop --project src/MediaButler.Data --startup-project src/Med
 
 # View migration history
 dotnet ef migrations list --project src/MediaButler.Data --startup-project src/MediaButler.API
+
+# Remove last migration (if not applied to database)
+dotnet ef migrations remove --project src/MediaButler.Data --startup-project src/MediaButler.API
 ```
 
 ### Package Management
@@ -243,6 +258,9 @@ dotnet remove src/MediaButler.API package <PackageName>
 
 # Restore packages
 dotnet restore
+
+# List outdated packages
+dotnet list package --outdated
 ```
 
 ## File Organization Logic
@@ -309,15 +327,16 @@ Additional states: ERROR, RETRY (max 3 attempts), IGNORED (terminal state)
 Key endpoint categories:
 - **File Operations**: `/api/files/*` - CRUD operations for tracked files
   - `GET /api/files` - Get files with single status filter
-  - `GET /api/files/by-statuses` - **NEW**: Get files with multiple status filters
+  - `GET /api/files/by-statuses` - Get files with multiple status filters
 - **Batch Operations**: `/api/v1/file-actions/*` - Batch file processing and organization
-  - `POST /api/v1/file-actions/ignore/{hash}` - **NEW**: Mark individual file as ignored
+  - `POST /api/v1/file-actions/ignore/{hash}` - Mark individual file as ignored
 - **Processing**: `/api/processing/*` - File processing workflows and ML operations
+- **Training**: `/api/training/*` - ML model training and management
 - **System Operations**: `/api/system/*` - System maintenance and configuration
 - **Monitoring**: `/api/health`, `/api/stats`, `/api/metrics/*` - System health and metrics
 - **Real-time**: SignalR hubs at `/notifications` and `/file-processing` - Live updates
 
-### New Multi-Status File Endpoint
+### Multi-Status File Endpoint
 
 **Endpoint**: `GET /api/files/by-statuses`
 
@@ -328,16 +347,20 @@ Key endpoint categories:
 - `take` (int, default: 20, max: 100) - Number of files to return
 - `statuses` (string array, required) - Array of status values to filter by
 - `category` (string, optional) - Category filter
+- `searchTerm` (string, optional) - Search term for filename/category
+- `orderBy` (string, optional) - Column to sort by
+- `descending` (bool, default: true) - Sort direction
 
 **Example Usage**:
 ```http
 GET /api/files/by-statuses?statuses=ReadyToMove&statuses=Moving&statuses=Moved&skip=0&take=50
 GET /api/files/by-statuses?statuses=New&statuses=Processing&statuses=Classified&category=TV%20SERIES
+GET /api/files/by-statuses?statuses=Classified&searchTerm=breaking&orderBy=CreatedDate&descending=true
 ```
 
 **Response**: Array of TrackedFileResponse objects matching any of the specified statuses.
 
-### New File Ignore Endpoint
+### File Ignore Endpoint
 
 **Endpoint**: `POST /api/v1/file-actions/ignore/{hash}`
 
@@ -358,66 +381,63 @@ GET /api/files/by-statuses?statuses=New&statuses=Processing&statuses=Classified&
 - `404 Not Found` - File with specified hash not found
 - `500 Internal Server Error` - Unexpected error occurred
 
-**Example Usage**:
-```http
-POST /api/v1/file-actions/ignore/abc123def456789...
-```
-
-**Response**:
-```json
-{
-  "message": "File successfully marked as ignored",
-  "hash": "abc123def456789...",
-  "fileName": "Some.Series.S01E01.mkv",
-  "status": "Ignored",
-  "updatedAt": "2024-01-15T10:30:00.000Z"
-}
-```
-
 **Note**: Configuration endpoints (`/api/config/*`) removed in favor of static `appsettings.json` configuration.
 
 ## Background Processing Architecture
 
-The system uses a custom lightweight background task queue as an ARM32-optimized alternative to Hangfire:
+The system uses **Hangfire** in combined client+server mode for background job processing, optimized for ARM32 deployment:
 
 ### Key Components
-- **BackgroundTaskQueue**: Thread-safe queue with configurable capacity (default: 100)
-- **QueuedHostedService**: Background service that processes queued tasks
-- **CustomBatchFileProcessor**: Handles batch file operations with progress tracking
-- **FileActionsService**: Orchestrates batch operations and provides status monitoring
+- **Hangfire Server**: Executes background jobs within the API process
+- **Hangfire Client**: Enqueues jobs from controllers
+- **BatchFileProcessingJob**: Located at `src/MediaButler.API/Jobs/Batch/BatchFileProcessingJob.cs`
+- **NotificationsController**: Bridges Hangfire jobs to SignalR hubs for real-time updates
 
-### Queue Usage Pattern
+### Hangfire Configuration
 ```csharp
-// Queue a batch processing job
-var jobId = taskQueue.QueueBatchFileProcessing(operations, request);
+// Program.cs configuration
+builder.Services.AddHangfireServer(options =>
+{
+    options.ServerName = "mediabutler-api-worker";
+    options.WorkerCount = 2;  // ARM32 optimized
+    options.Queues = new[] { "critical", "default", "low-priority" };
+    options.HeartbeatInterval = TimeSpan.FromSeconds(30);
+    options.SchedulePollingInterval = TimeSpan.FromSeconds(15);
+});
+```
 
-// Monitor job status via API
-GET /api/v1/file-actions/batch-status/{jobId}
-GET /api/v1/file-actions/batch-jobs  // List all jobs
+### Job Usage Pattern
+```csharp
+// Enqueue a background job from controller
+var jobId = BackgroundJob.Enqueue<BatchFileProcessingJob>(
+    job => job.ProcessFilesAsync(operations, cancellationToken));
+
+// Monitor job status via Hangfire Dashboard (development only)
+// Navigate to http://localhost:5000/hangfire
 ```
 
 ### ARM32 Optimizations
-- Configurable concurrency limits to prevent resource exhaustion
-- Memory-efficient task serialization
-- Graceful degradation under memory pressure
+- Worker count limited to 2 to prevent resource exhaustion
+- Configurable queue priorities (critical, default, low-priority)
+- Job retention: 7 days succeeded, 30 days failed
+- WAL mode for SQLite to improve concurrent access
 - Progress reporting via SignalR for real-time updates
 
 ## Configuration - Simplified Static Configuration
 
-Following "Simple Made Easy" principles, the system now uses **pure static configuration** from `appsettings.json` only. This eliminates the complexity of hybrid database/static configuration management.
+Following "Simple Made Easy" principles, the system uses **pure static configuration** from `appsettings.json` only. This eliminates the complexity of hybrid database/static configuration management.
 
 The system uses `appsettings.json` for configuration located in `src/MediaButler.API/` with comprehensive sections for production deployment:
 
 ### Core Configuration Sections
-The MediaButler configuration is organized into logical sections for different system components:
 
 #### MediaButler.Paths Configuration
 File system path configuration for core system directories.
 
 | Setting | Description | Usage | Example |
 |---------|-------------|-------|---------|
-| `MediaLibrary` | Target directory for organized media files | Used by PathGenerationService to generate target paths for file organization | `/tmp/mediabutler/library` |
-| `WatchFolder` | Primary directory monitored for new files | Used by FileDiscoveryService as the main watch folder for file detection | `../../temp/watch` |
+| `MediaLibrary` | Target directory for organized media files | Used by PathGenerationService to generate target paths for file organization | `/library` |
+| `WatchFolder` | Primary directory monitored for new files | Used by FileDiscoveryService as the main watch folder for file detection | `/watch` |
 | `PendingReview` | Directory for files awaiting user confirmation | Used for staging files before final organization (future use) | `/tmp/mediabutler/pending` |
 
 #### MediaButler.FileDiscovery Configuration
@@ -425,14 +445,14 @@ File monitoring and discovery system settings optimized for ARM32 deployment.
 
 | Setting | Description | Usage | Example |
 |---------|-------------|-------|---------|
-| `WatchFolders` | Array of directories to monitor for new files | FileDiscoveryService monitors these paths using FileSystemWatcher | `["../../temp/watch"]` |
+| `WatchFolders` | Array of directories to monitor for new files | FileDiscoveryService monitors these paths using FileSystemWatcher | `["/watch"]` |
 | `EnableFileSystemWatcher` | Enable real-time file system monitoring | Controls whether FileSystemWatcher is used for immediate file detection | `true` |
-| `ScanIntervalMinutes` | Interval between periodic folder scans | Backup scanning mechanism when FileSystemWatcher misses files | `5` |
-| `FileExtensions` | Supported file extensions for processing | File filter in FileDiscoveryService to include only relevant files | `[".mkv", ".mp4", ".avi"]` |
-| `ExcludePatterns` | Regex patterns for files to ignore | Used to skip temporary, partial, or system files during scanning | `[".*tmp", ".*part"]` |
+| `ScanIntervalMinutes` | Interval between periodic folder scans | Backup scanning mechanism when FileSystemWatcher misses files | `10` |
+| `FileExtensions` | Supported file extensions for processing | File filter in FileDiscoveryService to include only relevant files | `[".mkv", ".mp4", ".avi", ".m4v", ".wmv"]` |
+| `ExcludePatterns` | Regex patterns for files to ignore | Used to skip temporary, partial, or system files during scanning | `[".*tmp", ".*part", ".*incomplete"]` |
 | `MinFileSizeMB` | Minimum file size threshold in megabytes | Filters out small files that are likely not valid media content | `1` |
-| `DebounceDelaySeconds` | Delay before processing file changes | Prevents processing files that are still being written or copied | `3` |
-| `MaxConcurrentScans` | Maximum concurrent scanning operations | ARM32 optimization to prevent resource exhaustion | `2` |
+| `DebounceDelaySeconds` | Delay before processing file changes | Prevents processing files that are still being written or copied | `8` |
+| `MaxConcurrentScans` | Maximum concurrent scanning operations | ARM32 optimization to prevent resource exhaustion | `1` |
 
 #### MediaButler.ML Configuration
 Machine learning pipeline configuration for classification and training.
@@ -484,22 +504,33 @@ Machine learning pipeline configuration for classification and training.
 ##### CSV Import Settings
 | Setting | Description | Usage | Example |
 |---------|-------------|-------|---------|
-| `DefaultCsvPath` | Default path for training data CSV | Used by CSV import functionality for batch training data | `"data/training_data.csv"` |
+| `DefaultCsvPath` | Default path for training data CSV | Used by CSV import functionality for batch training data | `"/data/training_data.csv"` |
 | `Separator` | CSV column separator character | Defines CSV parsing format for training data import | `";"` |
 | `NormalizeCategoryNames` | Normalize category names to uppercase | Ensures consistent category naming in training data | `true` |
 | `SkipDuplicates` | Skip duplicate entries during import | Prevents duplicate training samples from affecting model | `true` |
 | `ValidateFileExtensions` | Validate file extensions in training data | Ensures training data matches supported file types | `true` |
 | `MaxSamples` | Maximum samples to import (0 = unlimited) | Limits training data size for memory management | `0` |
 | `AutoImportOnStartup` | Automatically import CSV on system start | Enables automatic training data loading | `false` |
-| `BackupPath` | Path for backing up training data | Creates backup copies before importing new data | `"data/backups/training_data_backup.csv"` |
+| `BackupPath` | Path for backing up training data | Creates backup copies before importing new data | `"/data/backups/training_data_backup.csv"` |
+
+### Hangfire Configuration
+Background job processing configuration for ARM32 optimization.
+
+| Setting | Description | Usage | Example |
+|---------|-------------|-------|---------|
+| `Server.ServerName` | Unique name for this Hangfire server instance | Identifies worker in Hangfire Dashboard | `"mediabutler-api-worker"` |
+| `Server.WorkerCount` | Number of concurrent background workers | ARM32 optimization - keep low to avoid memory issues | `2` |
+| `Server.Queues` | Priority queues for job processing | Ordered array defining queue priorities | `["critical", "default", "low-priority"]` |
+| `Server.HeartbeatInterval` | Worker heartbeat interval | How often worker reports status | `"00:00:30"` |
+| `Server.ServerCheckInterval` | Server availability check interval | How often to check for dead servers | `"00:05:00"` |
 
 ### ARM32 Optimization Settings
 Performance and memory optimization settings for ARM32 NAS deployment.
 
 | Setting | Description | Usage | Example |
 |---------|-------------|-------|---------|
-| `MemoryThresholdMB` | Maximum memory usage threshold | System monitoring triggers cleanup when exceeded | `300` |
-| `AutoGCTriggerMB` | Memory level to trigger garbage collection | Proactive memory management for ARM32 constraints | `250` |
+| `MemoryThresholdMB` | Maximum memory usage threshold | System monitoring triggers cleanup when exceeded | `200` |
+| `AutoGCTriggerMB` | Memory level to trigger garbage collection | Proactive memory management for ARM32 constraints | `150` |
 | `PerformanceThresholdMs` | Maximum acceptable operation time | Performance monitoring and alerting threshold | `1000` |
 | `MaxLogFileSizeMB` | Maximum log file size before rotation | Prevents log files from consuming excessive disk space | `50` |
 
@@ -555,14 +586,20 @@ Designed for ARM32 NAS with 1GB RAM:
 - Lightweight FastText model: ~20MB
 - SQLite for minimal resource overhead
 - Optimized batch processing with configurable concurrency limits
+- Hangfire worker count limited to 2 concurrent jobs
 
 ## Real-time Features
 
-The system provides real-time updates via Server-Sent Events for:
+The system provides real-time updates via SignalR for:
 - File scan progress (`scan.started`, `scan.found`, `scan.completed`)
 - Move operations (`move.started`, `move.progress`, `move.completed`)
 - ML training status (`training.started`, `training.completed`)
+- Batch processing updates (`batch.started`, `batch.progress`, `batch.completed`, `batch.failed`)
 - Error notifications (`error.move_failed`, `error.classification_failed`)
+
+**SignalR Hubs:**
+- `/notifications` - General system notifications
+- `/file-processing` - File processing and batch operation updates
 
 ## ML Model Implementation Decisions
 
@@ -606,12 +643,12 @@ CREATE TABLE SeriesPatterns (
 ### Model Versioning Strategy
 **Simple versioning approach:**
 - Store model files as `fasttext_v{version}.bin` in models directory
-- Track active model version in `ModelConfig` table
-- Rollback capability: switch active version pointer, retrain if needed
+- Track active model version in `appsettings.json` configuration
+- Rollback capability: change active version in config, restart service
 - Maximum 3 model versions retained (disk space optimization)
 - Version format: semantic versioning (1.0.0, 1.1.0, 2.0.0)
 
-## Future Client Applications (Suggestions)
+## Client Applications
 
 ### **Blazor WebAssembly (.NET 10) - FULLY IMPLEMENTED**
 **Project**: `src/MediaButler.Web`
@@ -627,15 +664,15 @@ CREATE TABLE SeriesPatterns (
 - **Architecture**: Lightweight WebAssembly client consuming REST API
 
 ### **MAUI Android (.NET 9)**
-**Suggested Project**: `src/MediaButler.Mobile`
-- **Why .NET 9**: Latest performance improvements for mobile
+**Project**: `src/MediaButler.Mobile`
+- **Status**: In development
+- **Technology**: .NET 9 MAUI for Android
 - **Why Android Only**: Aligns with NAS/home server use case
-- **Dependencies**: `MediaButler.API.Contracts` for API communication
 - **Features**: File notifications, quick confirmations, system monitoring
 
 ### **Client Architecture Pattern**
 ```
-Web/Mobile → API.Contracts → HTTP Client → MediaButler.API
+Web/Mobile → HTTP Client → MediaButler.API → Services → Data
 ```
 
 Both clients remain lightweight UI shells that communicate with the central API, maintaining the "simple" principle by avoiding duplicated business logic while enabling rich user experiences across platforms.
@@ -665,18 +702,18 @@ Following Rich Hickey's principle that tests don't solve complexity but help ver
 
 #### **Test Pyramid Approach**
 ```
-    /\     Acceptance Tests (70+ tests, slow, high confidence)
+    /\     Acceptance Tests (240+ tests, slow, high confidence)
    /  \    - End-to-end file processing workflows
   /____\   - API contract validation
  /      \  - ML classification accuracy
 /__________\
-Integration Tests (90+ tests, medium speed)
+Integration Tests (300+ tests, medium speed)
 - Database operations with BaseEntity
 - File system interactions
 - ML model integration
 - Web UI component testing
 
-Unit Tests (110+ tests, fast, low-level)
+Unit Tests (250+ tests, fast, low-level)
 - Pure function testing
 - Business logic validation
 - Edge case coverage
@@ -685,17 +722,17 @@ Unit Tests (110+ tests, fast, low-level)
 
 ### Test Categories and Responsibilities
 
-#### **1. Unit Tests (MediaButler.Tests.Unit) - 110+ Tests**
+#### **1. Unit Tests (MediaButler.Tests.Unit) - 250+ Tests**
 **Purpose**: Test individual components in isolation
 **Speed**: <100ms per test
 **Scope**: Single class or function
 
 **Key Areas**:
-- **BaseEntity Behavior**: Audit trail, soft delete functionality (8 tests)
-- **Tokenization Logic**: Filename parsing and series name extraction (12 tests)
-- **Classification Algorithms**: ML model decision logic (10 tests)
-- **File Operations**: Hash calculation, path validation (8 tests)
-- **Business Rules**: Confidence thresholds, retry logic (7 tests)
+- **BaseEntity Behavior**: Audit trail, soft delete functionality
+- **Tokenization Logic**: Filename parsing and series name extraction
+- **Classification Algorithms**: ML model decision logic
+- **File Operations**: Hash calculation, path validation
+- **Business Rules**: Confidence thresholds, retry logic
 
 **Example Structure**:
 ```csharp
@@ -719,17 +756,17 @@ public class TokenizerServiceTests
 }
 ```
 
-#### **2. Integration Tests (MediaButler.Tests.Integration) - 90+ Tests**
+#### **2. Integration Tests (MediaButler.Tests.Integration) - 300+ Tests**
 **Purpose**: Test component interactions and external dependencies
 **Speed**: 100ms-2s per test
 **Scope**: Multiple components working together
 
 **Key Areas**:
-- **Database Integration**: EF Core operations with BaseEntity (12 tests)
-- **File System Operations**: File watching, moving, hashing (8 tests)
-- **ML Pipeline**: Model loading, training, prediction (6 tests)
-- **API Layer**: API endpoints with real dependencies (6 tests)
-- **Web UI Components**: Blazor component integration with API (8 tests)
+- **Database Integration**: EF Core operations with BaseEntity
+- **File System Operations**: File watching, moving, hashing
+- **ML Pipeline**: Model loading, training, prediction
+- **API Layer**: API endpoints with real dependencies
+- **Web UI Components**: Blazor component integration with API
 
 **Example Structure**:
 ```csharp
@@ -758,17 +795,17 @@ public class FileClassificationIntegrationTests : IClassFixture<DatabaseFixture>
 }
 ```
 
-#### **3. Acceptance Tests (MediaButler.Tests.Acceptance) - 70+ Tests**
+#### **3. Acceptance Tests (MediaButler.Tests.Acceptance) - 240+ Tests**
 **Purpose**: Validate complete business scenarios and API contracts
 **Speed**: 1s-10s per test
 **Scope**: Full system workflows
 
 **Key Areas**:
-- **End-to-End File Processing**: Scan → Classify → Confirm → Move (8 tests)
-- **API Contract Validation**: HTTP endpoints with real payloads (6 tests)
-- **ML Model Accuracy**: Classification performance benchmarks (4 tests)
-- **Error Handling**: Retry logic, failure recovery (4 tests)
-- **Performance Requirements**: ARM32 memory constraints (3 tests)
+- **End-to-End File Processing**: Scan → Classify → Confirm → Move
+- **API Contract Validation**: HTTP endpoints with real payloads
+- **ML Model Accuracy**: Classification performance benchmarks
+- **Error Handling**: Retry logic, failure recovery
+- **Performance Requirements**: ARM32 memory constraints
 
 **Example Structure**:
 ```csharp

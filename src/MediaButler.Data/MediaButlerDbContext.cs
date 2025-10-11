@@ -54,6 +54,13 @@ public class MediaButlerDbContext : DbContext
     public DbSet<UserPreference> UserPreferences => Set<UserPreference>();
 
     /// <summary>
+    /// Gets or sets the FileOrganizationStates entity set.
+    /// Represents the current state of file organization operations.
+    /// </summary>
+    /// <value>A DbSet of FileOrganizationStateEntity entities.</value>
+    public DbSet<FileOrganizationStateEntity> FileOrganizationStates => Set<FileOrganizationStateEntity>();
+
+    /// <summary>
     /// Configures the database model and entity relationships.
     /// This method applies all entity configurations and sets up global query filters
     /// for soft delete functionality through BaseEntity.

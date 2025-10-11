@@ -1,4 +1,5 @@
 using MediaButler.Core.Common;
+using MediaButler.Core.Configuration;
 using MediaButler.Core.Entities;
 using MediaButler.Core.Enums;
 using MediaButler.Data.Repositories;
@@ -16,22 +17,28 @@ namespace MediaButler.Services;
 /// Provides high-level business operations for tracked files following "Simple Made Easy" principles
 /// by maintaining single responsibility and avoiding complecting of concerns.
 /// </summary>
-public class FileService : IFileService
+public class FileService(
+    ITrackedFileRepository trackedFileRepository,
+    IUnitOfWork unitOfWork,
+    IPathGenerationService pathGenerationService,
+    IMediaButlerConfiguration configuration,
+    ILogger<FileService> logger) : IFileService
 {
-    private readonly ITrackedFileRepository _trackedFileRepository;
-    private readonly IUnitOfWork _unitOfWork;
-    private readonly ILogger<FileService> _logger;
-    private const int MaxRetryCount = 3;
+    // Validation constants
+    private const decimal MinConfidence = 0.0m;
+    private const decimal MaxConfidence = 1.0m;
 
-    public FileService(
-        ITrackedFileRepository trackedFileRepository,
-        IUnitOfWork unitOfWork,
-        ILogger<FileService> logger)
-    {
-        _trackedFileRepository = trackedFileRepository ?? throw new ArgumentNullException(nameof(trackedFileRepository));
-        _unitOfWork = unitOfWork ?? throw new ArgumentNullException(nameof(unitOfWork));
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-    }
+    // Default limits for batch operations
+    private const int DefaultClassificationLimit = 100;
+    private const int DefaultMovingLimit = 50;
+    private const int DefaultRecentlyMovedHours = 24;
+    private const int MaxPageSize = 1000;
+
+    private readonly ITrackedFileRepository _trackedFileRepository = trackedFileRepository ?? throw new ArgumentNullException(nameof(trackedFileRepository));
+    private readonly IUnitOfWork _unitOfWork = unitOfWork ?? throw new ArgumentNullException(nameof(unitOfWork));
+    private readonly IPathGenerationService _pathGenerationService = pathGenerationService ?? throw new ArgumentNullException(nameof(pathGenerationService));
+    private readonly IMediaButlerConfiguration _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+    private readonly ILogger<FileService> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
     /// <summary>
     /// Registers a new file for tracking based on its file path.
@@ -165,7 +172,7 @@ public class FileService : IFileService
     /// <summary>
     /// Gets files that are ready for ML classification processing.
     /// </summary>
-    public async Task<Result<IEnumerable<TrackedFile>>> GetFilesReadyForClassificationAsync(int limit = 100, CancellationToken cancellationToken = default)
+    public async Task<Result<IEnumerable<TrackedFile>>> GetFilesReadyForClassificationAsync(int limit = DefaultClassificationLimit, CancellationToken cancellationToken = default)
     {
         if (limit <= 0)
             return Result<IEnumerable<TrackedFile>>.Failure("Limit must be greater than 0");
@@ -202,7 +209,7 @@ public class FileService : IFileService
     /// <summary>
     /// Gets files that are ready to be moved to their target locations.
     /// </summary>
-    public async Task<Result<IEnumerable<TrackedFile>>> GetFilesReadyForMovingAsync(int limit = 50, CancellationToken cancellationToken = default)
+    public async Task<Result<IEnumerable<TrackedFile>>> GetFilesReadyForMovingAsync(int limit = DefaultMovingLimit, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -227,8 +234,8 @@ public class FileService : IFileService
         if (string.IsNullOrWhiteSpace(suggestedCategory))
             return Result<TrackedFile>.Failure("Suggested category cannot be empty");
 
-        if (confidence < 0 || confidence > 1)
-            return Result<TrackedFile>.Failure("Confidence must be between 0 and 1");
+        if (confidence < MinConfidence || confidence > MaxConfidence)
+            return Result<TrackedFile>.Failure($"Confidence must be between {MinConfidence} and {MaxConfidence}");
 
         try
         {
@@ -277,17 +284,23 @@ public class FileService : IFileService
             if (file.Status != FileStatus.Classified)
                 return Result<TrackedFile>.Failure($"File is not in Classified status. Current status: {file.Status}");
 
+            // Generate target path using PathGenerationService
+            var pathResult = await _pathGenerationService.GenerateTargetPathAsync(file, confirmedCategory);
+            if (pathResult.IsFailure)
+            {
+                _logger.LogError("Failed to generate target path for file {Hash}: {Error}", hash, pathResult.Error);
+                return Result<TrackedFile>.Failure($"Failed to generate target path: {pathResult.Error}");
+            }
+
             file.Category = confirmedCategory;
             file.Status = FileStatus.ReadyToMove;
-            
-            // Set the target path based on the category and filename
-            var sanitizedCategory = SanitizeCategoryForPath(confirmedCategory);
-            file.TargetPath = Path.Combine("/library", sanitizedCategory, file.FileName);
+            file.TargetPath = pathResult.Value;
 
             _trackedFileRepository.Update(file);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-            _logger.LogInformation("Confirmed category for file {Hash}: {Category}", hash, confirmedCategory);
+            _logger.LogInformation("Confirmed category for file {Hash}: {Category}, Target path: {TargetPath}",
+                hash, confirmedCategory, file.TargetPath);
             return Result<TrackedFile>.Success(file);
         }
         catch (Exception ex)
@@ -356,15 +369,15 @@ public class FileService : IFileService
             file.RetryCount++;
 
             // Determine status based on retry count
-            if (file.RetryCount >= MaxRetryCount)
+            if (file.RetryCount >= _configuration.MaxRetryCount)
             {
                 file.Status = FileStatus.Error;
-                _logger.LogError("File {Hash} exceeded maximum retry count ({MaxRetryCount}): {ErrorMessage}", hash, MaxRetryCount, errorMessage);
+                _logger.LogError("File {Hash} exceeded maximum retry count ({MaxRetryCount}): {ErrorMessage}", hash, _configuration.MaxRetryCount, errorMessage);
             }
             else
             {
                 file.Status = FileStatus.Retry;
-                _logger.LogWarning("File {Hash} error recorded (retry {RetryCount}/{MaxRetryCount}): {ErrorMessage}", hash, file.RetryCount, MaxRetryCount, errorMessage);
+                _logger.LogWarning("File {Hash} error recorded (retry {RetryCount}/{MaxRetryCount}): {ErrorMessage}", hash, file.RetryCount, _configuration.MaxRetryCount, errorMessage);
             }
 
             _trackedFileRepository.Update(file);
@@ -487,12 +500,14 @@ public class FileService : IFileService
 
     /// <summary>
     /// Retrieves files that have exceeded the maximum retry count and need manual intervention.
+    /// Uses the default max retry count from configuration.
     /// </summary>
-    public async Task<Result<IEnumerable<TrackedFile>>> GetFilesNeedingInterventionAsync(int maxRetryCount = 3, CancellationToken cancellationToken = default)
+    public async Task<Result<IEnumerable<TrackedFile>>> GetFilesNeedingInterventionAsync(int? maxRetryCount = null, CancellationToken cancellationToken = default)
     {
         try
         {
-            var files = await _trackedFileRepository.GetFilesExceedingRetryLimitAsync(maxRetryCount, cancellationToken);
+            var effectiveMaxRetryCount = maxRetryCount ?? _configuration.MaxRetryCount;
+            var files = await _trackedFileRepository.GetFilesExceedingRetryLimitAsync(effectiveMaxRetryCount, cancellationToken);
             return Result<IEnumerable<TrackedFile>>.Success(files);
         }
         catch (Exception ex)
@@ -505,7 +520,7 @@ public class FileService : IFileService
     /// <summary>
     /// Retrieves recently moved files for verification and potential rollback scenarios.
     /// </summary>
-    public async Task<Result<IEnumerable<TrackedFile>>> GetRecentlyMovedFilesAsync(int withinHours = 24, CancellationToken cancellationToken = default)
+    public async Task<Result<IEnumerable<TrackedFile>>> GetRecentlyMovedFilesAsync(int withinHours = DefaultRecentlyMovedHours, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -532,8 +547,8 @@ public class FileService : IFileService
         if (skip < 0)
             return Result<IEnumerable<TrackedFile>>.Failure("Skip must be non-negative");
 
-        if (take <= 0 || take > 1000)
-            return Result<IEnumerable<TrackedFile>>.Failure("Take must be between 1 and 1000");
+        if (take <= 0 || take > MaxPageSize)
+            return Result<IEnumerable<TrackedFile>>.Failure($"Take must be between 1 and {MaxPageSize}");
 
         try
         {
@@ -570,8 +585,8 @@ public class FileService : IFileService
         if (skip < 0)
             return Result<PagedResult<TrackedFile>>.Failure("Skip must be non-negative");
 
-        if (take <= 0 || take > 1000)
-            return Result<PagedResult<TrackedFile>>.Failure("Take must be between 1 and 1000");
+        if (take <= 0 || take > MaxPageSize)
+            return Result<PagedResult<TrackedFile>>.Failure($"Take must be between 1 and {MaxPageSize}");
 
         if (statuses == null)
             return Result<PagedResult<TrackedFile>>.Failure("Statuses collection cannot be null");
@@ -689,27 +704,9 @@ public class FileService : IFileService
     {
         using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read);
         using var sha256 = SHA256.Create();
-        
+
         var hashBytes = await Task.Run(() => sha256.ComputeHash(stream), cancellationToken);
         return Convert.ToHexString(hashBytes).ToLowerInvariant();
-    }
-
-    /// <summary>
-    /// Sanitizes a category name to be safe for use as a directory path.
-    /// </summary>
-    private static string SanitizeCategoryForPath(string category)
-    {
-        if (string.IsNullOrWhiteSpace(category))
-            return "UNKNOWN";
-
-        // Remove invalid path characters
-        var invalidChars = Path.GetInvalidPathChars().Concat(Path.GetInvalidFileNameChars()).ToArray();
-        var sanitized = new string(category.Where(c => !invalidChars.Contains(c)).ToArray());
-        
-        // Replace spaces and ensure it's not empty
-        sanitized = sanitized.Replace(' ', '_').Trim('_');
-        
-        return string.IsNullOrEmpty(sanitized) ? "UNKNOWN" : sanitized.ToUpperInvariant();
     }
 
     /// <summary>

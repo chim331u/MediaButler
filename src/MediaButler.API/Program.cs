@@ -4,7 +4,9 @@ using MediaButler.Data.Repositories;
 using MediaButler.Data.UnitOfWork;
 using MediaButler.Services;
 using MediaButler.Services.Interfaces;
+using MediaButler.Services.Configuration;
 using MediaButler.Core.Services;
+using MediaButler.Core.Configuration;
 using MediaButler.API.Middleware;
 using MediaButler.API.Filters;
 using MediaButler.API.Hubs;
@@ -78,13 +80,19 @@ builder.Services.AddDbContext<MediaButlerDbContext>(options =>
 
 // Add repository and unit of work
 builder.Services.AddScoped<ITrackedFileRepository, TrackedFileRepository>();
+builder.Services.AddScoped<IFileOrganizationStateRepository, FileOrganizationStateRepository>();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
+
+// Add configuration service (single source of truth for configuration)
+builder.Services.AddSingleton<IMediaButlerConfiguration, MediaButlerConfiguration>();
 
 // Add application services
 builder.Services.AddScoped<IFileService, FileService>();
 builder.Services.AddScoped<IStatsService, StatsService>();
 builder.Services.AddScoped<IRollbackService, RollbackService>();
 builder.Services.AddScoped<IErrorClassificationService, ErrorClassificationService>();
+builder.Services.AddScoped<IOrganizationStateService, OrganizationStateService>();
+builder.Services.AddScoped<IOrganizationValidator, MediaButler.Services.Validation.OrganizationValidator>();
 builder.Services.AddScoped<IFileOrganizationService, FileOrganizationService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 
@@ -121,6 +129,10 @@ builder.Services.AddHangfireServer(options =>
 // Register Hangfire job classes
 builder.Services.AddScoped<MediaButler.API.Jobs.Batch.BatchFileProcessingJob>();
 builder.Services.AddScoped<IBatchFileProcessor, MediaButler.API.Jobs.Batch.BatchFileProcessingJob>();
+
+// Register batch job services (progress reporting and throttling)
+builder.Services.AddScoped<IProgressReporter, SignalRProgressReporter>();
+builder.Services.AddScoped<IBatchThrottler, Arm32BatchThrottler>();
 
 // Register SignalR notification client for job-to-hub communication
 builder.Services.AddHttpClient<MediaButler.API.Services.SignalRNotificationClient>(client =>

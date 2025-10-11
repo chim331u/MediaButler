@@ -44,6 +44,13 @@ public interface IUnitOfWork : IDisposable
     IRepository<MediaButler.Core.Entities.UserPreference> UserPreferences { get; }
 
     /// <summary>
+    /// Gets the FileOrganizationState repository for organization state tracking.
+    /// All repository instances share the same database context and transaction scope.
+    /// </summary>
+    /// <value>The FileOrganizationState repository instance.</value>
+    IFileOrganizationStateRepository FileOrganizationStates { get; }
+
+    /// <summary>
     /// Begins a new database transaction.
     /// All subsequent repository operations will be part of this transaction until
     /// CommitTransactionAsync or RollbackTransactionAsync is called.

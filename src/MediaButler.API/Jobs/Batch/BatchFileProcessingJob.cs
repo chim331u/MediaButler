@@ -10,29 +10,33 @@ namespace MediaButler.API.Jobs.Batch;
 
 /// <summary>
 /// Hangfire job for processing batch file organization operations.
-/// Processes multiple files sequentially with ARM32 optimization and real-time progress updates via SignalR.
+/// Simplified following "Simple Made Easy" principles - delegates progress reporting and throttling to dedicated services.
+/// Focuses solely on orchestrating file organization operations.
 /// </summary>
 [Queue("default")]
 [AutomaticRetry(Attempts = 3, DelaysInSeconds = new[] { 30, 60, 120 })]
 public class BatchFileProcessingJob : IBatchFileProcessor
 {
     private readonly IFileOrganizationService _fileOrganizationService;
-    private readonly SignalRNotificationClient _signalRClient;
+    private readonly IProgressReporter _progressReporter;
+    private readonly IBatchThrottler _throttler;
     private readonly ILogger<BatchFileProcessingJob> _logger;
 
     public BatchFileProcessingJob(
         IFileOrganizationService fileOrganizationService,
-        SignalRNotificationClient signalRClient,
+        IProgressReporter progressReporter,
+        IBatchThrottler throttler,
         ILogger<BatchFileProcessingJob> logger)
     {
-        _fileOrganizationService = fileOrganizationService;
-        _signalRClient = signalRClient;
-        _logger = logger;
+        _fileOrganizationService = fileOrganizationService ?? throw new ArgumentNullException(nameof(fileOrganizationService));
+        _progressReporter = progressReporter ?? throw new ArgumentNullException(nameof(progressReporter));
+        _throttler = throttler ?? throw new ArgumentNullException(nameof(throttler));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     /// <summary>
     /// Processes a batch of file organization operations.
-    /// Sends progress notifications every 5 files for real-time Web UI updates.
+    /// Delegates progress reporting and throttling to specialized services.
     /// </summary>
     /// <param name="operations">List of file operations to process</param>
     /// <param name="batchName">Human-readable name for the batch</param>
@@ -47,7 +51,7 @@ public class BatchFileProcessingJob : IBatchFileProcessor
         bool continueOnError,
         CancellationToken cancellationToken)
     {
-
+        const string JobType = "batch.file.processing";
         var stopwatch = Stopwatch.StartNew();
         var totalFiles = operations.Count;
         var processedCount = 0;
@@ -61,11 +65,8 @@ public class BatchFileProcessingJob : IBatchFileProcessor
 
         try
         {
-            // Notify batch started
-            await _signalRClient.NotifyBatchJobStartedAsync(
-                jobId,
-                "batch.file.processing",
-                totalFiles);
+            // Report job started
+            await _progressReporter.ReportJobStartedAsync(jobId, JobType, totalFiles);
 
             foreach (var operation in operations)
             {
@@ -112,31 +113,24 @@ public class BatchFileProcessingJob : IBatchFileProcessor
 
                 processedCount++;
 
-                // Send progress notification every 5 files
-                if (processedCount % 5 == 0 || processedCount == totalFiles)
-                {
-                    await _signalRClient.NotifyBatchJobProgressAsync(
-                        jobId,
-                        processedCount,
-                        totalFiles,
-                        operation.TrackedFile.FileName);
-                }
+                // Report progress after every file
+                await _progressReporter.ReportProgressAsync(
+                    jobId,
+                    processedCount,
+                    totalFiles,
+                    operation.TrackedFile.FileName);
 
-                // ARM32 optimization: Add delay between files to prevent resource exhaustion
-                if (processedCount < totalFiles)
+                // Apply throttling between operations
+                if (_throttler.ShouldThrottle(processedCount, totalFiles))
                 {
-                    await Task.Delay(50, cancellationToken);
+                    await _throttler.ThrottleAsync(cancellationToken);
                 }
             }
 
             stopwatch.Stop();
 
-            // Notify batch completed
-            await _signalRClient.NotifyBatchJobCompletedAsync(
-                jobId,
-                "batch.file.processing",
-                totalFiles,
-                stopwatch.Elapsed);
+            // Report successful completion
+            await _progressReporter.ReportJobCompletedAsync(jobId, JobType, totalFiles, stopwatch.Elapsed);
 
             _logger.LogInformation(
                 "Batch job {JobId} completed: {Success} succeeded, {Failed} failed out of {Total} files in {Duration}ms",
@@ -145,21 +139,13 @@ public class BatchFileProcessingJob : IBatchFileProcessor
         catch (OperationCanceledException)
         {
             _logger.LogWarning("Batch job {JobId} was cancelled", jobId);
-            await _signalRClient.NotifyBatchJobFailedAsync(
-                jobId,
-                "batch.file.processing",
-                "Job was cancelled",
-                processedCount);
+            await _progressReporter.ReportJobFailedAsync(jobId, JobType, "Job was cancelled", processedCount);
             throw;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Batch job {JobId} failed with error: {Error}", jobId, ex.Message);
-            await _signalRClient.NotifyBatchJobFailedAsync(
-                jobId,
-                "batch.file.processing",
-                ex.Message,
-                processedCount);
+            await _progressReporter.ReportJobFailedAsync(jobId, JobType, ex.Message, processedCount);
             throw;
         }
     }

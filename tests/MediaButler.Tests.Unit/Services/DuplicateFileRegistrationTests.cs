@@ -1,9 +1,12 @@
 using FluentAssertions;
+using MediaButler.Core.Common;
+using MediaButler.Core.Configuration;
 using MediaButler.Core.Entities;
 using MediaButler.Core.Enums;
 using MediaButler.Data.Repositories;
 using MediaButler.Data.UnitOfWork;
 using MediaButler.Services;
+using MediaButler.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -19,6 +22,8 @@ public class DuplicateFileRegistrationTests
 {
     private readonly Mock<ITrackedFileRepository> _mockRepository;
     private readonly Mock<IUnitOfWork> _mockUnitOfWork;
+    private readonly Mock<IPathGenerationService> _mockPathGenerationService;
+    private readonly Mock<IMediaButlerConfiguration> _mockConfiguration;
     private readonly Mock<ILogger<FileService>> _mockLogger;
     private readonly FileService _fileService;
 
@@ -26,13 +31,20 @@ public class DuplicateFileRegistrationTests
     {
         _mockRepository = new Mock<ITrackedFileRepository>();
         _mockUnitOfWork = new Mock<IUnitOfWork>();
+        _mockPathGenerationService = new Mock<IPathGenerationService>();
+        _mockConfiguration = new Mock<IMediaButlerConfiguration>();
         _mockLogger = new Mock<ILogger<FileService>>();
 
         _mockUnitOfWork.Setup(u => u.TrackedFiles).Returns(_mockRepository.Object);
 
+        // Setup configuration defaults
+        _mockConfiguration.Setup(c => c.MaxRetryCount).Returns(3);
+
         _fileService = new FileService(
             _mockRepository.Object,
             _mockUnitOfWork.Object,
+            _mockPathGenerationService.Object,
+            _mockConfiguration.Object,
             _mockLogger.Object);
     }
 

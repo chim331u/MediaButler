@@ -73,14 +73,17 @@ public class DatabaseFixture : IDisposable
         // Add repository services
         services.AddScoped<IUnitOfWork, UnitOfWorkImpl>();
         services.AddScoped<ITrackedFileRepository, TrackedFileRepository>();
+        services.AddScoped<IFileOrganizationStateRepository, FileOrganizationStateRepository>();
         
         // Add application services
         services.AddScoped<IFileService, FileService>();
         services.AddScoped<IStatsService, StatsService>();
         services.AddScoped<IRollbackService, RollbackService>();
         services.AddScoped<IErrorClassificationService, ErrorClassificationService>();
+        services.AddScoped<IOrganizationStateService, OrganizationStateService>();
+        services.AddScoped<IOrganizationValidator, MediaButler.Services.Validation.OrganizationValidator>();
         services.AddScoped<IFileOrganizationService, FileOrganizationService>();
-        
+
         // Add file operation services
         services.AddScoped<IFileOperationService, FileOperationService>();
         services.AddScoped<IPathGenerationService, PathGenerationService>();

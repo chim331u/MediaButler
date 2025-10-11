@@ -5,11 +5,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using MediaButler.Core.Common;
+using MediaButler.Core.Configuration;
 using MediaButler.Core.Entities;
 using MediaButler.Core.Enums;
 using MediaButler.Data.Repositories;
 using MediaButler.Data.UnitOfWork;
 using MediaButler.Services;
+using MediaButler.Services.Interfaces;
 using MediaButler.Tests.Unit.Infrastructure;
 using MediaButler.Tests.Unit.ObjectMothers;
 using MediaButler.Tests.Unit.Builders;
@@ -28,6 +30,8 @@ public class FileServiceTests : TestBase
 {
     private readonly Mock<ITrackedFileRepository> _mockFileRepository;
     private readonly Mock<IUnitOfWork> _mockUnitOfWork;
+    private readonly Mock<IPathGenerationService> _mockPathGenerationService;
+    private readonly Mock<IMediaButlerConfiguration> _mockConfiguration;
     private readonly Mock<ILogger<FileService>> _mockLogger;
     private readonly FileService _fileService;
 
@@ -35,12 +39,19 @@ public class FileServiceTests : TestBase
     {
         _mockFileRepository = new Mock<ITrackedFileRepository>();
         _mockUnitOfWork = new Mock<IUnitOfWork>();
+        _mockPathGenerationService = new Mock<IPathGenerationService>();
+        _mockConfiguration = new Mock<IMediaButlerConfiguration>();
         _mockLogger = new Mock<ILogger<FileService>>();
-        
+
         // Setup unit of work to return our mocked repository
         _mockUnitOfWork.Setup(uow => uow.TrackedFiles).Returns(_mockFileRepository.Object);
-        
-        _fileService = new FileService(_mockFileRepository.Object, _mockUnitOfWork.Object, _mockLogger.Object);
+
+        // Setup configuration defaults
+        _mockConfiguration.Setup(c => c.MaxRetryCount).Returns(3);
+        _mockConfiguration.Setup(c => c.MediaLibraryPath).Returns("/library");
+        _mockConfiguration.Setup(c => c.WatchFolderPath).Returns("../../temp/watch");
+
+        _fileService = new FileService(_mockFileRepository.Object, _mockUnitOfWork.Object, _mockPathGenerationService.Object, _mockConfiguration.Object, _mockLogger.Object);
     }
 
     [Fact]
@@ -189,10 +200,15 @@ public class FileServiceTests : TestBase
         // Arrange
         var testFile = TrackedFileObjectMother.ClassifiedFile("BREAKING BAD", 0.85m);
         var confirmedCategory = "BREAKING BAD";
+        var expectedTargetPath = "/library/BREAKING_BAD/Breaking.Bad.S01E01.mkv";
 
         _mockFileRepository
             .Setup(repo => repo.GetByHashAsync(testFile.Hash, It.IsAny<CancellationToken>()))
             .ReturnsAsync(testFile);
+
+        _mockPathGenerationService
+            .Setup(svc => svc.GenerateTargetPathAsync(It.IsAny<TrackedFile>(), confirmedCategory, null))
+            .ReturnsAsync(Result<string>.Success(expectedTargetPath));
 
         _mockUnitOfWork
             .Setup(uow => uow.SaveChangesAsync(It.IsAny<CancellationToken>()))

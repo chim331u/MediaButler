@@ -151,11 +151,12 @@ public interface IFileService
 
     /// <summary>
     /// Retrieves files that have exceeded the maximum retry count and need manual intervention.
+    /// Uses configuration MaxRetryCount if not specified.
     /// </summary>
-    /// <param name="maxRetryCount">Maximum allowed retry count (default: 3).</param>
+    /// <param name="maxRetryCount">Maximum allowed retry count (default: null = use configuration).</param>
     /// <param name="cancellationToken">Cancellation token for async operation.</param>
     /// <returns>Result containing files that need manual intervention.</returns>
-    Task<Result<IEnumerable<TrackedFile>>> GetFilesNeedingInterventionAsync(int maxRetryCount = 3, CancellationToken cancellationToken = default);
+    Task<Result<IEnumerable<TrackedFile>>> GetFilesNeedingInterventionAsync(int? maxRetryCount = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Retrieves recently moved files for verification and potential rollback scenarios.
