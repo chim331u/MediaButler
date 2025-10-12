@@ -476,8 +476,15 @@ public class ModelTrainingServiceTests
     [Fact]
     public async Task SaveModelAsync_WithTrainedModel_SavesSuccessfully()
     {
-        // Given - Trained model info and save path
-        var modelInfo = CreateSampleTrainedModelInfo();
+        // Given - Actually trained model and save path
+        var trainingData = CreateSampleItalianTrainingData().Take(20);
+        var trainingConfig = TrainingConfiguration.CreateFast();
+
+        // Train the model first
+        var trainResult = await _service.TrainModelAsync(trainingData, trainingConfig);
+        trainResult.IsSuccess.Should().BeTrue();
+        var modelInfo = trainResult.Value;
+
         var metadata = ModelMetadata.CreateDefault();
         var modelPath = Path.GetTempFileName();
 
@@ -488,7 +495,7 @@ public class ModelTrainingServiceTests
 
             // Then - Should save successfully
             result.IsSuccess.Should().BeTrue();
-            
+
             var persistenceInfo = result.Value;
             persistenceInfo.Should().NotBeNull();
             persistenceInfo.ModelPath.Should().Be(modelPath);
@@ -496,26 +503,40 @@ public class ModelTrainingServiceTests
             persistenceInfo.Metadata.Should().Be(metadata);
             persistenceInfo.ModelVersion.Should().Be(modelInfo.ModelVersion);
             persistenceInfo.Checksum.Should().NotBeEmpty();
-            
+
             // File should exist
             File.Exists(modelPath).Should().BeTrue();
+
+            // Metadata file should also exist
+            var metadataPath = Path.ChangeExtension(modelPath, ".meta.json");
+            File.Exists(metadataPath).Should().BeTrue();
         }
         finally
         {
             // Clean up
             if (File.Exists(modelPath))
                 File.Delete(modelPath);
+            var metadataPath = Path.ChangeExtension(modelPath, ".meta.json");
+            if (File.Exists(metadataPath))
+                File.Delete(metadataPath);
         }
     }
 
     [Fact]
     public async Task LoadModelAsync_WithValidModelFile_LoadsSuccessfully()
     {
-        // Given - Saved model file
-        var originalModelInfo = CreateSampleTrainedModelInfo();
+        // Given - Train and save a model first
+        var trainingData = CreateSampleItalianTrainingData().Take(20);
+        var trainingConfig = TrainingConfiguration.CreateFast();
+
+        // Train the model
+        var trainResult = await _service.TrainModelAsync(trainingData, trainingConfig);
+        trainResult.IsSuccess.Should().BeTrue();
+        var originalModelInfo = trainResult.Value;
+
         var metadata = ModelMetadata.CreateDefault();
         var modelPath = Path.GetTempFileName();
-        
+
         // Save model first
         var saveResult = await _service.SaveModelAsync(originalModelInfo, modelPath, metadata);
         saveResult.IsSuccess.Should().BeTrue();
@@ -527,7 +548,7 @@ public class ModelTrainingServiceTests
 
             // Then - Should load successfully
             loadResult.IsSuccess.Should().BeTrue();
-            
+
             var loadedModelInfo = loadResult.Value;
             loadedModelInfo.Should().NotBeNull();
             loadedModelInfo.ModelPath.Should().Be(modelPath);
@@ -538,18 +559,28 @@ public class ModelTrainingServiceTests
             // Clean up
             if (File.Exists(modelPath))
                 File.Delete(modelPath);
+            var metadataPath = Path.ChangeExtension(modelPath, ".meta.json");
+            if (File.Exists(metadataPath))
+                File.Delete(metadataPath);
         }
     }
 
     [Fact]
     public async Task LoadModelAsync_WithValidation_ValidatesModel()
     {
-        // Given - Saved model file and validation config
-        var originalModelInfo = CreateSampleTrainedModelInfo();
+        // Given - Train and save a model first
+        var trainingData = CreateSampleItalianTrainingData().Take(20);
+        var trainingConfig = TrainingConfiguration.CreateFast();
+
+        // Train the model
+        var trainResult = await _service.TrainModelAsync(trainingData, trainingConfig);
+        trainResult.IsSuccess.Should().BeTrue();
+        var originalModelInfo = trainResult.Value;
+
         var metadata = ModelMetadata.CreateDefault();
         var modelPath = Path.GetTempFileName();
         var validationConfig = ModelValidationConfig.CreateDefault();
-        
+
         // Save model first
         var saveResult = await _service.SaveModelAsync(originalModelInfo, modelPath, metadata);
         saveResult.IsSuccess.Should().BeTrue();
@@ -567,6 +598,9 @@ public class ModelTrainingServiceTests
             // Clean up
             if (File.Exists(modelPath))
                 File.Delete(modelPath);
+            var metadataPath = Path.ChangeExtension(modelPath, ".meta.json");
+            if (File.Exists(metadataPath))
+                File.Delete(metadataPath);
         }
     }
 

@@ -30,6 +30,7 @@ public class ModelTrainingService : IModelTrainingService
     private readonly MLContext _mlContext;
     private readonly IFeatureEngineeringService _featureEngineering;
     private readonly Dictionary<string, TrainingProgress> _activeTrainingSessions;
+    private readonly Dictionary<string, (ITransformer Model, DataViewSchema Schema)> _trainedModels; // Store trained models with schema for saving
 
     public ModelTrainingService(
         ILogger<ModelTrainingService> logger,
@@ -39,6 +40,7 @@ public class ModelTrainingService : IModelTrainingService
         _featureEngineering = featureEngineering ?? throw new ArgumentNullException(nameof(featureEngineering));
         _mlContext = new MLContext(seed: 42);
         _activeTrainingSessions = new Dictionary<string, TrainingProgress>();
+        _trainedModels = new Dictionary<string, (ITransformer Model, DataViewSchema Schema)>();
     }
 
     /// <inheritdoc />
@@ -180,6 +182,10 @@ public class ModelTrainingService : IModelTrainingService
                 TrainingSampleCount = trainingData.Count(),
                 ModelVersion = "1.0.0"
             };
+
+            // Store the trained model with schema for later saving
+            _trainedModels[modelInfo.ModelId] = (trainedModel, mlTrainingData.Value.Schema);
+            _logger.LogDebug("Stored trained model {ModelId} for persistence", modelInfo.ModelId);
 
             UpdateTrainingProgress(trainingConfig.SessionId, progress with 
             { 
@@ -471,6 +477,12 @@ public class ModelTrainingService : IModelTrainingService
         {
             _logger.LogInformation("Saving model {ModelId} to path: {ModelPath}", modelInfo.ModelId, modelPath);
 
+            // Retrieve the trained model and schema
+            if (!_trainedModels.TryGetValue(modelInfo.ModelId, out var modelData))
+            {
+                return Result<ModelPersistenceInfo>.Failure($"Trained model not found: {modelInfo.ModelId}. Model must be trained before saving.");
+            }
+
             // Ensure directory exists
             var directory = Path.GetDirectoryName(modelPath);
             if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
@@ -478,21 +490,25 @@ public class ModelTrainingService : IModelTrainingService
                 Directory.CreateDirectory(directory);
             }
 
-            // Save model (Note: In a real implementation, we would have the actual ITransformer)
-            // For now, we'll create a placeholder file with metadata
-            var modelData = new
+            // Save the actual ML.NET model to disk with schema
+            _mlContext.Model.Save(modelData.Model, modelData.Schema, modelPath);
+
+            // Save metadata to companion .json file
+            var metadataPath = Path.ChangeExtension(modelPath, ".meta.json");
+            var metadataContent = new
             {
                 ModelInfo = modelInfo,
                 Metadata = metadata,
                 SavedAt = DateTime.UtcNow
             };
 
-            var jsonData = JsonSerializer.Serialize(modelData, new JsonSerializerOptions 
-            { 
-                WriteIndented = true 
+            var jsonData = JsonSerializer.Serialize(metadataContent, new JsonSerializerOptions
+            {
+                WriteIndented = true
             });
 
-            await File.WriteAllTextAsync(modelPath, jsonData);
+            await File.WriteAllTextAsync(metadataPath, jsonData);
+
             var fileInfo = new FileInfo(modelPath);
 
             // Calculate checksum
@@ -508,7 +524,12 @@ public class ModelTrainingService : IModelTrainingService
                 ModelVersion = modelInfo.ModelVersion
             };
 
-            _logger.LogInformation("Model saved successfully. Size: {Size} bytes", fileInfo.Length);
+            _logger.LogInformation("Model saved successfully. Size: {Size} bytes, Metadata: {MetadataPath}",
+                fileInfo.Length, metadataPath);
+
+            // Clean up stored model after successful save
+            _trainedModels.Remove(modelInfo.ModelId);
+            _logger.LogDebug("Removed trained model {ModelId} from memory after successful save", modelInfo.ModelId);
 
             return Result<ModelPersistenceInfo>.Success(persistenceInfo);
         }
