@@ -1,12 +1,12 @@
 using FluentAssertions;
 using MediaButler.ML.Configuration;
 using MediaButler.ML.Interfaces;
-using MediaButler.ML.Models;
 using MediaButler.ML.Services;
 using MediaButler.ML.Utils;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
+using TrainingModels = MediaButler.ML.Models;
 
 namespace MediaButler.Tests.Unit.ML;
 
@@ -65,7 +65,7 @@ The.Walking.Dead.11x24.FINAL.ITA.1080p.WEB-DLMux.x264-NovaRip.mkv;THE WALKING DE
 
         await File.WriteAllTextAsync(csvPath, csvContent);
 
-        var config = new CsvImportConfiguration
+        var config = new TrainingModels.CsvImportConfiguration
         {
             HasHeader = true,
             Separator = ';',
@@ -99,7 +99,7 @@ Game.of.Thrones.S08E06.mkv;GAME OF THRONES";
 
         await File.WriteAllTextAsync(csvPath, csvContent);
 
-        var config = new CsvImportConfiguration
+        var config = new TrainingModels.CsvImportConfiguration
         {
             HasHeader = false,
             SkipDuplicates = true
@@ -127,7 +127,7 @@ Game.of.Thrones.S08E06.avi;GAME OF THRONES";
 
         await File.WriteAllTextAsync(csvPath, csvContent);
 
-        var config = new CsvImportConfiguration
+        var config = new TrainingModels.CsvImportConfiguration
         {
             HasHeader = false,
             ValidateFileExtensions = true
@@ -158,7 +158,7 @@ File5.mkv;SERIES5";
 
         await File.WriteAllTextAsync(csvPath, csvContent);
 
-        var config = new CsvImportConfiguration
+        var config = new TrainingModels.CsvImportConfiguration
         {
             HasHeader = false,
             MaxRows = 3
@@ -219,7 +219,7 @@ File5.mkv;SERIES5";
 
         await File.WriteAllTextAsync(csvPath, csvContent);
 
-        var config = new CsvImportConfiguration { HasHeader = true };
+        var config = new TrainingModels.CsvImportConfiguration { HasHeader = true };
 
         // Act
         var result = await _csvImporter.GetCsvPreviewAsync(csvPath, previewRows: 3, config: config);
@@ -239,7 +239,7 @@ File5.mkv;SERIES5";
         var csvContent = GenerateLargeTrainingDataset(50); // 50 samples across 5 categories
         await File.WriteAllTextAsync(csvPath, csvContent);
 
-        var config = new CsvImportConfiguration
+        var config = new TrainingModels.CsvImportConfiguration
         {
             HasHeader = true,
             NormalizeCategoryNames = true
@@ -251,7 +251,7 @@ File5.mkv;SERIES5";
         importResult.Value.ImportedSamples.Should().HaveCount(50);
 
         // Arrange training configuration
-        var trainingConfig = MediaButler.ML.Models.TrainingConfiguration.CreateFast(); // Use fast config for testing
+        var trainingConfig = TrainingModels.TrainingConfiguration.CreateFast(); // Use fast config for testing
 
         // Act - Train model
         var trainingResult = await _trainingService.TrainModelAsync(
@@ -279,7 +279,7 @@ File5.mkv;SERIES5";
             return;
         }
 
-        var config = new CsvImportConfiguration
+        var config = new TrainingModels.CsvImportConfiguration
         {
             HasHeader = true,
             NormalizeCategoryNames = true,
@@ -299,7 +299,7 @@ File5.mkv;SERIES5";
         Console.WriteLine($"Categories: {string.Join(", ", importResult.Value.Categories)}");
 
         // Arrange training
-        var trainingConfig = MediaButler.ML.Models.TrainingConfiguration.CreateFast();
+        var trainingConfig = TrainingModels.TrainingConfiguration.CreateFast();
 
         // Act - Train model with real data
         var trainingResult = await _trainingService.TrainModelAsync(
