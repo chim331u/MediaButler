@@ -229,6 +229,8 @@ public class ProcessingController : ControllerBase
     /// <response code="503">ML model not ready</response>
     /// <response code="500">Internal server error</response>
     [HttpPost("classify")]
+    [Produces("application/json")]
+    [Consumes("application/json")]
     [ProducesResponseType(typeof(ClassificationResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
