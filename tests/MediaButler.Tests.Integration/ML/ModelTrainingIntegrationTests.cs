@@ -57,7 +57,7 @@ public class ModelTrainingIntegrationTests : IntegrationTestBase
             var trainedModelInfo = trainResult.Value;
             trainedModelInfo.Should().NotBeNull();
             trainedModelInfo.ModelId.Should().NotBeEmpty();
-            trainedModelInfo.Accuracy.Should().BeGreaterThan(0.5f, "Model should achieve reasonable accuracy");
+            trainedModelInfo.ValidationMetrics.Accuracy.Should().BeGreaterThan(0.5f, "Model should achieve reasonable accuracy");
 
             // Step 3: Save trained model to disk
             var metadata = new MLModels.ModelMetadata
@@ -66,7 +66,12 @@ public class ModelTrainingIntegrationTests : IntegrationTestBase
                 Version = "1.0.0",
                 CreatedAt = DateTime.UtcNow,
                 Description = "Model trained for integration testing",
-                Author = "Integration Test"
+                Author = "Integration Test",
+                Tags = new Dictionary<string, string>
+                {
+                    ["Environment"] = "Test",
+                    ["Purpose"] = "Integration Testing"
+                }
             };
             var saveResult = await modelTrainingService.SaveModelAsync(trainedModelInfo, tempModelPath, metadata);
             saveResult.IsSuccess.Should().BeTrue($"Model save should succeed: {saveResult.Error}");
@@ -146,10 +151,10 @@ public class ModelTrainingIntegrationTests : IntegrationTestBase
 
         modelInfo.ModelId.Should().NotBeEmpty();
         modelInfo.ModelVersion.Should().NotBeEmpty();
-        modelInfo.Accuracy.Should().BeGreaterThan(0.5f, "Model should achieve >50% accuracy on validation set");
-        modelInfo.TotalSamples.Should().BeGreaterThan(50, "Should have processed significant training data");
-        modelInfo.TrainingTimeSeconds.Should().BeLessThan(60, "Fast training should complete in <60s");
-        modelInfo.CategoryCount.Should().BeGreaterThan(10, "Should have learned multiple categories");
+        modelInfo.ValidationMetrics.Accuracy.Should().BeGreaterThan(0.5f, "Model should achieve >50% accuracy on validation set");
+        modelInfo.TrainingSampleCount.Should().BeGreaterThan(50, "Should have processed significant training data");
+        modelInfo.TrainingDuration.TotalSeconds.Should().BeLessThan(60, "Fast training should complete in <60s");
+        importResult.Value.ImportedSamples.Select(s => s.Category).Distinct().Count().Should().BeGreaterThan(10, "Should have learned multiple categories");
     }
 
     [Fact]
@@ -237,7 +242,12 @@ public class ModelTrainingIntegrationTests : IntegrationTestBase
                     Version = "1.0.0",
                     CreatedAt = DateTime.UtcNow,
                     Description = $"Test model {i}",
-                    Author = "Integration Test"
+                    Author = "Integration Test",
+                    Tags = new Dictionary<string, string>
+                    {
+                        ["Model"] = $"Model{i}",
+                        ["Environment"] = "Test"
+                    }
                 };
                 var saveResult = await modelTrainingService.SaveModelAsync(trainResult.Value, modelPath, metadata);
                 saveResult.IsSuccess.Should().BeTrue();
@@ -308,7 +318,12 @@ public class ModelTrainingIntegrationTests : IntegrationTestBase
                 Version = "1.0.0",
                 CreatedAt = DateTime.UtcNow,
                 Description = "Model for checksum testing",
-                Author = "Integration Test"
+                Author = "Integration Test",
+                Tags = new Dictionary<string, string>
+                {
+                    ["Environment"] = "Test",
+                    ["Purpose"] = "Checksum Validation"
+                }
             };
             var saveResult = await modelTrainingService.SaveModelAsync(trainResult.Value, tempModelPath, metadata);
             saveResult.IsSuccess.Should().BeTrue();

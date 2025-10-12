@@ -219,6 +219,97 @@ public class ProcessingController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Classifies a single filename using ML and returns top 5 category predictions with confidence scores
+    /// </summary>
+    /// <param name="request">Classification request containing the filename to classify</param>
+    /// <returns>Classification result with top 5 category predictions and confidence scores</returns>
+    /// <response code="200">Classification successful</response>
+    /// <response code="400">Invalid filename provided</response>
+    /// <response code="503">ML model not ready</response>
+    /// <response code="500">Internal server error</response>
+    [HttpPost("classify")]
+    [ProducesResponseType(typeof(ClassificationResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<ClassificationResponse>> ClassifyFilename([FromBody] ClassificationRequest request)
+    {
+        try
+        {
+            if (request == null || string.IsNullOrWhiteSpace(request.Filename))
+            {
+                return BadRequest(new { error = "Filename is required" });
+            }
+
+            _logger.LogInformation("Classifying filename: {Filename}", request.Filename);
+
+            // Check if ML model is ready
+            if (!_classificationService.IsModelReady())
+            {
+                _logger.LogWarning("ML model is not ready for classification");
+                return StatusCode(503, new { error = "ML classification service is not ready. Please try again later." });
+            }
+
+            // Perform classification
+            var classificationResult = await _classificationService.ClassifyFilenameAsync(request.Filename);
+
+            if (!classificationResult.IsSuccess || classificationResult.Value == null)
+            {
+                _logger.LogError("Classification failed for filename: {Filename}. Error: {Error}",
+                    request.Filename, classificationResult.Error);
+                return StatusCode(500, new { error = $"Classification failed: {classificationResult.Error}" });
+            }
+
+            var result = classificationResult.Value;
+
+            // Build response with top prediction and alternatives
+            var predictions = new List<CategoryPredictionDto>
+            {
+                new CategoryPredictionDto
+                {
+                    Category = result.PredictedCategory,
+                    Confidence = result.Confidence,
+                    ConfidencePercentage = Math.Round(result.Confidence * 100, 2),
+                    Rank = 1
+                }
+            };
+
+            // Add alternative predictions
+            if (result.AlternativePredictions != null && result.AlternativePredictions.Any())
+            {
+                predictions.AddRange(result.AlternativePredictions.Select((alt, index) => new CategoryPredictionDto
+                {
+                    Category = alt.Category,
+                    Confidence = alt.Confidence,
+                    ConfidencePercentage = Math.Round(alt.Confidence * 100, 2),
+                    Rank = index + 2
+                }));
+            }
+
+            var response = new ClassificationResponse
+            {
+                Filename = request.Filename,
+                PredictedCategory = result.PredictedCategory,
+                Confidence = result.Confidence,
+                ConfidencePercentage = Math.Round(result.Confidence * 100, 2),
+                Top5Predictions = predictions.Take(5).ToList(),
+                ClassifiedAt = result.ClassifiedAt,
+                ModelVersion = result.ModelVersion
+            };
+
+            _logger.LogInformation("Successfully classified filename: {Filename} as {Category} with {Confidence}% confidence",
+                request.Filename, result.PredictedCategory, result.ConfidencePercentage);
+
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error occurred while classifying filename: {Filename}", request?.Filename);
+            return StatusCode(500, new { error = $"Classification failed: {ex.Message}" });
+        }
+    }
+
     private static int CalculateEstimatedProcessingTime(int fileCount)
     {
         // Estimate 5 seconds per file for ML processing
@@ -285,4 +376,82 @@ public record MlEvaluationResponse
     /// Estimated processing time in minutes
     /// </summary>
     public int EstimatedProcessingTimeMinutes { get; init; }
+}
+
+/// <summary>
+/// Request for filename classification
+/// </summary>
+public record ClassificationRequest
+{
+    /// <summary>
+    /// The filename to classify (e.g., "Breaking.Bad.S05E16.FINAL.1080p.mkv")
+    /// </summary>
+    public required string Filename { get; init; }
+}
+
+/// <summary>
+/// Response containing classification results with top 5 predictions
+/// </summary>
+public record ClassificationResponse
+{
+    /// <summary>
+    /// The original filename that was classified
+    /// </summary>
+    public required string Filename { get; init; }
+
+    /// <summary>
+    /// The predicted category (top prediction)
+    /// </summary>
+    public required string PredictedCategory { get; init; }
+
+    /// <summary>
+    /// Confidence score for the top prediction (0.0 to 1.0)
+    /// </summary>
+    public double Confidence { get; init; }
+
+    /// <summary>
+    /// Confidence score as a percentage (0 to 100)
+    /// </summary>
+    public double ConfidencePercentage { get; init; }
+
+    /// <summary>
+    /// Top 5 category predictions with confidence scores, ordered by confidence (descending)
+    /// </summary>
+    public required List<CategoryPredictionDto> Top5Predictions { get; init; }
+
+    /// <summary>
+    /// Timestamp when the classification was performed
+    /// </summary>
+    public DateTime ClassifiedAt { get; init; }
+
+    /// <summary>
+    /// Version of the ML model used for classification
+    /// </summary>
+    public required string ModelVersion { get; init; }
+}
+
+/// <summary>
+/// A single category prediction with confidence score (DTO for API response)
+/// </summary>
+public record CategoryPredictionDto
+{
+    /// <summary>
+    /// The predicted category name
+    /// </summary>
+    public required string Category { get; init; }
+
+    /// <summary>
+    /// Confidence score (0.0 to 1.0)
+    /// </summary>
+    public double Confidence { get; init; }
+
+    /// <summary>
+    /// Confidence score as a percentage (0 to 100)
+    /// </summary>
+    public double ConfidencePercentage { get; init; }
+
+    /// <summary>
+    /// Rank of this prediction (1 = top prediction, 2-5 = alternatives)
+    /// </summary>
+    public int Rank { get; init; }
 }
