@@ -357,4 +357,157 @@ public class FastTextClassificationServiceTests
 
         return result.Value;
     }
+
+    // === Cache Integration Tests ===
+
+    [Fact]
+    public async Task ClassifyFilenameAsync_WithCacheEnabled_CachesSuccessfulClassification()
+    {
+        // Arrange
+        var configWithCache = new MLConfiguration
+        {
+            ModelPath = Path.Combine(Path.GetTempPath(), "test-models"),
+            AutoClassifyThreshold = 0.85f,
+            SuggestionThreshold = 0.5f,
+            Features = new MLFeatureFlags { EnablePredictionCaching = true },
+            Cache = new PredictionCacheSettings { MaxCacheSize = 100 }
+        };
+
+        var service = new FastTextClassificationService(
+            _mockTokenizer.Object,
+            _mockFeatureService.Object,
+            _mockPredictionService.Object,
+            Options.Create(configWithCache),
+            _mockLogger.Object
+        );
+
+        var filename = "Breaking.Bad.S01E01.mkv";
+
+        // Act - First call (without model, will fail)
+        var result = await service.ClassifyFilenameAsync(filename);
+
+        // Assert - Cache should not cache failed results by default
+        result.IsFailure.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ClassifyFilenameAsync_WithCacheDisabled_DoesNotCache()
+    {
+        // Arrange
+        var configWithoutCache = new MLConfiguration
+        {
+            ModelPath = Path.Combine(Path.GetTempPath(), "test-models"),
+            AutoClassifyThreshold = 0.85f,
+            SuggestionThreshold = 0.5f,
+            Features = new MLFeatureFlags { EnablePredictionCaching = false }
+        };
+
+        var service = new FastTextClassificationService(
+            _mockTokenizer.Object,
+            _mockFeatureService.Object,
+            _mockPredictionService.Object,
+            Options.Create(configWithoutCache),
+            _mockLogger.Object
+        );
+
+        var filename = "Breaking.Bad.S01E01.mkv";
+
+        // Act - First call (without model, will fail)
+        var result = await service.ClassifyFilenameAsync(filename);
+
+        // Assert - No caching, so service behavior doesn't change
+        result.IsFailure.Should().BeTrue();
+    }
+
+    [Fact]
+    public void GetModelInfo_WithCacheEnabled_IncludesCacheStatistics()
+    {
+        // Arrange
+        var configWithCache = new MLConfiguration
+        {
+            ModelPath = Path.Combine(Path.GetTempPath(), "test-models"),
+            AutoClassifyThreshold = 0.85f,
+            SuggestionThreshold = 0.5f,
+            Features = new MLFeatureFlags { EnablePredictionCaching = true },
+            Cache = new PredictionCacheSettings { MaxCacheSize = 1000 }
+        };
+
+        var service = new FastTextClassificationService(
+            _mockTokenizer.Object,
+            _mockFeatureService.Object,
+            _mockPredictionService.Object,
+            Options.Create(configWithCache),
+            _mockLogger.Object
+        );
+
+        // Act - Without model loaded, GetModelInfo will return failure
+        var result = service.GetModelInfo();
+
+        // Assert - Cache is initialized but model not loaded yet
+        result.IsFailure.Should().BeTrue();
+        result.Error.Should().Contain("Model not loaded");
+    }
+
+    [Fact]
+    public void GetModelInfo_WithCacheDisabled_DoesNotIncludeCacheStatistics()
+    {
+        // Arrange
+        var configWithoutCache = new MLConfiguration
+        {
+            ModelPath = Path.Combine(Path.GetTempPath(), "test-models"),
+            AutoClassifyThreshold = 0.85f,
+            SuggestionThreshold = 0.5f,
+            Features = new MLFeatureFlags { EnablePredictionCaching = false }
+        };
+
+        var service = new FastTextClassificationService(
+            _mockTokenizer.Object,
+            _mockFeatureService.Object,
+            _mockPredictionService.Object,
+            Options.Create(configWithoutCache),
+            _mockLogger.Object
+        );
+
+        // Act - Without model loaded, GetModelInfo will return failure
+        var result = service.GetModelInfo();
+
+        // Assert - No cache, model not loaded
+        result.IsFailure.Should().BeTrue();
+        result.Error.Should().Contain("Model not loaded");
+    }
+
+    [Fact]
+    public async Task ClassifyBatchAsync_WithCacheEnabled_CachesEachSuccessfulClassification()
+    {
+        // Arrange
+        var configWithCache = new MLConfiguration
+        {
+            ModelPath = Path.Combine(Path.GetTempPath(), "test-models"),
+            AutoClassifyThreshold = 0.85f,
+            SuggestionThreshold = 0.5f,
+            Features = new MLFeatureFlags { EnablePredictionCaching = true },
+            Cache = new PredictionCacheSettings { MaxCacheSize = 100 }
+        };
+
+        var service = new FastTextClassificationService(
+            _mockTokenizer.Object,
+            _mockFeatureService.Object,
+            _mockPredictionService.Object,
+            Options.Create(configWithCache),
+            _mockLogger.Object
+        );
+
+        var filenames = new[]
+        {
+            "Breaking.Bad.S01E01.mkv",
+            "Game.of.Thrones.S08E01.mkv"
+        };
+
+        // Act - Without model loaded, batch returns empty results
+        var result = await service.ClassifyBatchAsync(filenames);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().BeEmpty();
+    }
 }

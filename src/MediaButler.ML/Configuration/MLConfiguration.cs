@@ -126,6 +126,11 @@ public class MLConfiguration
     public MLFeatureFlags Features { get; set; } = new();
 
     /// <summary>
+    /// Gets or sets the prediction cache configuration.
+    /// </summary>
+    public PredictionCacheSettings Cache { get; set; } = new();
+
+    /// <summary>
     /// Gets or sets the CSV import configuration for training data.
     /// </summary>
     public CsvImportSettings CsvImport { get; set; } = new();
@@ -330,4 +335,37 @@ public class CsvImportSettings
     /// </summary>
     /// <example>"data/backups/training_data_backup.csv"</example>
     public string BackupPath { get; set; } = "data/backups/training_data_backup.csv";
+}
+
+/// <summary>
+/// Configuration for prediction result caching.
+/// </summary>
+public class PredictionCacheSettings
+{
+    /// <summary>
+    /// Gets or sets the maximum number of items to cache.
+    /// </summary>
+    /// <remarks>
+    /// Default: 1000 items (ARM32 optimized)
+    /// At ~5KB per classification result, this is approximately 5MB of cache memory.
+    /// </remarks>
+    public int MaxCacheSize { get; set; } = 1000;
+
+    /// <summary>
+    /// Gets or sets the cache entry time-to-live in minutes (0 = no expiration).
+    /// </summary>
+    /// <remarks>
+    /// Default: 0 (no expiration, LRU eviction only)
+    /// Use TTL for time-sensitive classification results.
+    /// </remarks>
+    public int CacheExpirationMinutes { get; set; } = 0;
+
+    /// <summary>
+    /// Gets or sets whether to cache failed classification attempts.
+    /// </summary>
+    /// <remarks>
+    /// Default: false (only cache successful classifications)
+    /// Caching failures prevents repeated failed classification attempts.
+    /// </remarks>
+    public bool CacheFailedAttempts { get; set; } = false;
 }

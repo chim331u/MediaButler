@@ -2,6 +2,7 @@ using MediaButler.Core.Common;
 using MediaButler.ML.Configuration;
 using MediaButler.ML.Interfaces;
 using MediaButler.ML.Models;
+using MediaButler.ML.Utils;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.ML;
@@ -38,6 +39,10 @@ public class FastTextClassificationService : IClassificationService
     private ModelInfo? _modelInfo;
     private IReadOnlyList<string>? _availableCategories;
 
+    // Prediction caching (LRU cache for repeated classifications)
+    private readonly LruCache<string, ClassificationResult>? _predictionCache;
+    private readonly bool _cachingEnabled;
+
     public FastTextClassificationService(
         ITokenizerService tokenizer,
         IFeatureEngineeringService featureService,
@@ -50,6 +55,18 @@ public class FastTextClassificationService : IClassificationService
         _predictionService = predictionService ?? throw new ArgumentNullException(nameof(predictionService));
         _config = config?.Value ?? throw new ArgumentNullException(nameof(config));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+
+        // Initialize prediction cache if enabled
+        _cachingEnabled = _config.Features.EnablePredictionCaching;
+        if (_cachingEnabled)
+        {
+            _predictionCache = new LruCache<string, ClassificationResult>(_config.Cache.MaxCacheSize);
+            _logger.LogInformation("Prediction caching enabled with capacity: {Capacity}", _config.Cache.MaxCacheSize);
+        }
+        else
+        {
+            _logger.LogInformation("Prediction caching disabled");
+        }
     }
 
     /// <summary>
@@ -60,6 +77,16 @@ public class FastTextClassificationService : IClassificationService
         if (string.IsNullOrWhiteSpace(filename))
         {
             return Result<ClassificationResult>.Failure("Filename cannot be null or empty");
+        }
+
+        // Check cache first if enabled
+        if (_cachingEnabled && _predictionCache != null)
+        {
+            if (_predictionCache.TryGet(filename, out var cachedResult) && cachedResult != null)
+            {
+                _logger.LogDebug("Cache hit for filename: {Filename}", filename);
+                return Result<ClassificationResult>.Success(cachedResult);
+            }
         }
 
         // Ensure model is loaded
@@ -128,6 +155,13 @@ public class FastTextClassificationService : IClassificationService
             _logger.LogInformation(
                 "Classified {Filename} as {Category} with {Confidence:P2} confidence in {Duration}ms",
                 filename, classificationResult.PredictedCategory, classificationResult.Confidence, stopwatch.ElapsedMilliseconds);
+
+            // Cache the result if successful and caching enabled
+            if (_cachingEnabled && _predictionCache != null && classificationResult.Decision != ClassificationDecision.Failed)
+            {
+                _predictionCache.Set(filename, classificationResult);
+                _logger.LogDebug("Cached classification result for: {Filename}", filename);
+            }
 
             return Result<ClassificationResult>.Success(classificationResult);
         }
@@ -205,7 +239,25 @@ public class FastTextClassificationService : IClassificationService
             return Result<ModelInfo>.Failure("Model not loaded - info unavailable");
         }
 
-        return Result<ModelInfo>.Success(_modelInfo);
+        // Add cache statistics to metadata if caching is enabled
+        var metadata = new Dictionary<string, object>(_modelInfo.Metadata);
+        if (_cachingEnabled && _predictionCache != null)
+        {
+            var cacheStats = _predictionCache.GetStatistics();
+            metadata["CacheEnabled"] = true;
+            metadata["CacheCapacity"] = cacheStats.Capacity;
+            metadata["CacheCount"] = cacheStats.Count;
+            metadata["CacheHits"] = cacheStats.Hits;
+            metadata["CacheMisses"] = cacheStats.Misses;
+            metadata["CacheHitRate"] = cacheStats.HitRate;
+        }
+        else
+        {
+            metadata["CacheEnabled"] = false;
+        }
+
+        var modelInfoWithCache = _modelInfo with { Metadata = metadata };
+        return Result<ModelInfo>.Success(modelInfoWithCache);
     }
 
     /// <summary>
