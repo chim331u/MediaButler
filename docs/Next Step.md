@@ -668,8 +668,8 @@ public Result<FeatureVector> ExtractFeatures(TokenizedFilename tokenizedFilename
 - [x] **Phase 3B: FastTextClassificationService** ✅ **DONE** (Complete ML.NET integration with lazy loading)
 - [x] **Unit Tests for Classification Service** ✅ **DONE** (17/17 tests passing - 100%)
 - [x] **Production Model Training Script** ✅ **DONE** (ProductionModelTrainer with quality gates)
+- [x] **Prediction Caching (LRU)** ✅ **DONE** (1000 items capacity, ~5MB memory footprint, 48/48 tests passing)
 - [ ] **Model Training Service Implementation** ⏭️ **NEXT** (Save trained models to disk persistence)
-- [ ] **Prediction Caching (LRU)** ⏭️ **PENDING** (1000 items, <5MB memory footprint)
 - [ ] **Integration Tests with Real Model** ⏭️ **PENDING** (End-to-end classification pipeline)
 - [ ] Benchmark FastText model loading on ARM32
 - [ ] Optimize model inference for <50ms target
@@ -727,12 +727,35 @@ public Result<FeatureVector> ExtractFeatures(TokenizedFilename tokenizedFilename
   - Full metrics reporting: accuracy, precision, recall, F1 scores, log loss
   - Uses TrainingConfiguration.CreateDefault() for production quality
 
+- **LRU Prediction Cache**: `src/MediaButler.ML/Utils/LruCache.cs`
+  - Thread-safe LRU (Least Recently Used) eviction policy
+  - Fixed capacity prevents unbounded memory growth (default: 1000 items)
+  - ConcurrentDictionary + LinkedList for O(1) get/set operations
+  - Lock-based synchronization for thread safety
+  - Cache statistics tracking: hits, misses, hit rate
+  - ARM32 optimized: ~5KB overhead + ~5KB per result = ~5MB total for 1000 items
+  - GetOrAdd pattern with async support for lazy value creation
+  - **26/26 comprehensive unit tests passing** (100% pass rate)
+    - Constructor validation, basic operations, LRU eviction correctness
+    - Thread safety verification (concurrent access with 10 threads)
+    - Complex eviction scenarios, statistics accuracy, null value handling
+
+- **Cache Integration**: `src/MediaButler.ML/Services/FastTextClassificationService.cs`
+  - Cache check before expensive ML prediction (cache hit: <1ms)
+  - Automatic caching of successful classifications
+  - Failed classifications NOT cached by default (configurable)
+  - Cache statistics included in GetModelInfo() metadata
+  - **22/22 tests passing** (17 original + 5 new cache integration tests)
+  - Configuration: `Features.EnablePredictionCaching`, `Cache.MaxCacheSize`
+
 **Commits**:
 - `b48b9df` - Phase 3 foundation: training data, CSV importer, integration tests
 - `e54ca42` - Test compilation fixes and validation
-- `[new]` - Phase 3B: FastTextClassificationService implementation (393 lines)
-- `[new]` - Comprehensive unit tests for FastTextClassificationService (17/17 passing)
-- `[new]` - Production model training script with quality gates
+- `[commit]` - Phase 3B: FastTextClassificationService implementation (393 lines)
+- `[commit]` - Comprehensive unit tests for FastTextClassificationService (17/17 passing)
+- `[commit]` - Production model training script with quality gates
+- `[commit]` - LRU cache implementation with 26/26 unit tests passing
+- `9eda8d6` - Integrate LRU cache with FastTextClassificationService (22/22 tests passing)
 
 **Phase 3A Training Results** (ManualTrainingRunner):
 - ✅ **100% accuracy** achieved on validation set
@@ -743,11 +766,12 @@ public Result<FeatureVector> ExtractFeatures(TokenizedFilename tokenizedFilename
 - ✅ **Log Loss**: 0.3415
 
 **Next Immediate Steps**:
-1. ✅ ~~Implement FastTextClassificationService~~ **DONE**
-2. ✅ ~~Create comprehensive unit tests~~ **DONE**
-3. ⏭️ Implement ModelTrainingService to save models to disk
-4. ⏭️ Add prediction caching (LRU, 1000 items, <5MB memory)
+1. ✅ ~~Implement FastTextClassificationService~~ **DONE** (393 lines, 17/17 tests passing)
+2. ✅ ~~Create comprehensive unit tests~~ **DONE** (100% pass rate)
+3. ✅ ~~Add prediction caching (LRU, 1000 items, <5MB memory)~~ **DONE** (26/26 cache tests + 5 integration tests passing)
+4. ⏭️ **NEXT**: Implement ModelTrainingService to save models to disk
 5. ⏭️ Create integration tests with real trained model
+6. ⏭️ Update dependency injection registration for production use
 
 ---
 
