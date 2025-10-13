@@ -1,0 +1,21 @@
+{
+  "Metadata": {
+    "ModelName": "TV Series Classifier (Database-trained)",
+    "Description": "ML.NET model trained on 960 Italian series samples from TrackedFiles database",
+    "Version": "1.0.0",
+    "Author": "MediaButler ML Pipeline",
+    "CreatedAt": "2025-10-13T19:23:15.704092Z",
+    "Tags": {
+      "Environment": "Production",
+      "TrainingSamples": "960",
+      "Categories": "34",
+      "Accuracy": "95,83%",
+      "Language": "Italian",
+      "Source": "Database"
+    }
+  },
+  "SavedAt": "2025-10-13T19:23:21.563163Z",
+  "Accuracy": 0.9583333333333334,
+  "TrainingSamples": 960,
+  "ModelVersion": "1.0.0"
+}

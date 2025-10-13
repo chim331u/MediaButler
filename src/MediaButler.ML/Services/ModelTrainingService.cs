@@ -494,15 +494,22 @@ public class ModelTrainingService : IModelTrainingService
             _mlContext.Model.Save(modelData.Model, modelData.Schema, modelPath);
 
             // Save metadata to companion .json file
+            // Note: Skip metadata serialization to avoid System.Text.Json limitations with 2D arrays
+            // The confusion matrix cannot be serialized by System.Text.Json
+            _logger.LogInformation("Skipping metadata file generation due to serialization limitations");
+
+            // Alternative: Just save minimal metadata without the confusion matrix
             var metadataPath = Path.ChangeExtension(modelPath, ".meta.json");
-            var metadataContent = new
+            var simpleMetadata = new
             {
-                ModelInfo = modelInfo,
                 Metadata = metadata,
-                SavedAt = DateTime.UtcNow
+                SavedAt = DateTime.UtcNow,
+                Accuracy = modelInfo.ValidationMetrics.Accuracy,
+                TrainingSamples = modelInfo.TrainingSampleCount,
+                ModelVersion = modelInfo.ModelVersion
             };
 
-            var jsonData = JsonSerializer.Serialize(metadataContent, new JsonSerializerOptions
+            var jsonData = JsonSerializer.Serialize(simpleMetadata, new JsonSerializerOptions
             {
                 WriteIndented = true
             });

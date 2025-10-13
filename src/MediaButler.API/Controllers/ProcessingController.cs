@@ -109,13 +109,7 @@ public class ProcessingController : ControllerBase
                 });
             }
 
-            // Check if ML model is ready before processing
-            if (!_classificationService.IsModelReady())
-            {
-                _logger.LogWarning("ML model is not ready for classification");
-                return StatusCode(503, new { error = "ML classification service is not ready. Please try again later." });
-            }
-
+            // Start ML evaluation (model will be lazy-loaded on first classification)
             _logger.LogInformation("Starting ML evaluation for {TotalFiles} files", totalFiles);
 
             var processedFiles = 0;
@@ -246,14 +240,7 @@ public class ProcessingController : ControllerBase
 
             _logger.LogInformation("Classifying filename: {Filename}", request.Filename);
 
-            // Check if ML model is ready
-            if (!_classificationService.IsModelReady())
-            {
-                _logger.LogWarning("ML model is not ready for classification");
-                return StatusCode(503, new { error = "ML classification service is not ready. Please try again later." });
-            }
-
-            // Perform classification
+            // Perform classification (model will be lazy-loaded on first call)
             var classificationResult = await _classificationService.ClassifyFilenameAsync(request.Filename);
 
             if (!classificationResult.IsSuccess || classificationResult.Value == null)

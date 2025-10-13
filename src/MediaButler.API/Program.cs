@@ -96,6 +96,9 @@ builder.Services.AddScoped<IOrganizationValidator, MediaButler.Services.Validati
 builder.Services.AddScoped<IFileOrganizationService, FileOrganizationService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 
+// Add ML training services
+builder.Services.AddScoped<MediaButler.Services.ML.IDatabaseTrainingService, MediaButler.Services.ML.DatabaseTrainingService>();
+
 // Add batch file processing services
 builder.Services.AddScoped<IFileActionsService, FileActionsService>();
 

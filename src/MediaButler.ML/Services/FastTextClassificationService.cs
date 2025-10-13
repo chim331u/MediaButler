@@ -6,6 +6,7 @@ using MediaButler.ML.Utils;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.ML;
+using Microsoft.ML.Data;
 using System.Diagnostics;
 
 namespace MediaButler.ML.Services;
@@ -117,16 +118,15 @@ public class FastTextClassificationService : IClassificationService
                 return Result<ClassificationResult>.Failure($"Feature extraction failed: {featureResult.Error}");
             }
 
-            // Step 3: Prepare ML.NET input
+            // Step 3: Prepare ML.NET input (must match training schema)
             var mlInput = new SeriesFeatureInput
             {
-                SeriesTokens = string.Join(" ", tokenResult.Value.SeriesTokens),
-                AllTokens = string.Join(" ", tokenResult.Value.AllTokens),
-                HasSeasonEpisode = tokenResult.Value.EpisodeInfo != null,
-                TokenCount = tokenResult.Value.SeriesTokens.Count,
-                QualityIndicator = tokenResult.Value.QualityInfo?.Resolution ?? "Unknown",
-                LanguageCode = string.Join(",", tokenResult.Value.Metadata.GetValueOrDefault("Languages", "Unknown")),
-                ReleaseGroup = tokenResult.Value.ReleaseGroup ?? "Unknown"
+                Filename = filename,
+                Category = string.Empty, // Required by ML.NET schema but not used during prediction
+                Confidence = 0.0f, // Required by ML.NET schema but not used during prediction
+                Source = "Prediction", // Required by ML.NET schema but not used during prediction
+                QualityTier = ExtractQualityTier(filename),
+                VideoCodec = ExtractVideoCodec(filename)
             };
 
             // Step 4: Predict using ML.NET
@@ -142,10 +142,14 @@ public class FastTextClassificationService : IClassificationService
 
             stopwatch.Stop();
 
-            // Step 5: Format result
+            // Step 5: Map predicted label index to category name
+            var predictedCategory = MapLabelIndexToCategory(prediction.PredictedLabelIndex, prediction.Score);
+
+            // Step 6: Format result
             var classificationResult = BuildClassificationResult(
                 filename,
-                prediction,
+                predictedCategory,
+                prediction.Score,
                 featureResult.Value,
                 stopwatch.ElapsedMilliseconds);
 
@@ -297,6 +301,9 @@ public class FastTextClassificationService : IClassificationService
                 // Load the trained model
                 _trainedModel = _mlContext.Model.Load(modelPath, out var modelInputSchema);
 
+                // Extract category labels from model schema BEFORE creating prediction engine
+                ExtractCategoryLabelsFromModel(_trainedModel, modelInputSchema);
+
                 // Create prediction engine
                 _predictionEngine = _mlContext.Model.CreatePredictionEngine<SeriesFeatureInput, SeriesPrediction>(_trainedModel);
 
@@ -320,28 +327,56 @@ public class FastTextClassificationService : IClassificationService
     }
 
     /// <summary>
-    /// Extracts model metadata and available categories from the model file.
+    /// Extracts category labels from the trained model's schema.
+    /// The model's Label column contains the key-to-value mapping for categories.
     /// </summary>
-    private void ExtractModelMetadata(string modelPath)
+    private void ExtractCategoryLabelsFromModel(ITransformer model, DataViewSchema schema)
     {
-        // For now, use static metadata - in production this would be loaded from model metadata
-        _modelInfo = new ModelInfo
+        try
         {
-            Version = _config.ActiveModelVersion,
-            Algorithm = "ML.NET SDCA Maximum Entropy",
-            TrainedAt = File.GetLastWriteTimeUtc(modelPath),
-            TestAccuracy = 0.95f, // TODO: Load from saved model metadata
-            CategoryCount = 22, // TODO: Extract from model
-            TrainingSamples = 114, // TODO: Extract from model metadata
-            TestPrecision = 0.93f,
-            TestRecall = 0.91f,
-            TestF1Score = 0.92f,
-            FileSizeBytes = new FileInfo(modelPath).Length,
-            AverageInferenceTimeMs = 50.0 // Will be updated with actual predictions
-        };
+            // Find the PredictedLabel column in the output schema
+            var outputSchema = model.GetOutputSchema(schema);
 
-        // TODO: Extract actual categories from model schema
-        // For now, use a predefined list that matches training data
+            // Iterate through columns to find PredictedLabel
+            foreach (var column in outputSchema)
+            {
+                if (column.Name == "PredictedLabel" && column.Type is KeyDataViewType keyType)
+                {
+                    // Get the key values metadata (category names)
+                    var keyValues = default(VBuffer<ReadOnlyMemory<char>>);
+                    column.Annotations.GetValue("KeyValues", ref keyValues);
+
+                    if (keyValues.Length > 0)
+                    {
+                        var categories = new List<string>();
+                        foreach (var value in keyValues.GetValues())
+                        {
+                            categories.Add(value.ToString());
+                        }
+
+                        _availableCategories = categories.AsReadOnly();
+                        _logger.LogInformation("Extracted {Count} categories from model: {Categories}",
+                            categories.Count, string.Join(", ", categories.Take(5)) + "...");
+                        return;
+                    }
+                }
+            }
+
+            _logger.LogWarning("Could not extract category labels from model schema, using fallback list");
+            UseFallbackCategories();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error extracting category labels from model, using fallback list");
+            UseFallbackCategories();
+        }
+    }
+
+    /// <summary>
+    /// Uses fallback hardcoded categories if extraction from model fails.
+    /// </summary>
+    private void UseFallbackCategories()
+    {
         _availableCategories = new List<string>
         {
             "ARROW", "ATTACK ON TITAN", "BETTER CALL SAUL", "BREAKING BAD",
@@ -354,20 +389,66 @@ public class FastTextClassificationService : IClassificationService
     }
 
     /// <summary>
+    /// Extracts model metadata and available categories from the model file.
+    /// </summary>
+    private void ExtractModelMetadata(string modelPath)
+    {
+        // For now, use static metadata - in production this would be loaded from model metadata
+        _modelInfo = new ModelInfo
+        {
+            Version = _config.ActiveModelVersion,
+            Algorithm = "ML.NET SDCA Maximum Entropy",
+            TrainedAt = File.GetLastWriteTimeUtc(modelPath),
+            TestAccuracy = 0.95f, // TODO: Load from saved model metadata
+            CategoryCount = _availableCategories?.Count ?? 0,
+            TrainingSamples = 114, // TODO: Extract from model metadata
+            TestPrecision = 0.93f,
+            TestRecall = 0.91f,
+            TestF1Score = 0.92f,
+            FileSizeBytes = new FileInfo(modelPath).Length,
+            AverageInferenceTimeMs = 50.0 // Will be updated with actual predictions
+        };
+    }
+
+    /// <summary>
+    /// Maps the predicted label index to the actual category name using available categories.
+    /// </summary>
+    private string MapLabelIndexToCategory(uint labelIndex, float[] scores)
+    {
+        if (_availableCategories == null || labelIndex >= _availableCategories.Count)
+        {
+            // Fallback: find the index of the highest score
+            var maxIndex = Array.IndexOf(scores, scores.Max());
+            if (_availableCategories != null && maxIndex >= 0 && maxIndex < _availableCategories.Count)
+            {
+                return _availableCategories[maxIndex];
+            }
+            return "UNKNOWN";
+        }
+
+        return _availableCategories[(int)labelIndex];
+    }
+
+    /// <summary>
     /// Builds a ClassificationResult from ML.NET prediction and extracted features.
     /// </summary>
     private ClassificationResult BuildClassificationResult(
         string filename,
-        SeriesPrediction prediction,
+        string predictedCategory,
+        float[] scores,
         FeatureVector features,
         long processingTimeMs)
     {
-        var confidence = prediction.Score.Max();
-        var predictedCategory = prediction.PredictedLabel;
+        var confidence = scores.Max();
 
         // Get top 3 alternative predictions
-        var alternatives = prediction.Score
-            .Select((score, index) => new { Score = score, Category = $"Category_{index}" })
+        var alternatives = scores
+            .Select((score, index) => new {
+                Score = score,
+                Category = _availableCategories != null && index < _availableCategories.Count
+                    ? _availableCategories[index]
+                    : $"Category_{index}"
+            })
             .OrderByDescending(x => x.Score)
             .Skip(1) // Skip the top prediction
             .Take(3)
@@ -419,27 +500,80 @@ public class FastTextClassificationService : IClassificationService
 
         return ClassificationDecision.Failed;
     }
+
+    /// <summary>
+    /// Extracts quality tier from filename (must match training logic).
+    /// </summary>
+    private string ExtractQualityTier(string filename)
+    {
+        if (filename.Contains("2160p") || filename.Contains("4K"))
+            return "Ultra";
+        if (filename.Contains("1080p"))
+            return "High";
+        if (filename.Contains("720p"))
+            return "Medium";
+        return "Standard";
+    }
+
+    /// <summary>
+    /// Extracts video codec from filename (must match training logic).
+    /// </summary>
+    private string ExtractVideoCodec(string filename)
+    {
+        if (filename.Contains("x265") || filename.Contains("HEVC"))
+            return "HEVC";
+        if (filename.Contains("x264") || filename.Contains("AVC"))
+            return "AVC";
+        return "Unknown";
+    }
 }
 
 /// <summary>
-/// Input features for ML.NET prediction.
+/// Input features for ML.NET prediction (must match exact training schema).
+/// All columns from training must be present, even if not used during prediction.
 /// </summary>
 public class SeriesFeatureInput
 {
-    public string SeriesTokens { get; set; } = string.Empty;
-    public string AllTokens { get; set; } = string.Empty;
-    public bool HasSeasonEpisode { get; set; }
-    public int TokenCount { get; set; }
-    public string QualityIndicator { get; set; } = string.Empty;
-    public string LanguageCode { get; set; } = string.Empty;
-    public string ReleaseGroup { get; set; } = string.Empty;
+    /// <summary>
+    /// The filename to classify (primary feature).
+    /// </summary>
+    public string Filename { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Category label (required by ML.NET schema, not used during prediction).
+    /// </summary>
+    public string Category { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Confidence score (required by ML.NET schema, not used during prediction).
+    /// </summary>
+    public float Confidence { get; set; }
+
+    /// <summary>
+    /// Source identifier (required by ML.NET schema, not used during prediction).
+    /// </summary>
+    public string Source { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Quality tier extracted from filename (Ultra/High/Medium/Standard).
+    /// </summary>
+    public string QualityTier { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Video codec extracted from filename (HEVC/AVC/Unknown).
+    /// </summary>
+    public string VideoCodec { get; set; } = string.Empty;
 }
 
 /// <summary>
 /// ML.NET prediction output.
+/// The PredictedLabel is a Key type (uint) that represents the index of the predicted category.
 /// </summary>
 public class SeriesPrediction
 {
-    public string PredictedLabel { get; set; } = string.Empty;
+    [Microsoft.ML.Data.ColumnName("PredictedLabel")]
+    public uint PredictedLabelIndex { get; set; }
+
+    [Microsoft.ML.Data.ColumnName("Score")]
     public float[] Score { get; set; } = Array.Empty<float>();
 }
