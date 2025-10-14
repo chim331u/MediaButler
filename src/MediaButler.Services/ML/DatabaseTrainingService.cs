@@ -1,4 +1,5 @@
 using MediaButler.Core.Common;
+using MediaButler.Core.Enums;
 using MediaButler.Data;
 using MediaButler.ML.Configuration;
 using MediaButler.ML.Interfaces;
@@ -43,11 +44,11 @@ public class DatabaseTrainingService : IDatabaseTrainingService
 
             // Load all files with categories (excludes NULL or empty categories)
             var filesWithCategories = await _dbContext.TrackedFiles
-                .Where(f => f.Category != null && f.Category != "")
+                .Where(f => f.Category != null && f.Category != "" && f.Status==FileStatus.Moved)
                 .Select(f => new { f.FileName, f.Category, f.CreatedDate })
                 .ToListAsync(cancellationToken);
 
-            _logger.LogInformation("Found {Count} files with categories in database", filesWithCategories.Count);
+            _logger.LogInformation("Found {Count} files moved with categories in database", filesWithCategories.Count);
 
             if (filesWithCategories.Count == 0)
             {
@@ -140,8 +141,7 @@ public class DatabaseTrainingService : IDatabaseTrainingService
             }
 
             var trainedModel = trainingResult.Value;
-            _logger.LogInformation("Model training completed with {Accuracy:P2} accuracy",
-                trainedModel.ValidationMetrics.Accuracy);
+            _logger.LogInformation($"Model v.{trainedModel.ModelVersion}  training completed with {trainedModel.ValidationMetrics.Accuracy:P2} accuracy");
 
             // Save the model
             var modelPath = Path.Combine(_mlConfig.ModelPath, "classification-model.zip");
@@ -152,7 +152,7 @@ public class DatabaseTrainingService : IDatabaseTrainingService
                 ModelName = "TV Series Classifier (Database-trained)",
                 Version = _mlConfig.ActiveModelVersion,
                 CreatedAt = DateTime.UtcNow,
-                Description = $"ML.NET model trained on {trainingSamples.Count} Italian series samples from TrackedFiles database",
+                Description = $"ML.NET model trained on {trainingSamples.Count} samples from TrackedFiles database",
                 Author = "MediaButler ML Pipeline",
                 Tags = new Dictionary<string, string>
                 {

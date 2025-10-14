@@ -398,6 +398,7 @@ public class ModelTrainingService : IModelTrainingService
             });
 
             // Categorical encoding step for quality features
+            //TODO delete step 2/3/4
             transformationSteps.Add(new TransformationStep
             {
                 TransformationType = "OneHotEncoding",
