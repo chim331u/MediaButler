@@ -27,10 +27,10 @@ public sealed record FeatureVector
     /// </summary>
     public required IReadOnlyList<NGramFeature> NGramFeatures { get; init; }
 
-    /// <summary>
-    /// Quality-based features from video quality indicators.
-    /// </summary>
-    public required QualityFeatures QualityFeatures { get; init; }
+    // /// <summary>
+    // /// Quality-based features from video quality indicators.
+    // /// </summary>
+    // public required QualityFeatures QualityFeatures { get; init; }
 
     /// <summary>
     /// Pattern matching features from filename structure.
@@ -71,8 +71,8 @@ public sealed record FeatureVector
         // N-gram features  
         features.AddRange(NGramFeatures.SelectMany(ng => ng.ToFeatureArray()));
 
-        // Quality features
-        features.AddRange(QualityFeatures.ToFeatureArray());
+        // // Quality features
+        // features.AddRange(QualityFeatures.ToFeatureArray());
 
         // Pattern features
         features.AddRange(PatternFeatures.ToFeatureArray());
@@ -98,7 +98,7 @@ public sealed record FeatureVector
 
         names.AddRange(TokenFeatures.GetFeatureNames());
         names.AddRange(NGramFeatures.SelectMany(ng => ng.GetFeatureNames()));
-        names.AddRange(QualityFeatures.GetFeatureNames());
+        // names.AddRange(QualityFeatures.GetFeatureNames());
         names.AddRange(PatternFeatures.GetFeatureNames());
 
         if (EpisodeFeatures != null)
@@ -114,7 +114,7 @@ public sealed record FeatureVector
     {
         int count = TokenFeatures.FeatureCount +
                    NGramFeatures.Sum(ng => ng.FeatureCount) +
-                   QualityFeatures.FeatureCount +
+                   // QualityFeatures.FeatureCount +
                    PatternFeatures.FeatureCount;
 
         if (EpisodeFeatures != null)

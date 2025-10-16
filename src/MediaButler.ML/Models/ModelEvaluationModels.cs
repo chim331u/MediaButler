@@ -332,9 +332,9 @@ public sealed record FoldMetrics
 public sealed record ModelQualityReport
 {
     /// <summary>
-    /// Model version or identifier.
+    /// Model version (integer).
     /// </summary>
-    public required string ModelVersion { get; init; }
+    public required int ModelVersion { get; init; }
 
     /// <summary>
     /// Overall quality score (0.0-1.0).

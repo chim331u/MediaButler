@@ -38,7 +38,7 @@ public class ProductionModelTrainer
             ModelPath = modelsDirectory,
             AutoClassifyThreshold = 0.85f,
             SuggestionThreshold = 0.5f,
-            ActiveModelVersion = "1.0.0"
+            ActiveModelVersion = 1
         });
 
         var featureEngineering = new FeatureEngineeringService(feLogger, mlConfig);

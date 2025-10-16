@@ -143,14 +143,18 @@ public class DatabaseTrainingService : IDatabaseTrainingService
             var trainedModel = trainingResult.Value;
             _logger.LogInformation($"Model v.{trainedModel.ModelVersion}  training completed with {trainedModel.ValidationMetrics.Accuracy:P2} accuracy");
 
+            // Increment version for new model
+            var newModelVersion = _mlConfig.ActiveModelVersion + 1;
+            _logger.LogInformation("Creating new model with version {Version}", newModelVersion);
+
             // Save the model
-            var modelPath = Path.Combine(_mlConfig.ModelPath, "classification-model.zip");
+            var modelPath = Path.Combine(_mlConfig.ModelPath, "classification-simplified-model.zip");
             _logger.LogInformation("Saving model to: {ModelPath}", modelPath);
 
             var metadata = new ModelMetadata
             {
-                ModelName = "TV Series Classifier (Database-trained)",
-                Version = _mlConfig.ActiveModelVersion,
+                ModelName = "Simplify Classifier (Database-trained)",
+                Version = newModelVersion,
                 CreatedAt = DateTime.UtcNow,
                 Description = $"ML.NET model trained on {trainingSamples.Count} samples from TrackedFiles database",
                 Author = "MediaButler ML Pipeline",

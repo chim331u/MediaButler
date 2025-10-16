@@ -756,7 +756,7 @@ public class ModelEvaluationServiceTests
         var report = result.Value;
         
         // Basic report structure
-        report.ModelVersion.Should().NotBeNullOrEmpty();
+        report.ModelVersion.Should().BeGreaterThan(0);
         report.OverallQualityScore.Should().BeInRange(0.0, 1.0);
         report.GeneratedAt.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromMinutes(1));
         

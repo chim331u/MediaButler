@@ -32,10 +32,10 @@ public sealed record ReleaseGroupFeatures
     /// </summary>
     public required ReleaseGroupSpecialization Specialization { get; init; }
 
-    /// <summary>
-    /// Estimated quality tier typically associated with this group.
-    /// </summary>
-    public required QualityTier TypicalQuality { get; init; }
+    // /// <summary>
+    // /// Estimated quality tier typically associated with this group.
+    // /// </summary>
+    // public required QualityTier TypicalQuality { get; init; }
 
     /// <summary>
     /// Whether this is a well-known/established release group.
@@ -79,7 +79,7 @@ public sealed record ReleaseGroupFeatures
             (float)Reputation,
             (float)Region,
             (float)Specialization,
-            (float)TypicalQuality,
+            // (float)TypicalQuality,
             
             // Binary features
             IsWellKnown ? 1f : 0f,
@@ -133,7 +133,7 @@ public sealed record ReleaseGroupFeatures
         var reputation = DetermineReputation(releaseGroupName);
         var region = DetermineRegion(releaseGroupName);
         var specialization = DetermineSpecialization(releaseGroupName);
-        var quality = DetermineTypicalQuality(releaseGroupName, reputation);
+        // var quality = DetermineTypicalQuality(releaseGroupName, reputation);
         var isWellKnown = IsKnownReleaseGroup(releaseGroupName);
         var confidence = CalculateIdentificationConfidence(releaseGroupName, isWellKnown);
 
@@ -143,7 +143,7 @@ public sealed record ReleaseGroupFeatures
             Reputation = reputation,
             Region = region,
             Specialization = specialization,
-            TypicalQuality = quality,
+            // TypicalQuality = quality,
             IsWellKnown = isWellKnown,
             IdentificationConfidence = confidence
         };
@@ -228,17 +228,17 @@ public sealed record ReleaseGroupFeatures
         return ReleaseGroupSpecialization.General;
     }
 
-    private static QualityTier DetermineTypicalQuality(string name, ReleaseGroupReputation reputation)
-    {
-        return reputation switch
-        {
-            ReleaseGroupReputation.Premium => QualityTier.UltraHigh,
-            ReleaseGroupReputation.Good => QualityTier.High,
-            ReleaseGroupReputation.Average => QualityTier.Standard,
-            ReleaseGroupReputation.Poor => QualityTier.Low,
-            _ => QualityTier.Unknown
-        };
-    }
+    // private static QualityTier DetermineTypicalQuality(string name, ReleaseGroupReputation reputation)
+    // {
+    //     return reputation switch
+    //     {
+    //         ReleaseGroupReputation.Premium => QualityTier.UltraHigh,
+    //         ReleaseGroupReputation.Good => QualityTier.High,
+    //         ReleaseGroupReputation.Average => QualityTier.Standard,
+    //         ReleaseGroupReputation.Poor => QualityTier.Low,
+    //         _ => QualityTier.Unknown
+    //     };
+    // }
 
     private static bool IsKnownReleaseGroup(string name)
     {

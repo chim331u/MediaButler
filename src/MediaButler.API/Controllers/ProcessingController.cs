@@ -416,7 +416,7 @@ public record ClassificationResponse
     /// <summary>
     /// Version of the ML model used for classification
     /// </summary>
-    public required string ModelVersion { get; init; }
+    public required int ModelVersion { get; init; }
 }
 
 /// <summary>

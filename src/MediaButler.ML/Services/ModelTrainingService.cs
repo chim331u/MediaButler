@@ -86,86 +86,77 @@ public class ModelTrainingService : IModelTrainingService
                 return Result<TrainedModelInfo>.Failure($"Failed to convert training data: {mlTrainingData.Error}");
             }
 
-            // Create training pipeline
-            var architecture = MLModelArchitecture.CreateRecommendedArchitecture();
-            var pipelineResult = await CreateTrainingPipelineAsync(architecture, architecture.FeaturePipeline);
-            if (!pipelineResult.IsSuccess)
+            UpdateTrainingProgress(trainingConfig.SessionId, progress with
             {
-                return Result<TrainedModelInfo>.Failure($"Failed to create training pipeline: {pipelineResult.Error}");
-            }
-
-            var pipeline = pipelineResult.Value;
-
-            // Split data for training and validation
-            var dataSplit = _mlContext.Data.TrainTestSplit(mlTrainingData.Value, 
-                testFraction: trainingConfig.ValidationSplit, seed: trainingConfig.RandomSeed);
-
-            UpdateTrainingProgress(trainingConfig.SessionId, progress with 
-            { 
                 CurrentPhase = TrainingPhase.Training,
                 StatusMessage = "Training ML model",
                 CompletionPercentage = 10.0
             });
 
-            // Configure algorithm-specific trainer
-            var trainer = CreateTrainer(architecture.Algorithm, trainingConfig);
-            var trainingPipeline = CreateFullPipeline(trainer);
+            // Create simplified training pipeline with SDCA Maximum Entropy trainer
+            var trainingPipeline = _mlContext.Transforms.Text
+                .FeaturizeText("Features", "Filename")
+                .Append(_mlContext.Transforms.Conversion.MapValueToKey("Label", "Category"))
+                .Append(_mlContext.MulticlassClassification.Trainers.SdcaMaximumEntropy(
+                    labelColumnName: "Label",
+                    featureColumnName: "Features"))
+                .Append(_mlContext.Transforms.Conversion.MapKeyToValue("PredictedLabel"));
 
-            // Track training metrics
-            var trainingMetrics = new List<double>();
-            var validationMetrics = new List<double>();
-            var trainingLosses = new List<double>();
-            var validationLosses = new List<double>();
+            // Split dataset (20% for validation)
+            var splits = _mlContext.Data.TrainTestSplit(mlTrainingData.Value, testFraction: 0.2);
 
-            // Train the model with progress tracking
-            var trainedModel = await TrainWithProgressAsync(
-                trainingPipeline, 
-                dataSplit.TrainSet, 
-                dataSplit.TestSet,
-                trainingConfig, 
-                trainingMetrics, 
-                validationMetrics, 
-                trainingLosses, 
-                validationLosses,
-                cancellationToken);
-
-            if (trainedModel == null)
+            // Train the model
+            var model = trainingPipeline.Fit(splits.TrainSet);
+            if (model == null)
             {
                 return Result<TrainedModelInfo>.Failure("Model training failed or was cancelled");
             }
 
-            UpdateTrainingProgress(trainingConfig.SessionId, progress with 
-            { 
+            UpdateTrainingProgress(trainingConfig.SessionId, progress with
+            {
                 CurrentPhase = TrainingPhase.Validation,
                 StatusMessage = "Evaluating trained model",
                 CompletionPercentage = 80.0
             });
 
-            // Evaluate the trained model
-            var evaluationResult = await EvaluateTrainedModelAsync(
-                trainedModel, 
-                dataSplit.TestSet, 
-                architecture.EvaluationMetrics);
-
-            if (!evaluationResult.IsSuccess)
-            {
-                return Result<TrainedModelInfo>.Failure($"Model evaluation failed: {evaluationResult.Error}");
-            }
+            // Evaluate the model
+            var predictions = model.Transform(splits.TestSet);
+            var metrics = _mlContext.MulticlassClassification.Evaluate(predictions);
 
             stopwatch.Stop();
 
-            // Create training metrics
+            _logger.LogInformation("Model training completed. MicroAccuracy: {MicroAccuracy:F4}, MacroAccuracy: {MacroAccuracy:F4}",
+                metrics.MicroAccuracy, metrics.MacroAccuracy);
+
+            // Create simplified architecture for model info
+            var architecture = MLModelArchitecture.CreateRecommendedArchitecture();
+
+            // Create simplified training metrics
             var finalTrainingMetrics = new TrainingMetrics
             {
-                TrainingLossHistory = trainingLosses.AsReadOnly(),
-                ValidationLossHistory = validationLosses.AsReadOnly(),
-                TrainingAccuracyHistory = trainingMetrics.AsReadOnly(),
-                ValidationAccuracyHistory = validationMetrics.AsReadOnly(),
-                FinalTrainingLoss = trainingLosses.LastOrDefault(),
-                FinalValidationLoss = validationLosses.LastOrDefault(),
-                EpochsStopped = Math.Min(trainingConfig.MaxEpochs, trainingMetrics.Count),
-                StopReason = DetermineStopReason(trainingConfig, trainingMetrics.Count, stopwatch.Elapsed),
+                TrainingLossHistory = new[] { metrics.LogLoss }.AsReadOnly(),
+                ValidationLossHistory = new[] { metrics.LogLoss }.AsReadOnly(),
+                TrainingAccuracyHistory = new[] { metrics.MicroAccuracy }.AsReadOnly(),
+                ValidationAccuracyHistory = new[] { metrics.MacroAccuracy }.AsReadOnly(),
+                FinalTrainingLoss = metrics.LogLoss,
+                FinalValidationLoss = metrics.LogLoss,
+                EpochsStopped = 1,
+                StopReason = TrainingStopReason.MaxEpochsReached,
                 LearningRateUsed = trainingConfig.LearningRate
+            };
+
+            // Create performance metrics from evaluation
+            var performanceMetrics = new ModelPerformanceMetrics
+            {
+                Accuracy = metrics.MacroAccuracy,
+                MacroF1Score = CalculateF1Score(metrics),
+                WeightedF1Score = CalculateWeightedF1Score(metrics),
+                MacroPrecision = CalculatePrecision(metrics),
+                MacroRecall = CalculateRecall(metrics),
+                LogLoss = metrics.LogLoss,
+                PerCategoryMetrics = CreatePlaceholderPerCategoryMetrics(),
+                ConfusionMatrix = CreatePlaceholderConfusionMatrix(),
+                ConfidenceDistribution = CreatePlaceholderConfidenceAnalysis()
             };
 
             // Create model info
@@ -175,28 +166,28 @@ public class ModelTrainingService : IModelTrainingService
                 Architecture = architecture,
                 TrainingConfig = trainingConfig,
                 TrainingMetrics = finalTrainingMetrics,
-                ValidationMetrics = evaluationResult.Value,
+                ValidationMetrics = performanceMetrics,
                 ModelPath = string.Empty, // Will be set when saved
                 TrainingCompletedAt = DateTime.UtcNow,
                 TrainingDuration = stopwatch.Elapsed,
                 TrainingSampleCount = trainingData.Count(),
-                ModelVersion = "1.0.0"
+                ModelVersion = 1
             };
 
             // Store the trained model with schema for later saving
-            _trainedModels[modelInfo.ModelId] = (trainedModel, mlTrainingData.Value.Schema);
+            _trainedModels[modelInfo.ModelId] = (model, mlTrainingData.Value.Schema);
             _logger.LogDebug("Stored trained model {ModelId} for persistence", modelInfo.ModelId);
 
-            UpdateTrainingProgress(trainingConfig.SessionId, progress with 
-            { 
+            UpdateTrainingProgress(trainingConfig.SessionId, progress with
+            {
                 CurrentPhase = TrainingPhase.Completed,
                 StatusMessage = "Training completed successfully",
                 CompletionPercentage = 100.0,
-                CurrentValidationAccuracy = evaluationResult.Value.Accuracy
+                CurrentValidationAccuracy = performanceMetrics.Accuracy
             });
 
             _logger.LogInformation("Model training completed successfully. Accuracy: {Accuracy:P2}, Duration: {Duration}",
-                evaluationResult.Value.Accuracy, stopwatch.Elapsed);
+                performanceMetrics.Accuracy, stopwatch.Elapsed);
 
             return Result<TrainedModelInfo>.Success(modelInfo);
         }
@@ -381,12 +372,12 @@ public class ModelTrainingService : IModelTrainingService
 
             var transformationSteps = new List<TransformationStep>();
 
-            // Text featurization step
+            // Text featurization step - use SeriesName instead of Filename
             transformationSteps.Add(new TransformationStep
             {
                 TransformationType = "FeaturizeText",
-                InputColumns = new[] { "Filename" }.AsReadOnly(),
-                OutputColumns = new[] { "FilenameFeatures" }.AsReadOnly(),
+                InputColumns = new[] { "SeriesName" }.AsReadOnly(),
+                OutputColumns = new[] { "SeriesNameFeatures" }.AsReadOnly(),
                 Parameters = new Dictionary<string, object>
                 {
                     ["VectorType"] = "n-gram",
@@ -397,45 +388,45 @@ public class ModelTrainingService : IModelTrainingService
                 Order = 1
             });
 
-            // Categorical encoding step for quality features
-            //TODO delete step 2/3/4
-            transformationSteps.Add(new TransformationStep
-            {
-                TransformationType = "OneHotEncoding",
-                InputColumns = new[] { "QualityTier", "VideoCodec" }.AsReadOnly(),
-                OutputColumns = new[] { "QualityTierEncoded", "VideoCodecEncoded" }.AsReadOnly(),
-                Parameters = new Dictionary<string, object>
-                {
-                    ["OutputKind"] = "Indicator"
-                },
-                Order = 2
-            });
-
-            // Feature concatenation step
-            transformationSteps.Add(new TransformationStep
-            {
-                TransformationType = "Concatenate",
-                InputColumns = new[] { "FilenameFeatures", "QualityTierEncoded", "VideoCodecEncoded" }.AsReadOnly(),
-                OutputColumns = new[] { "Features" }.AsReadOnly(),
-                Parameters = new Dictionary<string, object>(),
-                Order = 3
-            });
-
-            // Normalization step (if enabled)
-            if (featurePipeline.Normalization.NormalizeNumerical)
-            {
-                transformationSteps.Add(new TransformationStep
-                {
-                    TransformationType = "NormalizeMinMax",
-                    InputColumns = new[] { "Features" }.AsReadOnly(),
-                    OutputColumns = new[] { "FeaturesNormalized" }.AsReadOnly(),
-                    Parameters = new Dictionary<string, object>
-                    {
-                        ["EnsureZeroUntouched"] = false
-                    },
-                    Order = 4
-                });
-            }
+            // // Categorical encoding step for quality features
+            // //TODO delete step 2/3/4
+            // transformationSteps.Add(new TransformationStep
+            // {
+            //     TransformationType = "OneHotEncoding",
+            //     InputColumns = new[] { "QualityTier", "VideoCodec" }.AsReadOnly(),
+            //     OutputColumns = new[] { "QualityTierEncoded", "VideoCodecEncoded" }.AsReadOnly(),
+            //     Parameters = new Dictionary<string, object>
+            //     {
+            //         ["OutputKind"] = "Indicator"
+            //     },
+            //     Order = 2
+            // });
+            //
+            // // Feature concatenation step
+            // transformationSteps.Add(new TransformationStep
+            // {
+            //     TransformationType = "Concatenate",
+            //     InputColumns = new[] { "SeriesNameFeatures", "QualityTierEncoded", "VideoCodecEncoded" }.AsReadOnly(),
+            //     OutputColumns = new[] { "Features" }.AsReadOnly(),
+            //     Parameters = new Dictionary<string, object>(),
+            //     Order = 3
+            // });
+            //
+            // // Normalization step (if enabled)
+            // if (featurePipeline.Normalization.NormalizeNumerical)
+            // {
+            //     transformationSteps.Add(new TransformationStep
+            //     {
+            //         TransformationType = "NormalizeMinMax",
+            //         InputColumns = new[] { "Features" }.AsReadOnly(),
+            //         OutputColumns = new[] { "FeaturesNormalized" }.AsReadOnly(),
+            //         Parameters = new Dictionary<string, object>
+            //         {
+            //             ["EnsureZeroUntouched"] = false
+            //         },
+            //         Order = 4
+            //     });
+            // }
 
             var algorithmConfig = new TrainingAlgorithmConfig
             {
@@ -588,7 +579,7 @@ public class ModelTrainingService : IModelTrainingService
                 TrainingCompletedAt = DateTime.UtcNow,
                 TrainingDuration = TimeSpan.FromMinutes(10),
                 TrainingSampleCount = 1000,
-                ModelVersion = "1.0.0"
+                ModelVersion = 1
             };
 
             _logger.LogInformation("Model loaded successfully: {ModelId}", modelInfo.ModelId);
@@ -967,7 +958,7 @@ public class ModelTrainingService : IModelTrainingService
     #region Private Helper Methods
 
     private async Task<Result<IDataView>> ConvertToMLNetDataAsync(
-        IEnumerable<TrainingSample> trainingData, 
+        IEnumerable<TrainingSample> trainingData,
         CancellationToken cancellationToken)
     {
         try
@@ -975,11 +966,12 @@ public class ModelTrainingService : IModelTrainingService
             var mlNetData = trainingData.Select(sample => new
             {
                 Filename = sample.Filename,
+                SeriesName = ExtractSeriesName(sample.Filename), // NEW: Extract series name for better classification
                 Category = sample.Category,
                 Confidence = (float)sample.Confidence,
                 Source = sample.Source.ToString(),
-                QualityTier = ExtractQualityTier(sample.Filename),
-                VideoCodec = ExtractVideoCodec(sample.Filename)
+                // QualityTier = ExtractQualityTier(sample.Filename),
+                // VideoCodec = ExtractVideoCodec(sample.Filename)
             });
 
             var dataView = _mlContext.Data.LoadFromEnumerable(mlNetData);
@@ -1020,12 +1012,14 @@ public class ModelTrainingService : IModelTrainingService
 
     private EstimatorChain<ITransformer> CreateFullPipeline(IEstimator<ITransformer> trainer)
     {
+        // Use SeriesName as primary feature instead of full Filename
+        // This focuses the model on series-identifying tokens rather than release metadata
         return _mlContext.Transforms.Text.FeaturizeText(
-                outputColumnName: "FilenameFeatures",
-                inputColumnName: "Filename")
-            .Append(_mlContext.Transforms.Categorical.OneHotEncoding("QualityTierEncoded", "QualityTier"))
-            .Append(_mlContext.Transforms.Categorical.OneHotEncoding("VideoCodecEncoded", "VideoCodec"))
-            .Append(_mlContext.Transforms.Concatenate("Features", "FilenameFeatures", "QualityTierEncoded", "VideoCodecEncoded"))
+                outputColumnName: "SeriesNameFeatures",
+                inputColumnName: "SeriesName")
+            // .Append(_mlContext.Transforms.Categorical.OneHotEncoding("QualityTierEncoded", "QualityTier"))
+            // .Append(_mlContext.Transforms.Categorical.OneHotEncoding("VideoCodecEncoded", "VideoCodec"))
+            .Append(_mlContext.Transforms.Concatenate("Features", "SeriesNameFeatures"))
             .Append(_mlContext.Transforms.NormalizeMinMax("Features"))
             .Append(_mlContext.Transforms.Conversion.MapValueToKey(outputColumnName: "Label", inputColumnName: "Category"))
             .Append(trainer);
@@ -1252,8 +1246,65 @@ public class ModelTrainingService : IModelTrainingService
             return "HEVC";
         if (filename.Contains("x264") || filename.Contains("AVC"))
             return "AVC";
-        
+
         return "Unknown";
+    }
+
+    /// <summary>
+    /// Extracts the series name from a filename by identifying tokens before episode markers.
+    /// This helps focus classification on the actual series name rather than release metadata.
+    /// </summary>
+    /// <param name="filename">The filename to extract series name from</param>
+    /// <returns>The extracted series name (cleaned and trimmed)</returns>
+    private string ExtractSeriesName(string filename)
+    {
+        // Normalize separators: dots and underscores to spaces
+        var normalized = filename
+            .Replace('.', ' ')
+            .Replace('_', ' ');
+
+        // Episode marker patterns (ordered by specificity)
+        var episodePatterns = new[]
+        {
+            @"\s+S\d{1,2}E\d{1,2}",        // S01E01, S1E1
+            @"\s+\d{1,2}x\d{1,2}",         // 1x01, 21x3
+            @"\s+Season\s+\d+",            // Season 1
+            @"\s+Episode\s+\d+",           // Episode 1
+            @"\s+\d{4}\s",                 // Year like 2024 (followed by space)
+            @"\s+\d{1,4}\s+(ITA|ENG|SUB)", // Episode number before language
+        };
+
+        // Find the earliest episode marker
+        int earliestIndex = normalized.Length;
+        foreach (var pattern in episodePatterns)
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(normalized, pattern,
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (match.Success && match.Index < earliestIndex)
+            {
+                earliestIndex = match.Index;
+            }
+        }
+
+        // Extract everything before the episode marker
+        var seriesName = normalized.Substring(0, earliestIndex).Trim();
+
+        // Remove common file extensions if present
+        seriesName = System.Text.RegularExpressions.Regex.Replace(seriesName,
+            @"\.(mkv|mp4|avi)$", "",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        // Clean up multiple spaces
+        seriesName = System.Text.RegularExpressions.Regex.Replace(seriesName, @"\s+", " ");
+
+        // Return cleaned series name or fallback to first 3 words
+        if (string.IsNullOrWhiteSpace(seriesName))
+        {
+            var words = normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            seriesName = string.Join(" ", words.Take(3));
+        }
+
+        return seriesName.Trim();
     }
 
     private Dictionary<string, object> GenerateHyperparameterCombination(

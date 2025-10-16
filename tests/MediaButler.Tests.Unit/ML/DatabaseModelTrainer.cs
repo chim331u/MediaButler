@@ -36,7 +36,7 @@ public class DatabaseModelTrainer
             ModelPath = modelsDirectory,
             AutoClassifyThreshold = 0.85f,
             SuggestionThreshold = 0.5f,
-            ActiveModelVersion = "2.0.0" // New version for database-trained model
+            ActiveModelVersion = 2 // New version for database-trained model
         });
 
         var featureEngineering = new FeatureEngineeringService(feLogger, mlConfig);
@@ -116,7 +116,7 @@ public class DatabaseModelTrainer
         var metadata = new ModelMetadata
         {
             ModelName = "TV Series Classifier (Database-trained)",
-            Version = "2.0.0",
+            Version = 2,
             CreatedAt = DateTime.UtcNow,
             Description = $"ML.NET model trained on {trainingSamples.Count} Italian series samples from TrackedFiles database",
             Author = "MediaButler ML Pipeline",

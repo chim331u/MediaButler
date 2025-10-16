@@ -20,10 +20,10 @@ public class MLConfiguration
     public string ModelPath { get; set; } = "models";
 
     /// <summary>
-    /// Gets or sets the active model version to use for predictions.
+    /// Gets or sets the active model version to use for predictions (integer starting from 1).
     /// </summary>
-    /// <example>"1.0.0", "2.1.3"</example>
-    public string ActiveModelVersion { get; set; } = "1.0.0";
+    /// <example>1, 2, 3</example>
+    public int ActiveModelVersion { get; set; } = 1;
 
     /// <summary>
     /// Gets or sets the confidence threshold for auto-classification.

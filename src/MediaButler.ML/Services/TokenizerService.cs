@@ -258,7 +258,7 @@ public partial class TokenizerService : ITokenizerService
             // Extract all components
             var seriesNameResult = ExtractSeriesName(filename);
             var episodeInfo = ExtractEpisodeInfoInternal(nameWithoutExtension);
-            var qualityInfo = ExtractQualityInfoInternal(nameWithoutExtension);
+            // var qualityInfo = ExtractQualityInfoInternal(nameWithoutExtension);
 
             // Tokenize the filename
             var allTokens = TokenizeString(nameWithoutExtension);
@@ -279,7 +279,7 @@ public partial class TokenizerService : ITokenizerService
                 FilteredTokens = filteredTokens.AsReadOnly(),
                 FileExtension = extension,
                 EpisodeInfo = episodeInfo,
-                QualityInfo = qualityInfo,
+                // QualityInfo = qualityInfo,
                 ReleaseGroup = ExtractReleaseGroup(nameWithoutExtension),
                 Metadata = metadata.AsReadOnly()
             };
@@ -322,26 +322,26 @@ public partial class TokenizerService : ITokenizerService
         }
     }
 
-    public Result<QualityInfo> ExtractQualityInfo(string filename)
-    {
-        try
-        {
-            if (string.IsNullOrWhiteSpace(filename))
-            {
-                return Result<QualityInfo>.Failure("Filename cannot be null or empty");
-            }
-
-            var nameWithoutExtension = Path.GetFileNameWithoutExtension(filename);
-            var qualityInfo = ExtractQualityInfoInternal(nameWithoutExtension);
-
-            return Result<QualityInfo>.Success(qualityInfo);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error extracting quality info from filename: {Filename}", filename);
-            return Result<QualityInfo>.Failure($"Error extracting quality info: {ex.Message}");
-        }
-    }
+    // public Result<QualityInfo> ExtractQualityInfo(string filename)
+    // {
+    //     try
+    //     {
+    //         if (string.IsNullOrWhiteSpace(filename))
+    //         {
+    //             return Result<QualityInfo>.Failure("Filename cannot be null or empty");
+    //         }
+    //
+    //         var nameWithoutExtension = Path.GetFileNameWithoutExtension(filename);
+    //         var qualityInfo = ExtractQualityInfoInternal(nameWithoutExtension);
+    //
+    //         return Result<QualityInfo>.Success(qualityInfo);
+    //     }
+    //     catch (Exception ex)
+    //     {
+    //         _logger.LogError(ex, "Error extracting quality info from filename: {Filename}", filename);
+    //         return Result<QualityInfo>.Failure($"Error extracting quality info: {ex.Message}");
+    //     }
+    // }
 
     // Private helper methods
 
@@ -471,36 +471,36 @@ public partial class TokenizerService : ITokenizerService
         return null;
     }
 
-    private QualityInfo ExtractQualityInfoInternal(string nameWithoutExtension)
-    {
-        var resolution = ExtractFirstMatch(nameWithoutExtension, QualityPatterns.Take(4).ToArray());
-        var source = ExtractFirstMatch(nameWithoutExtension, QualityPatterns.Skip(4).Take(5).ToArray());
-        var codec = ExtractFirstMatch(nameWithoutExtension, QualityPatterns.Skip(9).ToArray());
-
-        var languageIndicators = new List<string>();
-        foreach (var pattern in LanguagePatterns)
-        {
-            var matches = pattern.Matches(nameWithoutExtension);
-            languageIndicators.AddRange(matches.Select(m => m.Value.ToUpperInvariant()));
-        }
-
-        var additionalIndicators = new List<string>();
-        foreach (var pattern in ReleasePatterns.Take(3)) // Only quality-related release patterns
-        {
-            var matches = pattern.Matches(nameWithoutExtension);
-            additionalIndicators.AddRange(matches.Select(m => m.Value.ToUpperInvariant()));
-        }
-
-        return new QualityInfo
-        {
-            Resolution = resolution,
-            VideoCodec = codec,
-            Source = source,
-            QualityTier = DetermineQualityTier(resolution, source),
-            AdditionalIndicators = additionalIndicators.AsReadOnly(),
-            LanguageCodes = languageIndicators.AsReadOnly()
-        };
-    }
+    // private QualityInfo ExtractQualityInfoInternal(string nameWithoutExtension)
+    // {
+    //     var resolution = ExtractFirstMatch(nameWithoutExtension, QualityPatterns.Take(4).ToArray());
+    //     var source = ExtractFirstMatch(nameWithoutExtension, QualityPatterns.Skip(4).Take(5).ToArray());
+    //     var codec = ExtractFirstMatch(nameWithoutExtension, QualityPatterns.Skip(9).ToArray());
+    //
+    //     var languageIndicators = new List<string>();
+    //     foreach (var pattern in LanguagePatterns)
+    //     {
+    //         var matches = pattern.Matches(nameWithoutExtension);
+    //         languageIndicators.AddRange(matches.Select(m => m.Value.ToUpperInvariant()));
+    //     }
+    //
+    //     var additionalIndicators = new List<string>();
+    //     foreach (var pattern in ReleasePatterns.Take(3)) // Only quality-related release patterns
+    //     {
+    //         var matches = pattern.Matches(nameWithoutExtension);
+    //         additionalIndicators.AddRange(matches.Select(m => m.Value.ToUpperInvariant()));
+    //     }
+    //
+    //     return new QualityInfo
+    //     {
+    //         Resolution = resolution,
+    //         VideoCodec = codec,
+    //         Source = source,
+    //         QualityTier = DetermineQualityTier(resolution, source),
+    //         AdditionalIndicators = additionalIndicators.AsReadOnly(),
+    //         LanguageCodes = languageIndicators.AsReadOnly()
+    //     };
+    // }
 
     private List<string> TokenizeString(string input)
     {
@@ -633,22 +633,22 @@ public partial class TokenizerService : ITokenizerService
         return null;
     }
 
-    private static QualityTier DetermineQualityTier(string? resolution, string? source)
-    {
-        return resolution?.ToUpperInvariant() switch
-        {
-            "2160P" or "4K" or "UHD" => QualityTier.Premium,
-            "1080P" or "FHD" => source?.ToUpperInvariant() switch
-            {
-                "BLURAY" or "BDRIP" => QualityTier.UltraHigh,
-                "WEBMUX" or "WEB-DL" or "WEBDL" or "WEB-DLMUX" => QualityTier.High,
-                _ => QualityTier.High
-            },
-            "720P" or "HD" => QualityTier.Standard,
-            "480P" or "SD" => QualityTier.Low,
-            _ => QualityTier.Unknown
-        };
-    }
+    // private static QualityTier DetermineQualityTier(string? resolution, string? source)
+    // {
+    //     return resolution?.ToUpperInvariant() switch
+    //     {
+    //         "2160P" or "4K" or "UHD" => QualityTier.Premium,
+    //         "1080P" or "FHD" => source?.ToUpperInvariant() switch
+    //         {
+    //             "BLURAY" or "BDRIP" => QualityTier.UltraHigh,
+    //             "WEBMUX" or "WEB-DL" or "WEBDL" or "WEB-DLMUX" => QualityTier.High,
+    //             _ => QualityTier.High
+    //         },
+    //         "720P" or "HD" => QualityTier.Standard,
+    //         "480P" or "SD" => QualityTier.Low,
+    //         _ => QualityTier.Unknown
+    //     };
+    // }
 
     private static EpisodePatternType GetPatternType(int patternIndex) => patternIndex switch
     {

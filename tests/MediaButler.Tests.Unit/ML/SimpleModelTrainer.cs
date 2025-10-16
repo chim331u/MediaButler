@@ -35,7 +35,7 @@ public class SimpleModelTrainer
             ModelPath = modelsDirectory,
             AutoClassifyThreshold = 0.85f,
             SuggestionThreshold = 0.5f,
-            ActiveModelVersion = "1.0.0"
+            ActiveModelVersion = 1
         });
 
         var featureEngineering = new FeatureEngineeringService(feLogger, mlConfig);
@@ -77,7 +77,7 @@ public class SimpleModelTrainer
         var metadata = new TrainingModels.ModelMetadata
         {
             ModelName = "TV Series Classifier",
-            Version = "1.0.0",
+            Version = 1,
             CreatedAt = DateTime.UtcNow,
             Description = "FastText-based TV series classification model trained on 114 Italian series samples",
             Author = "MediaButler ML Pipeline",

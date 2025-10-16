@@ -321,11 +321,11 @@ public class FastTextClassificationServiceTests
                 Episode = 1,
                 RawPattern = "S01E01"
             },
-            QualityInfo = new QualityInfo
-            {
-                Resolution = "1080p",
-                VideoCodec = "x264"
-            },
+            // QualityInfo = new QualityInfo
+            // {
+            //     Resolution = "1080p",
+            //     VideoCodec = "x264"
+            // },
             ReleaseGroup = "TEST-GROUP",
             Metadata = new Dictionary<string, string>(),
             TokenizedAt = DateTime.UtcNow

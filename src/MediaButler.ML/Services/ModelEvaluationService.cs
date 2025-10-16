@@ -437,7 +437,7 @@ public class ModelEvaluationService : IModelEvaluationService
 
             var qualityReport = new ModelQualityReport
             {
-                ModelVersion = "current",
+                ModelVersion = 1,
                 OverallQualityScore = overallQualityScore,
                 AccuracyMetrics = accuracyResult.Value,
                 PerformanceBenchmark = performanceBenchmark ?? CreateDefaultPerformanceBenchmark(),

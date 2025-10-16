@@ -53,7 +53,7 @@ public record ClassificationResult
     /// <summary>
     /// Gets the model version used for this classification.
     /// </summary>
-    public string ModelVersion { get; init; } = string.Empty;
+    public int ModelVersion { get; init; }
 
     /// <summary>
     /// Gets the timestamp when this classification was performed.

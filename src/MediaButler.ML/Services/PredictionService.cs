@@ -192,7 +192,7 @@ public sealed class PredictionService : IPredictionService
                         Confidence = 0.0f,
                         Decision = ClassificationDecision.Failed,
                         ProcessingTimeMs = 0,
-                        ModelVersion = "1.0.0-pattern-based"
+                        ModelVersion = 1
                     };
                     results.Add(failedResult);
                 }
@@ -428,7 +428,7 @@ public sealed class PredictionService : IPredictionService
                     Category = alt.Category,
                     Confidence = (float)alt.Confidence
                 }).ToList().AsReadOnly(),
-            ModelVersion = "1.0.0-pattern-based"
+            ModelVersion = 1
         };
     }
 

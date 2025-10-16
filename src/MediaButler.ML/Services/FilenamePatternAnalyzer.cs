@@ -106,10 +106,10 @@ public class FilenamePatternAnalyzer
         // Analyze series name patterns
         var seriesNamePatterns = AnalyzeSeriesNamePatterns(filenameList);
         
-        // Generate recommendations
-        var recommendations = GenerateRecommendations(
-            separators, episodePatterns, qualityIndicators, 
-            languageCodes, releasePatterns, totalFiles);
+        // // Generate recommendations
+        // var recommendations = GenerateRecommendations(
+        //     separators, episodePatterns, qualityIndicators, 
+        //     languageCodes, releasePatterns, totalFiles);
 
         return new PatternAnalysisResult
         {
@@ -120,7 +120,7 @@ public class FilenamePatternAnalyzer
             LanguageCodes = languageCodes,
             ReleasePatterns = releasePatterns,
             SeriesNamePatterns = seriesNamePatterns,
-            Recommendations = recommendations,
+            // Recommendations = recommendations,
             AnalyzedAt = DateTime.UtcNow
         };
     }
@@ -133,9 +133,9 @@ public class FilenamePatternAnalyzer
     public FilenameAnalysis AnalyzeFilename(string filename)
     {
         var episodeInfo = ExtractEpisodeInfo(filename);
-        var qualityInfo = ExtractQualityInfo(filename);
-        var languageInfo = ExtractLanguageInfo(filename);
-        var releaseInfo = ExtractReleaseInfo(filename);
+        // var qualityInfo = ExtractQualityInfo(filename);
+        // var languageInfo = ExtractLanguageInfo(filename);
+        // var releaseInfo = ExtractReleaseInfo(filename);
         var seriesName = ExtractPotentialSeriesName(filename);
 
         return new FilenameAnalysis
@@ -143,10 +143,10 @@ public class FilenamePatternAnalyzer
             OriginalFilename = filename,
             ExtractedSeriesName = seriesName,
             EpisodeInfo = episodeInfo,
-            QualityInfo = qualityInfo,
-            LanguageInfo = languageInfo,
-            ReleaseInfo = releaseInfo,
-            Confidence = CalculateExtractionConfidence(episodeInfo, qualityInfo, seriesName),
+            // QualityInfo = qualityInfo,
+            // LanguageInfo = languageInfo,
+            // ReleaseInfo = releaseInfo,
+            // Confidence = CalculateExtractionConfidence(episodeInfo, qualityInfo, seriesName),
             AnalyzedAt = DateTime.UtcNow
         };
     }
@@ -182,8 +182,8 @@ public class FilenamePatternAnalyzer
             {
                 if (pattern.IsMatch(filename))
                 {
-                    var patternName = GetPatternName(pattern);
-                    patternCounts[patternName] = patternCounts.GetValueOrDefault(patternName, 0) + 1;
+                    // var patternName = GetPatternName(pattern);
+                    // patternCounts[patternName] = patternCounts.GetValueOrDefault(patternName, 0) + 1;
                 }
             }
         }
@@ -327,8 +327,8 @@ public class FilenamePatternAnalyzer
                     {
                         Season = season,
                         Episode = episode,
-                        RawPattern = match.Value,
-                        PatternType = GetEpisodePatternType(pattern)
+                        RawPattern = match.Value
+                        // ,PatternType = GetEpisodePatternType(pattern)
                     };
                 }
             }
@@ -337,162 +337,159 @@ public class FilenamePatternAnalyzer
         return null;
     }
 
-    private static QualityInfo ExtractQualityInfo(string filename)
-    {
-        var resolution = ExtractFirstMatch(filename, QualityPatterns.Take(4).ToArray());
-        var source = ExtractFirstMatch(filename, QualityPatterns.Skip(4).Take(4).ToArray());
-        var codec = ExtractFirstMatch(filename, CodecPatterns);
-
-        return new QualityInfo
-        {
-            Resolution = resolution,
-            Source = source,
-            VideoCodec = codec,
-            QualityTier = DetermineQualityTier(resolution, source)
-        };
+    // private static QualityInfo ExtractQualityInfo(string filename)
+    // {
+    //     var resolution = ExtractFirstMatch(filename, QualityPatterns.Take(4).ToArray());
+    //     var source = ExtractFirstMatch(filename, QualityPatterns.Skip(4).Take(4).ToArray());
+    //     var codec = ExtractFirstMatch(filename, CodecPatterns);
+    //
+    //     return new QualityInfo
+    //     {
+    //         Resolution = resolution,
+    //         Source = source,
+    //         VideoCodec = codec,
+    //         QualityTier = DetermineQualityTier(resolution, source)
+    //     };
     }
 
-    private static List<string> ExtractLanguageInfo(string filename)
-    {
-        var languages = new List<string>();
+    // private static List<string> ExtractLanguageInfo(string filename)
+    // {
+    //     var languages = new List<string>();
+    //
+    //     foreach (var pattern in LanguagePatterns)
+    //     {
+    //         var matches = pattern.Matches(filename);
+    //         foreach (Match match in matches)
+    //         {
+    //             languages.Add(match.Value.ToUpperInvariant());
+    //         }
+    //     }
+    //
+    //     return languages;
+    // }
+    //
+    // private static List<string> ExtractReleaseInfo(string filename)
+    // {
+    //     var releases = new List<string>();
+    //
+    //     foreach (var pattern in ReleasePatterns)
+    //     {
+    //         var matches = pattern.Matches(filename);
+    //         foreach (Match match in matches)
+    //         {
+    //             releases.Add(match.Value.ToUpperInvariant());
+    //         }
+    //     }
+    //
+    //     return releases;
+    // }
 
-        foreach (var pattern in LanguagePatterns)
-        {
-            var matches = pattern.Matches(filename);
-            foreach (Match match in matches)
-            {
-                languages.Add(match.Value.ToUpperInvariant());
-            }
-        }
+    // private static string? ExtractFirstMatch(string filename, Regex[] patterns)
+    // {
+    //     foreach (var pattern in patterns)
+    //     {
+    //         var match = pattern.Match(filename);
+    //         if (match.Success)
+    //         {
+    //             return match.Value;
+    //         }
+    //     }
+    //     return null;
+    // }
 
-        return languages;
-    }
+    // private static QualityTier DetermineQualityTier(string? resolution, string? source)
+    // {
+    //     return resolution?.ToUpperInvariant() switch
+    //     {
+    //         "2160P" or "4K" or "UHD" => QualityTier.Premium,
+    //         "1080P" or "FHD" => source?.ToUpperInvariant() switch
+    //         {
+    //             "BLURAY" or "BDRIP" => QualityTier.UltraHigh,
+    //             _ => QualityTier.High
+    //         },
+    //         "720P" or "HD" => QualityTier.Standard,
+    //         "480P" or "SD" => QualityTier.Low,
+    //         _ => QualityTier.Unknown
+    //     };
+    // }
 
-    private static List<string> ExtractReleaseInfo(string filename)
-    {
-        var releases = new List<string>();
+    // private static EpisodePatternType GetEpisodePatternType(Regex pattern) => pattern.ToString() switch
+    // {
+    //     var p when p.Contains(@"[Ss](\d+)[Ee](\d+)") => EpisodePatternType.Standard,
+    //     var p when p.Contains(@"(\d+)x(\d+)") => EpisodePatternType.Alternative,
+    //     var p when p.Contains("Season") => EpisodePatternType.Verbose,
+    //     var p when p.Contains(@"[Ee]p?(\d+)") => EpisodePatternType.EpisodeOnly,
+    //     var p when p.Contains(@"(\d{4})") => EpisodePatternType.DateBased,
+    //     _ => EpisodePatternType.None
+    // };
 
-        foreach (var pattern in ReleasePatterns)
-        {
-            var matches = pattern.Matches(filename);
-            foreach (Match match in matches)
-            {
-                releases.Add(match.Value.ToUpperInvariant());
-            }
-        }
-
-        return releases;
-    }
-
-    private static string? ExtractFirstMatch(string filename, Regex[] patterns)
-    {
-        foreach (var pattern in patterns)
-        {
-            var match = pattern.Match(filename);
-            if (match.Success)
-            {
-                return match.Value;
-            }
-        }
-        return null;
-    }
-
-    private static QualityTier DetermineQualityTier(string? resolution, string? source)
-    {
-        return resolution?.ToUpperInvariant() switch
-        {
-            "2160P" or "4K" or "UHD" => QualityTier.Premium,
-            "1080P" or "FHD" => source?.ToUpperInvariant() switch
-            {
-                "BLURAY" or "BDRIP" => QualityTier.UltraHigh,
-                _ => QualityTier.High
-            },
-            "720P" or "HD" => QualityTier.Standard,
-            "480P" or "SD" => QualityTier.Low,
-            _ => QualityTier.Unknown
-        };
-    }
-
-    private static EpisodePatternType GetEpisodePatternType(Regex pattern) => pattern.ToString() switch
-    {
-        var p when p.Contains(@"[Ss](\d+)[Ee](\d+)") => EpisodePatternType.Standard,
-        var p when p.Contains(@"(\d+)x(\d+)") => EpisodePatternType.Alternative,
-        var p when p.Contains("Season") => EpisodePatternType.Verbose,
-        var p when p.Contains(@"[Ee]p?(\d+)") => EpisodePatternType.EpisodeOnly,
-        var p when p.Contains(@"(\d{4})") => EpisodePatternType.DateBased,
-        _ => EpisodePatternType.None
-    };
-
-    private static string GetPatternName(Regex pattern) => pattern.ToString() switch
-    {
-        var p when p.Contains(@"[Ss](\d+)[Ee](\d+)") => "Standard (S##E##)",
-        var p when p.Contains(@"(\d+)x(\d+)") => "Alternative (##x##)",
-        var p when p.Contains("Season") => "Verbose (Season # Episode #)",
-        var p when p.Contains(@"[Ee]p?(\d+)") => "Episode Only (E##/Ep##)",
-        var p when p.Contains(@"(\d{4})") => "Date-based (YYYY.MM.DD)",
-        _ => "Unknown Pattern"
-    };
-
-    private static float CalculateExtractionConfidence(EpisodeInfo? episodeInfo, QualityInfo qualityInfo, string seriesName)
-    {
-        float confidence = 0.0f;
-
-        // Episode info adds significant confidence
-        if (episodeInfo?.IsValid == true) confidence += 0.4f;
-
-        // Quality info adds some confidence
-        if (qualityInfo.HasQualityInfo) confidence += 0.2f;
-
-        // Series name adds confidence based on length and structure
-        if (!string.IsNullOrWhiteSpace(seriesName))
-        {
-            if (seriesName.Length > 3) confidence += 0.2f;
-            if (seriesName.Contains(' ')) confidence += 0.1f; // Multi-word series names are more likely correct
-            if (seriesName.All(c => char.IsLetterOrDigit(c) || c == ' ')) confidence += 0.1f; // Clean characters
-        }
-
-        return Math.Min(confidence, 1.0f);
-    }
-
-    private static List<string> GenerateRecommendations(
-        List<string> separators, List<string> episodePatterns, List<string> qualityIndicators,
-        List<string> languageCodes, List<string> releasePatterns, int totalFiles)
-    {
-        var recommendations = new List<string>();
-
-        if (separators.Count > 0)
-        {
-            recommendations.Add($"Primary separators: {string.Join(", ", separators.Take(3))}");
-        }
-
-        if (episodePatterns.Count > 0)
-        {
-            recommendations.Add($"Most common episode pattern: {episodePatterns.First()}");
-        }
-
-        if (qualityIndicators.Count > 3)
-        {
-            recommendations.Add("High variety of quality indicators - consider quality-based organization");
-        }
-
-        if (languageCodes.Count > 2)
-        {
-            recommendations.Add("Multiple languages detected - enable language filtering");
-        }
-
-        if (totalFiles > 100)
-        {
-            recommendations.Add("Large dataset - enable batch processing for optimal performance");
-        }
-
-        if (recommendations.Count == 0)
-        {
-            recommendations.Add("Standard configuration should work well for this dataset");
-        }
-
-        return recommendations;
-    }
-}
+    // private static string GetPatternName(Regex pattern) => pattern.ToString() switch
+    // {
+    //     var p when p.Contains(@"[Ss](\d+)[Ee](\d+)") => "Standard (S##E##)",
+    //     var p when p.Contains(@"(\d+)x(\d+)") => "Alternative (##x##)",
+    //     var p when p.Contains("Season") => "Verbose (Season # Episode #)",
+    //     var p when p.Contains(@"[Ee]p?(\d+)") => "Episode Only (E##/Ep##)",
+    //     var p when p.Contains(@"(\d{4})") => "Date-based (YYYY.MM.DD)",
+    //     _ => "Unknown Pattern"
+    // };
+    //
+    // private static float CalculateExtractionConfidence(EpisodeInfo? episodeInfo, string seriesName)
+    // {
+    //     float confidence = 0.0f;
+    //
+    //     // Episode info adds significant confidence
+    //     if (episodeInfo?.IsValid == true) confidence += 0.4f;
+    //
+    //     // Series name adds confidence based on length and structure
+    //     if (!string.IsNullOrWhiteSpace(seriesName))
+    //     {
+    //         if (seriesName.Length > 3) confidence += 0.2f;
+    //         if (seriesName.Contains(' ')) confidence += 0.1f; // Multi-word series names are more likely correct
+    //         if (seriesName.All(c => char.IsLetterOrDigit(c) || c == ' ')) confidence += 0.1f; // Clean characters
+    //     }
+    //
+    //     return Math.Min(confidence, 1.0f);
+    // }
+    //
+    // private static List<string> GenerateRecommendations(
+    //     List<string> separators, List<string> episodePatterns, List<string> qualityIndicators,
+    //     List<string> languageCodes, List<string> releasePatterns, int totalFiles)
+    // {
+    //     var recommendations = new List<string>();
+    //
+    //     if (separators.Count > 0)
+    //     {
+    //         recommendations.Add($"Primary separators: {string.Join(", ", separators.Take(3))}");
+    //     }
+    //
+    //     if (episodePatterns.Count > 0)
+    //     {
+    //         recommendations.Add($"Most common episode pattern: {episodePatterns.First()}");
+    //     }
+    //
+    //     if (qualityIndicators.Count > 3)
+    //     {
+    //         recommendations.Add("High variety of quality indicators - consider quality-based organization");
+    //     }
+    //
+    //     if (languageCodes.Count > 2)
+    //     {
+    //         recommendations.Add("Multiple languages detected - enable language filtering");
+    //     }
+    //
+    //     if (totalFiles > 100)
+    //     {
+    //         recommendations.Add("Large dataset - enable batch processing for optimal performance");
+    //     }
+    //
+    //     if (recommendations.Count == 0)
+    //     {
+    //         recommendations.Add("Standard configuration should work well for this dataset");
+    //     }
+    //
+    //     return recommendations;
+    // }
+// }
 
 /// <summary>
 /// Represents the result of analyzing filename patterns.
@@ -565,10 +562,10 @@ public record FilenameAnalysis
     /// </summary>
     public EpisodeInfo? EpisodeInfo { get; init; }
 
-    /// <summary>
-    /// Gets the quality information extracted.
-    /// </summary>
-    public QualityInfo QualityInfo { get; init; } = new();
+    // /// <summary>
+    // /// Gets the quality information extracted.
+    // /// </summary>
+    // public QualityInfo QualityInfo { get; init; } = new();
 
     /// <summary>
     /// Gets the language information found.

@@ -15,8 +15,8 @@ public record ModelInfo
     /// <summary>
     /// Gets the model version identifier.
     /// </summary>
-    /// <example>"1.0.0", "2.1.3"</example>
-    public string Version { get; init; } = string.Empty;
+    /// <example>1, 2, 3</example>
+    public int Version { get; init; }
 
     /// <summary>
     /// Gets the algorithm used for training.

@@ -46,10 +46,10 @@ public record TokenizedFilename
     /// </summary>
     public EpisodeInfo? EpisodeInfo { get; init; }
 
-    /// <summary>
-    /// Gets the quality information if found in the filename.
-    /// </summary>
-    public QualityInfo? QualityInfo { get; init; }
+    // /// <summary>
+    // /// Gets the quality information if found in the filename.
+    // /// </summary>
+    // public QualityInfo? QualityInfo { get; init; }
 
     /// <summary>
     /// Gets the release group information if found in the filename.

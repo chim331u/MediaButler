@@ -38,12 +38,12 @@ public interface IFeatureEngineeringService
     /// <returns>Generated N-grams with frequency information</returns>
     Result<IReadOnlyList<NGramFeature>> GenerateNGrams(IReadOnlyList<string> tokens, int n);
 
-    /// <summary>
-    /// Extracts quality-based features for classification.
-    /// </summary>
-    /// <param name="qualityInfo">Quality information from tokenization</param>
-    /// <returns>Quality feature representation</returns>
-    Result<QualityFeatures> ExtractQualityFeatures(QualityInfo qualityInfo);
+    // /// <summary>
+    // /// Extracts quality-based features for classification.
+    // /// </summary>
+    // /// <param name="qualityInfo">Quality information from tokenization</param>
+    // /// <returns>Quality feature representation</returns>
+    // Result<QualityFeatures> ExtractQualityFeatures(QualityInfo qualityInfo);
 
     /// <summary>
     /// Generates regex pattern matching features for filename structure analysis.

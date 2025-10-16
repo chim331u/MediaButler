@@ -80,10 +80,10 @@ public class MLPipelineIntegrationTests : IntegrationTestBase
         tokenized.EpisodeInfo.Season.Should().Be(6);
         tokenized.EpisodeInfo.Episode.Should().Be(25);
         
-        // Verify quality extraction
-        tokenized.QualityInfo.Resolution.Should().Be("1080p");
-        tokenized.QualityInfo.VideoCodec.Should().Be("H264");
-        tokenized.QualityInfo.Source.Should().Be("WEB-DLMux");
+        // // Verify quality extraction
+        // tokenized.QualityInfo.Resolution.Should().Be("1080p");
+        // tokenized.QualityInfo.VideoCodec.Should().Be("H264");
+        // tokenized.QualityInfo.Source.Should().Be("WEB-DLMux");
     }
 
     [Fact]

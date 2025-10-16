@@ -339,12 +339,12 @@ public class PredictionServiceTests
             AllTokens = tokens.AsReadOnly(),
             FilteredTokens = tokens.Where(t => !string.IsNullOrEmpty(t)).ToList().AsReadOnly(),
             FileExtension = Path.GetExtension(filename).TrimStart('.'),
-            QualityInfo = new QualityInfo
-            {
-                Resolution = "1080p",
-                VideoCodec = "x264",
-                QualityTier = QualityTier.High
-            },
+            // QualityInfo = new QualityInfo
+            // {
+            //     Resolution = "1080p",
+            //     VideoCodec = "x264",
+            //     QualityTier = QualityTier.High
+            // },
             EpisodeInfo = null,
             ReleaseGroup = "TestGroup",
             Metadata = new Dictionary<string, string>().AsReadOnly()
@@ -390,14 +390,14 @@ public class PredictionServiceTests
                     IsCrossBoundary = false
                 }
             }.AsReadOnly(),
-            QualityFeatures = new QualityFeatures
-            {
-                QualityScore = 85,
-                ResolutionTier = QualityTier.High,
-                SourceTier = QualityTier.High,
-                HasHDR = false,
-                HasMultipleAudio = false
-            },
+            // QualityFeatures = new QualityFeatures
+            // {
+            //     QualityScore = 85,
+            //     ResolutionTier = QualityTier.High,
+            //     SourceTier = QualityTier.High,
+            //     HasHDR = false,
+            //     HasMultipleAudio = false
+            // },
             PatternFeatures = new PatternMatchingFeatures
             {
                 PatternType = FilenamePatternType.TVShowBasic,

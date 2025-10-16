@@ -59,7 +59,7 @@ public class ClassificationService : IClassificationService
                 ["HasSeasonEpisode"] = true,
                 ["Quality"] = "1080p"
             },
-            ModelVersion = "mock-1.0.0",
+            ModelVersion = 1,
             ClassifiedAt = DateTime.UtcNow,
             ProcessingTimeMs = 10
         };
@@ -107,7 +107,7 @@ public class ClassificationService : IClassificationService
     {
         var modelInfo = new ModelInfo
         {
-            Version = "mock-1.0.0",
+            Version = 1,
             Algorithm = "Mock Classification Model",
             TrainedAt = DateTime.UtcNow.AddDays(-30),
             TestAccuracy = 0.85f,

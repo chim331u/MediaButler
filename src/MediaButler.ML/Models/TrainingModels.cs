@@ -225,7 +225,7 @@ public sealed record TrainedModelInfo
     /// <summary>
     /// Model version for tracking and compatibility.
     /// </summary>
-    public required string ModelVersion { get; init; }
+    public required int ModelVersion { get; init; }
 
     /// <summary>
     /// Indicates if the model meets production quality standards.
@@ -719,7 +719,7 @@ public sealed record ModelPersistenceInfo
     /// <summary>
     /// Model version for compatibility tracking.
     /// </summary>
-    public required string ModelVersion { get; init; }
+    public required int ModelVersion { get; init; }
 }
 
 /// <summary>
@@ -845,9 +845,9 @@ public sealed record ModelMetadata
     public required string Description { get; init; }
 
     /// <summary>
-    /// Model version.
+    /// Model version (integer starting from 1).
     /// </summary>
-    public required string Version { get; init; }
+    public required int Version { get; init; }
 
     /// <summary>
     /// Author or creator of the model.
@@ -865,13 +865,13 @@ public sealed record ModelMetadata
     public required IReadOnlyDictionary<string, string> Tags { get; init; }
 
     /// <summary>
-    /// Creates default model metadata.
+    /// Creates default model metadata with version 1.
     /// </summary>
     public static ModelMetadata CreateDefault() => new()
     {
         ModelName = "Italian TV Series Classifier",
         Description = "ML model for classifying Italian TV series from filenames",
-        Version = "1.0.0",
+        Version = 1,
         Author = "MediaButler System",
         CreatedAt = DateTime.UtcNow,
         Tags = new Dictionary<string, string>

@@ -25,4 +25,9 @@
     <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="8.0.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Remove="Models\QualityInfo.cs" />
+    <Compile Remove="Models\QualityFeatures.cs" />
+  </ItemGroup>
+
 </Project>

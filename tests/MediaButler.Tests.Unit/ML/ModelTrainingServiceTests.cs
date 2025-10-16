@@ -552,7 +552,7 @@ public class ModelTrainingServiceTests
             var loadedModelInfo = loadResult.Value;
             loadedModelInfo.Should().NotBeNull();
             loadedModelInfo.ModelPath.Should().Be(modelPath);
-            loadedModelInfo.ModelVersion.Should().NotBeEmpty();
+            loadedModelInfo.ModelVersion.Should().BeGreaterThan(0);
         }
         finally
         {
@@ -771,7 +771,7 @@ public class ModelTrainingServiceTests
             TrainingCompletedAt = DateTime.UtcNow,
             TrainingDuration = TimeSpan.FromMinutes(15),
             TrainingSampleCount = 150,
-            ModelVersion = "1.0.0"
+            ModelVersion = 1
         };
     }
 

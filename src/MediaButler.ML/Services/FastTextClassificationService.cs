@@ -122,12 +122,18 @@ public class FastTextClassificationService : IClassificationService
             var mlInput = new SeriesFeatureInput
             {
                 Filename = filename,
+                SeriesName = ExtractSeriesName(filename), // NEW: Extract series name for better classification
                 Category = string.Empty, // Required by ML.NET schema but not used during prediction
                 Confidence = 0.0f, // Required by ML.NET schema but not used during prediction
                 Source = "Prediction", // Required by ML.NET schema but not used during prediction
-                QualityTier = ExtractQualityTier(filename),
-                VideoCodec = ExtractVideoCodec(filename)
+                // QualityTier = ExtractQualityTier(filename),
+                // VideoCodec = ExtractVideoCodec(filename)
             };
+
+            // DEBUG: Log input features
+            _logger.LogInformation(
+                "ML Input - Filename: {Filename}, SeriesName: '{SeriesName}'",
+                mlInput.Filename, mlInput.SeriesName);
 
             // Step 4: Predict using ML.NET
             SeriesPrediction prediction;
@@ -139,6 +145,11 @@ public class FastTextClassificationService : IClassificationService
                 }
                 prediction = _predictionEngine.Predict(mlInput);
             }
+
+            // DEBUG: Log prediction results
+            _logger.LogInformation(
+                "ML Prediction - LabelIndex: {LabelIndex}, TopScore: {Score:P2}, ScoresCount: {Count}",
+                prediction.PredictedLabelIndex, prediction.Score.Max(), prediction.Score.Length);
 
             stopwatch.Stop();
 
@@ -474,10 +485,10 @@ public class FastTextClassificationService : IClassificationService
                 ["FeatureCount"] = features.FeatureCount,
                 ["TokenFeatureCount"] = features.TokenFeatures.FeatureCount,
                 ["HasEpisode"] = features.EpisodeFeatures != null,
-                ["Quality"] = features.QualityFeatures.ToString() ?? "Unknown",
+                // ["Quality"] = features.QualityFeatures.ToString() ?? "Unknown",
                 ["NGramCount"] = features.NGramFeatures.Count
             },
-            ModelVersion = _modelInfo?.Version ?? "unknown",
+            ModelVersion = _modelInfo?.Version ?? 0,
             ClassifiedAt = DateTime.UtcNow,
             ProcessingTimeMs = processingTimeMs
         };
@@ -526,6 +537,64 @@ public class FastTextClassificationService : IClassificationService
             return "AVC";
         return "Unknown";
     }
+
+    /// <summary>
+    /// Extracts the series name from a filename by identifying tokens before episode markers.
+    /// This helps focus classification on the actual series name rather than release metadata.
+    /// Must match the exact logic used in ModelTrainingService.
+    /// </summary>
+    /// <param name="filename">The filename to extract series name from</param>
+    /// <returns>The extracted series name (cleaned and trimmed)</returns>
+    private string ExtractSeriesName(string filename)
+    {
+        // Normalize separators: dots and underscores to spaces
+        var normalized = filename
+            .Replace('.', ' ')
+            .Replace('_', ' ');
+
+        // Episode marker patterns (ordered by specificity)
+        var episodePatterns = new[]
+        {
+            @"\s+S\d{1,2}E\d{1,2}",        // S01E01, S1E1
+            @"\s+\d{1,2}x\d{1,2}",         // 1x01, 21x3
+            @"\s+Season\s+\d+",            // Season 1
+            @"\s+Episode\s+\d+",           // Episode 1
+            @"\s+\d{4}\s",                 // Year like 2024 (followed by space)
+            @"\s+\d{1,4}\s+(ITA|ENG|SUB)", // Episode number before language
+        };
+
+        // Find the earliest episode marker
+        int earliestIndex = normalized.Length;
+        foreach (var pattern in episodePatterns)
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(normalized, pattern,
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (match.Success && match.Index < earliestIndex)
+            {
+                earliestIndex = match.Index;
+            }
+        }
+
+        // Extract everything before the episode marker
+        var seriesName = normalized.Substring(0, earliestIndex).Trim();
+
+        // Remove common file extensions if present
+        seriesName = System.Text.RegularExpressions.Regex.Replace(seriesName,
+            @"\.(mkv|mp4|avi)$", "",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        // Clean up multiple spaces
+        seriesName = System.Text.RegularExpressions.Regex.Replace(seriesName, @"\s+", " ");
+
+        // Return cleaned series name or fallback to first 3 words
+        if (string.IsNullOrWhiteSpace(seriesName))
+        {
+            var words = normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            seriesName = string.Join(" ", words.Take(3));
+        }
+
+        return seriesName.Trim();
+    }
 }
 
 /// <summary>
@@ -535,9 +604,15 @@ public class FastTextClassificationService : IClassificationService
 public class SeriesFeatureInput
 {
     /// <summary>
-    /// The filename to classify (primary feature).
+    /// The filename to classify (kept for compatibility).
     /// </summary>
     public string Filename { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The series name extracted from filename (primary feature for classification).
+    /// This is the key feature that focuses on series-identifying tokens.
+    /// </summary>
+    public string SeriesName { get; set; } = string.Empty;
 
     /// <summary>
     /// Category label (required by ML.NET schema, not used during prediction).
@@ -554,15 +629,15 @@ public class SeriesFeatureInput
     /// </summary>
     public string Source { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Quality tier extracted from filename (Ultra/High/Medium/Standard).
-    /// </summary>
-    public string QualityTier { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Video codec extracted from filename (HEVC/AVC/Unknown).
-    /// </summary>
-    public string VideoCodec { get; set; } = string.Empty;
+    // /// <summary>
+    // /// Quality tier extracted from filename (Ultra/High/Medium/Standard).
+    // /// </summary>
+    // public string QualityTier { get; set; } = string.Empty;
+    //
+    // /// <summary>
+    // /// Video codec extracted from filename (HEVC/AVC/Unknown).
+    // /// </summary>
+    //  public string VideoCodec { get; set; } = string.Empty;
 }
 
 /// <summary>

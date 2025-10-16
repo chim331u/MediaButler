@@ -40,10 +40,10 @@ public interface ITokenizerService
     /// <returns>Result containing episode information or error if not found</returns>
     Result<EpisodeInfo> ExtractEpisodeInfo(string filename);
 
-    /// <summary>
-    /// Identifies quality indicators in filename (resolution, codec, source).
-    /// </summary>
-    /// <param name="filename">The filename to analyze</param>
-    /// <returns>Result containing quality information or error information</returns>
-    Result<QualityInfo> ExtractQualityInfo(string filename);
+    // /// <summary>
+    // /// Identifies quality indicators in filename (resolution, codec, source).
+    // /// </summary>
+    // /// <param name="filename">The filename to analyze</param>
+    // /// <returns>Result containing quality information or error information</returns>
+    // Result<QualityInfo> ExtractQualityInfo(string filename);
 }

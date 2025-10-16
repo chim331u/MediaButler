@@ -71,11 +71,11 @@ public class FeatureEngineeringService : IFeatureEngineeringService
             if (!ngramResult.IsSuccess)
                 return Result<FeatureVector>.Failure($"N-gram generation failed: {ngramResult.Error}");
 
-            var qualityFeaturesResult = tokenizedFilename.QualityInfo != null 
-                ? ExtractQualityFeatures(tokenizedFilename.QualityInfo)
-                : Result<QualityFeatures>.Success(CreateDefaultQualityFeatures());
-            if (!qualityFeaturesResult.IsSuccess)
-                return Result<FeatureVector>.Failure($"Quality feature extraction failed: {qualityFeaturesResult.Error}");
+            // var qualityFeaturesResult = tokenizedFilename.QualityInfo != null 
+            //     ? ExtractQualityFeatures(tokenizedFilename.QualityInfo)
+            //     : Result<QualityFeatures>.Success(CreateDefaultQualityFeatures());
+            // if (!qualityFeaturesResult.IsSuccess)
+            //     return Result<FeatureVector>.Failure($"Quality feature extraction failed: {qualityFeaturesResult.Error}");
 
             // TODO: Fix PatternMatchingFeatures static context issues in future sprint
             var patternFeatures = CreateSimplePatternFeatures(tokenizedFilename.OriginalFilename);
@@ -99,7 +99,7 @@ public class FeatureEngineeringService : IFeatureEngineeringService
                 OriginalFilename = tokenizedFilename.OriginalFilename,
                 TokenFeatures = tokenAnalysisResult.Value,
                 NGramFeatures = ngramResult.Value,
-                QualityFeatures = qualityFeaturesResult.Value,
+                // QualityFeatures = qualityFeaturesResult.Value,
                 PatternFeatures = patternFeatures,
                 EpisodeFeatures = episodeFeatures,
                 ReleaseGroupFeatures = releaseGroupFeatures,
@@ -252,26 +252,26 @@ public class FeatureEngineeringService : IFeatureEngineeringService
         }
     }
 
-    public Result<QualityFeatures> ExtractQualityFeatures(QualityInfo qualityInfo)
-    {
-        try
-        {
-            if (qualityInfo == null)
-                return Result<QualityFeatures>.Failure("Quality info cannot be null");
-
-            _logger.LogDebug("Extracting quality features from quality info: {Resolution}, {Source}, {VideoCodec}",
-                qualityInfo.Resolution, qualityInfo.Source, qualityInfo.VideoCodec);
-
-            var qualityFeatures = QualityFeatures.FromQualityInfo(qualityInfo);
-            
-            return Result<QualityFeatures>.Success(qualityFeatures);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error extracting quality features");
-            return Result<QualityFeatures>.Failure($"Quality feature extraction error: {ex.Message}");
-        }
-    }
+    // public Result<QualityFeatures> ExtractQualityFeatures(QualityInfo qualityInfo)
+    // {
+    //     try
+    //     {
+    //         if (qualityInfo == null)
+    //             return Result<QualityFeatures>.Failure("Quality info cannot be null");
+    //
+    //         _logger.LogDebug("Extracting quality features from quality info: {Resolution}, {Source}, {VideoCodec}",
+    //             qualityInfo.Resolution, qualityInfo.Source, qualityInfo.VideoCodec);
+    //
+    //         var qualityFeatures = QualityFeatures.FromQualityInfo(qualityInfo);
+    //         
+    //         return Result<QualityFeatures>.Success(qualityFeatures);
+    //     }
+    //     catch (Exception ex)
+    //     {
+    //         _logger.LogError(ex, "Error extracting quality features");
+    //         return Result<QualityFeatures>.Failure($"Quality feature extraction error: {ex.Message}");
+    //     }
+    // }
 
     public Result<PatternMatchingFeatures> ExtractPatternFeatures(string originalFilename)
     {
@@ -507,19 +507,19 @@ public class FeatureEngineeringService : IFeatureEngineeringService
         return numCount > 0 ? (double)alphaCount / numCount : 10.0; // cap for stability
     }
 
-    private static QualityFeatures CreateDefaultQualityFeatures()
-    {
-        return new QualityFeatures
-        {
-            ResolutionTier = QualityTier.Unknown,
-            SourceTier = QualityTier.Unknown,
-            VideoCodec = null,
-            AudioCodec = null,
-            Resolution = null,
-            Source = null,
-            HasHDR = false,
-            HasMultipleAudio = false,
-            QualityScore = 0
-        };
-    }
+    // private static QualityFeatures CreateDefaultQualityFeatures()
+    // {
+    //     return new QualityFeatures
+    //     {
+    //         ResolutionTier = QualityTier.Unknown,
+    //         SourceTier = QualityTier.Unknown,
+    //         VideoCodec = null,
+    //         AudioCodec = null,
+    //         Resolution = null,
+    //         Source = null,
+    //         HasHDR = false,
+    //         HasMultipleAudio = false,
+    //         QualityScore = 0
+    //     };
+    // }
 }

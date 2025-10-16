@@ -77,9 +77,9 @@ public class FeatureEngineeringServiceTests
         features.TokenFeatures.LanguageIndicators.Should().Contain(lang => 
             lang.Contains("ita", StringComparison.OrdinalIgnoreCase));
             
-        // Should have quality features
-        features.QualityFeatures.Should().NotBeNull();
-        features.QualityFeatures.QualityScore.Should().BeGreaterThan(0);
+        // // Should have quality features
+        // features.QualityFeatures.Should().NotBeNull();
+        // features.QualityFeatures.QualityScore.Should().BeGreaterThan(0);
         
         // Should have pattern features
         features.PatternFeatures.Should().NotBeNull();
@@ -156,49 +156,49 @@ public class FeatureEngineeringServiceTests
         result.Error.Should().Contain("must be between 1 and 5");
     }
 
-    [Fact]
-    public void ExtractQualityFeatures_WithHighQualityInfo_ReturnsHighQualityFeatures()
-    {
-        // Arrange
-        var qualityInfo = new QualityInfo
-        {
-            Resolution = "1080p",
-            Source = "BluRay", 
-            VideoCodec = "x265",
-            QualityTier = QualityTier.UltraHigh
-        };
+    // [Fact]
+    // public void ExtractQualityFeatures_WithHighQualityInfo_ReturnsHighQualityFeatures()
+    // {
+    //     // Arrange
+    //     var qualityInfo = new QualityInfo
+    //     {
+    //         Resolution = "1080p",
+    //         Source = "BluRay", 
+    //         VideoCodec = "x265",
+    //         QualityTier = QualityTier.UltraHigh
+    //     };
+    //
+    //     // Act
+    //     var result = _service.ExtractQualityFeatures(qualityInfo);
+    //
+    //     // Assert
+    //     result.IsSuccess.Should().BeTrue();
+    //     result.Value.ResolutionTier.Should().Be(QualityTier.UltraHigh);
+    //     result.Value.IsHighQuality.Should().BeTrue();
+    //     result.Value.QualityScore.Should().BeGreaterThan(75);
+    // }
 
-        // Act
-        var result = _service.ExtractQualityFeatures(qualityInfo);
-
-        // Assert
-        result.IsSuccess.Should().BeTrue();
-        result.Value.ResolutionTier.Should().Be(QualityTier.UltraHigh);
-        result.Value.IsHighQuality.Should().BeTrue();
-        result.Value.QualityScore.Should().BeGreaterThan(75);
-    }
-
-    [Fact]
-    public void ExtractQualityFeatures_WithLowQualityInfo_ReturnsLowQualityFeatures()
-    {
-        // Arrange
-        var qualityInfo = new QualityInfo
-        {
-            Resolution = "480p",
-            Source = "DVDRip", 
-            VideoCodec = null,
-            QualityTier = QualityTier.Low
-        };
-
-        // Act
-        var result = _service.ExtractQualityFeatures(qualityInfo);
-
-        // Assert
-        result.IsSuccess.Should().BeTrue();
-        result.Value.ResolutionTier.Should().Be(QualityTier.Low);
-        result.Value.IsLowQuality.Should().BeTrue();
-        result.Value.QualityScore.Should().BeLessThan(50);
-    }
+    // [Fact]
+    // public void ExtractQualityFeatures_WithLowQualityInfo_ReturnsLowQualityFeatures()
+    // {
+    //     // Arrange
+    //     var qualityInfo = new QualityInfo
+    //     {
+    //         Resolution = "480p",
+    //         Source = "DVDRip", 
+    //         VideoCodec = null,
+    //         QualityTier = QualityTier.Low
+    //     };
+    //
+    //     // Act
+    //     var result = _service.ExtractQualityFeatures(qualityInfo);
+    //
+    //     // Assert
+    //     result.IsSuccess.Should().BeTrue();
+    //     // result.Value.ResolutionTier.Should().Be(QualityTier.Low);
+    //     result.Value.IsLowQuality.Should().BeTrue();
+    //     result.Value.QualityScore.Should().BeLessThan(50);
+    // }
 
     [Theory]
     [InlineData("Breaking.Bad.S05E16.Final.1080p.BluRay.x264-KILLERS.mkv")]
@@ -322,13 +322,13 @@ public class FeatureEngineeringServiceTests
             AllTokens = new[] { "il", "trono", "di", "spade", "8x04", "ita", "1080p", "web", "dlmux", "x264", "novarip" }.ToList().AsReadOnly(),
             FilteredTokens = new[] { "ita", "1080p", "web", "dlmux", "x264" }.ToList().AsReadOnly(),
             FileExtension = "mkv",
-            QualityInfo = new QualityInfo
-            {
-                Resolution = "1080p",
-                Source = "WEB-DLMux",
-                VideoCodec = "x264",
-                QualityTier = QualityTier.High
-            },
+            // QualityInfo = new QualityInfo
+            // {
+            //     Resolution = "1080p",
+            //     Source = "WEB-DLMux",
+            //     VideoCodec = "x264",
+            //     QualityTier = QualityTier.High
+            // },
             EpisodeInfo = null,
             ReleaseGroup = "NovaRip",
             Metadata = new Dictionary<string, string>().AsReadOnly()
@@ -380,13 +380,13 @@ public class FeatureEngineeringServiceTests
             AllTokens = tokens.AsReadOnly(),
             FilteredTokens = tokens.Where(t => t.Contains("ita") || t.Contains("1080") || t.Contains("web")).ToList().AsReadOnly(),
             FileExtension = Path.GetExtension(filename).TrimStart('.'),
-            QualityInfo = new QualityInfo
-            {
-                Resolution = tokens.FirstOrDefault(t => t.Contains("1080") || t.Contains("720")),
-                Source = tokens.FirstOrDefault(t => t.Contains("web") || t.Contains("hdtv")),
-                VideoCodec = tokens.FirstOrDefault(t => t.Contains("x264") || t.Contains("x265")),
-                QualityTier = tokens.Any(t => t.Contains("1080")) ? QualityTier.High : QualityTier.Standard
-            },
+            // QualityInfo = new QualityInfo
+            // {
+            //     Resolution = tokens.FirstOrDefault(t => t.Contains("1080") || t.Contains("720")),
+            //     Source = tokens.FirstOrDefault(t => t.Contains("web") || t.Contains("hdtv")),
+            //     VideoCodec = tokens.FirstOrDefault(t => t.Contains("x264") || t.Contains("x265")),
+            //     QualityTier = tokens.Any(t => t.Contains("1080")) ? QualityTier.High : QualityTier.Standard
+            // },
             EpisodeInfo = null,
             ReleaseGroup = tokens.LastOrDefault(),
             Metadata = new Dictionary<string, string>().AsReadOnly()

@@ -85,7 +85,7 @@ public class TrainingController : ControllerBase
     /// <response code="200">Training started successfully</response>
     /// <response code="400">Invalid request</response>
     /// <response code="500">Training failed</response>
-    [HttpPost("trainModel")]
+    [HttpGet("trainModel")]
     [ProducesResponseType(typeof(TrainingStartResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
@@ -194,7 +194,7 @@ public record TrainingStartResponse
     public double? Accuracy { get; init; }
     public int? TrainingSampleCount { get; init; }
     public int? CategoryCount { get; init; }
-    public string? ModelVersion { get; init; }
+    public int? ModelVersion { get; init; }
 }
 
 public record TrainingStatsResponse

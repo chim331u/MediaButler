@@ -63,7 +63,7 @@ public class ModelTrainingIntegrationTests : IntegrationTestBase
             var metadata = new MLModels.ModelMetadata
             {
                 ModelName = "IntegrationTestModel",
-                Version = "1.0.0",
+                Version = 1,
                 CreatedAt = DateTime.UtcNow,
                 Description = "Model trained for integration testing",
                 Author = "Integration Test",
@@ -150,7 +150,7 @@ public class ModelTrainingIntegrationTests : IntegrationTestBase
         var modelInfo = trainResult.Value;
 
         modelInfo.ModelId.Should().NotBeEmpty();
-        modelInfo.ModelVersion.Should().NotBeEmpty();
+        modelInfo.ModelVersion.Should().BeGreaterThan(0);
         modelInfo.ValidationMetrics.Accuracy.Should().BeGreaterThan(0.5f, "Model should achieve >50% accuracy on validation set");
         modelInfo.TrainingSampleCount.Should().BeGreaterThan(50, "Should have processed significant training data");
         modelInfo.TrainingDuration.TotalSeconds.Should().BeLessThan(60, "Fast training should complete in <60s");
@@ -180,7 +180,7 @@ public class ModelTrainingIntegrationTests : IntegrationTestBase
             var metadata = new MLModels.ModelMetadata
             {
                 ModelName = "TestModel",
-                Version = "1.0.0",
+                Version = 1,
                 CreatedAt = DateTime.UtcNow,
                 Description = "Test model for integration testing",
                 Author = "Integration Test Suite",
@@ -239,7 +239,7 @@ public class ModelTrainingIntegrationTests : IntegrationTestBase
                 var metadata = new MLModels.ModelMetadata
                 {
                     ModelName = $"TestModel{i}",
-                    Version = "1.0.0",
+                    Version = 1,
                     CreatedAt = DateTime.UtcNow,
                     Description = $"Test model {i}",
                     Author = "Integration Test",
@@ -315,7 +315,7 @@ public class ModelTrainingIntegrationTests : IntegrationTestBase
             var metadata = new MLModels.ModelMetadata
             {
                 ModelName = "ChecksumTestModel",
-                Version = "1.0.0",
+                Version = 1,
                 CreatedAt = DateTime.UtcNow,
                 Description = "Model for checksum testing",
                 Author = "Integration Test",

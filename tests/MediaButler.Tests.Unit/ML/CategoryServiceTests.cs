@@ -417,12 +417,12 @@ public class CategoryServiceTests
             AllTokens = tokens.AsReadOnly(),
             FilteredTokens = tokens.Where(t => !string.IsNullOrEmpty(t)).ToList().AsReadOnly(),
             FileExtension = Path.GetExtension(filename).TrimStart('.'),
-            QualityInfo = new QualityInfo
-            {
-                Resolution = "1080p",
-                VideoCodec = "x264",
-                QualityTier = QualityTier.High
-            },
+            // QualityInfo = new QualityInfo
+            // {
+            //     Resolution = "1080p",
+            //     VideoCodec = "x264",
+            //     QualityTier = QualityTier.High
+            // },
             EpisodeInfo = filename.Contains("8x04") ? new EpisodeInfo
             {
                 Season = 8,
