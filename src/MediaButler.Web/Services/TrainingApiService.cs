@@ -1,5 +1,6 @@
 using MediaButler.Web.Interfaces;
 using MediaButler.Web.Models;
+using System.Text.Json.Serialization;
 
 namespace MediaButler.Web.Services;
 
@@ -13,6 +14,11 @@ public interface ITrainingApiService
     /// Starts ML model training with specified parameters.
     /// </summary>
     Task<Result<TrainingResponse>> StartTrainingAsync(TrainingRequest? request = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Starts ML model training from database TrackedFiles.
+    /// </summary>
+    Task<Result<TrainingStartResponse>> StartTrainingModelAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets the current status of a training session.
@@ -66,6 +72,34 @@ public class TrainingApiService : ITrainingApiService
             var error = $"Failed to start training: {ex.Message}";
             _logger.LogError(ex, error);
             return Result<TrainingResponse>.Failure(error);
+        }
+    }
+    public async Task<Result<TrainingStartResponse>> StartTrainingModelAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInformation("Starting ML model training from database via API");
+
+            var result = await _httpClient.GetAsync<TrainingStartResponse>(
+                "/api/training/trainModel", cancellationToken);
+
+            if (result.IsSuccess)
+            {
+                _logger.LogInformation("Training completed successfully. Session: {SessionId}, Accuracy: {Accuracy:P2}, Version: {Version}",
+                    result.Value!.SessionId, result.Value.Accuracy, result.Value.ModelVersion);
+            }
+            else
+            {
+                _logger.LogWarning("Training failed: {Error}", result.Error);
+            }
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            var error = $"Failed to start training: {ex.Message}";
+            _logger.LogError(ex, error);
+            return Result<TrainingStartResponse>.Failure(error);
         }
     }
 
@@ -127,11 +161,50 @@ public record TrainingRequest
 /// </summary>
 public record TrainingResponse
 {
+    [JsonPropertyName("sessionId")]
     public required string SessionId { get; init; }
+
+    [JsonPropertyName("status")]
     public required string Status { get; init; }
+
+    [JsonPropertyName("message")]
     public required string Message { get; init; }
+
+    [JsonPropertyName("queuedAt")]
     public required DateTime QueuedAt { get; init; }
+
+    [JsonPropertyName("estimatedDurationMinutes")]
     public required int EstimatedDurationMinutes { get; init; }
+}
+
+/// <summary>
+/// Training start response model (from /api/training/trainModel)
+/// </summary>
+public record TrainingStartResponse
+{
+    [JsonPropertyName("sessionId")]
+    public required string SessionId { get; init; }
+
+    [JsonPropertyName("status")]
+    public required string Status { get; init; }
+
+    [JsonPropertyName("message")]
+    public required string Message { get; init; }
+
+    [JsonPropertyName("startedAt")]
+    public DateTime StartedAt { get; init; }
+
+    [JsonPropertyName("accuracy")]
+    public double? Accuracy { get; init; }
+
+    [JsonPropertyName("trainingSampleCount")]
+    public int? TrainingSampleCount { get; init; }
+
+    [JsonPropertyName("categoryCount")]
+    public int? CategoryCount { get; init; }
+
+    [JsonPropertyName("modelVersion")]
+    public int? ModelVersion { get; init; }
 }
 
 /// <summary>
