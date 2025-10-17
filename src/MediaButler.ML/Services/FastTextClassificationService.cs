@@ -39,6 +39,9 @@ public class FastTextClassificationService : IClassificationService
     private readonly object _modelLock = new();
     private ModelInfo? _modelInfo;
     private IReadOnlyList<string>? _availableCategories;
+    private DateTime _modelLoadedTimestamp = DateTime.MinValue;
+    private int _currentModelVersion;
+    private const string ModelZipFile = "classification-simplified-model.zip";
 
     // Prediction caching (LRU cache for repeated classifications)
     private readonly LruCache<string, ClassificationResult>? _predictionCache;
@@ -90,7 +93,7 @@ public class FastTextClassificationService : IClassificationService
             }
         }
 
-        // Ensure model is loaded
+        // Ensure model is loaded (first time)
         if (!_modelLoaded)
         {
             var loadResult = await LoadModelAsync();
@@ -98,6 +101,14 @@ public class FastTextClassificationService : IClassificationService
             {
                 return Result<ClassificationResult>.Failure($"Model not loaded: {loadResult.Error}");
             }
+        }
+
+        // Check if model needs to be reloaded (hot reload support)
+        var currencyCheck = await EnsureModelIsCurrentAsync();
+        if (currencyCheck.IsFailure)
+        {
+            _logger.LogWarning("Model currency check failed: {Error}", currencyCheck.Error);
+            // Continue with currently loaded model if check fails (graceful degradation)
         }
 
         var stopwatch = Stopwatch.StartNew();
@@ -148,13 +159,13 @@ public class FastTextClassificationService : IClassificationService
 
             // DEBUG: Log prediction results
             _logger.LogInformation(
-                "ML Prediction - LabelIndex: {LabelIndex}, TopScore: {Score:P2}, ScoresCount: {Count}",
-                prediction.PredictedLabelIndex, prediction.Score.Max(), prediction.Score.Length);
+                "ML Prediction - PredictedLabel: {Label}, TopScore: {Score:P2}, ScoresCount: {Count}",
+                prediction.PredictedLabel, prediction.Score.Max(), prediction.Score.Length);
 
             stopwatch.Stop();
 
-            // Step 5: Map predicted label index to category name
-            var predictedCategory = MapLabelIndexToCategory(prediction.PredictedLabelIndex, prediction.Score);
+            // Step 5: Use predicted category from model (already a string)
+            var predictedCategory = prediction.PredictedLabel;
 
             // Step 6: Format result
             var classificationResult = BuildClassificationResult(
@@ -299,7 +310,7 @@ public class FastTextClassificationService : IClassificationService
             {
                 _logger.LogInformation("Loading ML.NET model from {ModelPath}", _config.ModelPath);
 
-                var modelPath = Path.Combine(_config.ModelPath, "classification-simplified-model.zip");
+                var modelPath = Path.Combine(_config.ModelPath, ModelZipFile);
 
                 if (!File.Exists(modelPath))
                 {
@@ -321,11 +332,15 @@ public class FastTextClassificationService : IClassificationService
                 // Extract model metadata
                 ExtractModelMetadata(modelPath);
 
+                // Capture model file timestamp for hot reload detection
+                _modelLoadedTimestamp = File.GetLastWriteTimeUtc(modelPath);
+                _currentModelVersion = _modelInfo?.Version ?? 0;
+
                 _modelLoaded = true;
 
                 _logger.LogInformation(
-                    "Model loaded successfully: {Version}, {CategoryCount} categories, trained at {TrainedAt}",
-                    _modelInfo?.Version, _modelInfo?.CategoryCount, _modelInfo?.TrainedAt);
+                    "Model loaded successfully: version {Version}, {CategoryCount} categories, timestamp {Timestamp}",
+                    _currentModelVersion, _modelInfo?.CategoryCount, _modelLoadedTimestamp);
 
                 return Task.FromResult(Result<bool>.Success(true));
             }
@@ -334,6 +349,101 @@ public class FastTextClassificationService : IClassificationService
                 _logger.LogError(ex, "Failed to load ML.NET model");
                 return Task.FromResult(Result<bool>.Failure($"Model loading error: {ex.Message}"));
             }
+        }
+    }
+
+    /// <summary>
+    /// Unloads the current ML model and clears all cached state.
+    /// Used when model needs to be reloaded (e.g., after new training).
+    /// </summary>
+    private Task UnloadModelAsync()
+    {
+        lock (_modelLock)
+        {
+            try
+            {
+                _logger.LogInformation("Unloading ML model (version: {Version})", _currentModelVersion);
+
+                // Dispose prediction engine
+                _predictionEngine?.Dispose();
+                _predictionEngine = null;
+
+                // Clear model references
+                _trainedModel = null;
+                _mlContext = null;
+
+                // Clear metadata
+                _modelInfo = null;
+                _availableCategories = null;
+
+                // Reset state
+                _modelLoaded = false;
+                _modelLoadedTimestamp = DateTime.MinValue;
+                _currentModelVersion = 0;
+
+                // Clear prediction cache to ensure fresh predictions with new model
+                if (_cachingEnabled && _predictionCache != null)
+                {
+                    _predictionCache.Clear();
+                    _logger.LogInformation("Prediction cache cleared");
+                }
+
+                _logger.LogInformation("Model unloaded successfully");
+                return Task.CompletedTask;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error unloading model");
+                return Task.FromException(ex);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Ensures the currently loaded model is up-to-date by checking file timestamp.
+    /// Automatically reloads the model if a newer version is detected on disk.
+    /// </summary>
+    private async Task<Result<bool>> EnsureModelIsCurrentAsync()
+    {
+        try
+        {
+            var modelPath = Path.Combine(_config.ModelPath, ModelZipFile);
+
+            if (!File.Exists(modelPath))
+            {
+                return Result<bool>.Failure($"Model file not found: {modelPath}");
+            }
+
+            var currentFileTimestamp = File.GetLastWriteTimeUtc(modelPath);
+
+            // Check if model file has been updated since we loaded it
+            if (_modelLoaded && _modelLoadedTimestamp < currentFileTimestamp)
+            {
+                _logger.LogInformation(
+                    "Model file timestamp changed (loaded: {LoadedTime}, current: {CurrentTime}). Reloading model...",
+                    _modelLoadedTimestamp, currentFileTimestamp);
+
+                // Unload current model
+                await UnloadModelAsync();
+
+                // Reload fresh model
+                var loadResult = await LoadModelAsync();
+                if (loadResult.IsFailure)
+                {
+                    return Result<bool>.Failure($"Failed to reload model: {loadResult.Error}");
+                }
+
+                _logger.LogInformation("Model successfully reloaded with version {Version}", _currentModelVersion);
+                return Result<bool>.Success(true);
+            }
+
+            // Model is current, no reload needed
+            return Result<bool>.Success(true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error checking model currency");
+            return Result<bool>.Failure($"Error checking model: {ex.Message}");
         }
     }
 
@@ -642,13 +752,19 @@ public class SeriesFeatureInput
 
 /// <summary>
 /// ML.NET prediction output.
-/// The PredictedLabel is a Key type (uint) that represents the index of the predicted category.
+/// The PredictedLabel can be either a String (category name) or Key (index).
 /// </summary>
 public class SeriesPrediction
 {
+    /// <summary>
+    /// Predicted category label (string output from model)
+    /// </summary>
     [Microsoft.ML.Data.ColumnName("PredictedLabel")]
-    public uint PredictedLabelIndex { get; set; }
+    public string PredictedLabel { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Confidence scores for all categories
+    /// </summary>
     [Microsoft.ML.Data.ColumnName("Score")]
     public float[] Score { get; set; } = Array.Empty<float>();
 }
