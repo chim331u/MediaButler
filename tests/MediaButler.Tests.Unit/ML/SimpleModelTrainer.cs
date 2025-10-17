@@ -71,7 +71,7 @@ public class SimpleModelTrainer
         Console.WriteLine($"✅ Training completed! Accuracy: {trainingResult.Value.ValidationMetrics.Accuracy:P2}");
 
         // Save model
-        var modelPath = Path.Combine(modelsDirectory, "classification-model.zip");
+        var modelPath = Path.Combine(modelsDirectory, "classification-simplified-model.zip");
         Console.WriteLine($"💾 Saving model to: {modelPath}");
 
         var metadata = new TrainingModels.ModelMetadata

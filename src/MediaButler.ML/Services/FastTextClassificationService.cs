@@ -299,7 +299,7 @@ public class FastTextClassificationService : IClassificationService
             {
                 _logger.LogInformation("Loading ML.NET model from {ModelPath}", _config.ModelPath);
 
-                var modelPath = Path.Combine(_config.ModelPath, "classification-model.zip");
+                var modelPath = Path.Combine(_config.ModelPath, "classification-simplified-model.zip");
 
                 if (!File.Exists(modelPath))
                 {

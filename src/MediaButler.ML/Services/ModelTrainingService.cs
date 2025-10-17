@@ -169,7 +169,7 @@ public class ModelTrainingService : IModelTrainingService
                 TrainingCompletedAt = DateTime.UtcNow,
                 TrainingDuration = stopwatch.Elapsed,
                 TrainingSampleCount = trainingData.Count(),
-                ModelVersion = 1
+                ModelVersion = 0
             };
 
             // Store the trained model with schema for later saving
@@ -253,13 +253,14 @@ public class ModelTrainingService : IModelTrainingService
 
             // Alternative: Just save minimal metadata without the confusion matrix
             var metadataPath = Path.ChangeExtension(modelPath, ".meta.json");
+            
             var simpleMetadata = new
             {
                 Metadata = metadata,
                 SavedAt = DateTime.UtcNow,
                 Accuracy = modelInfo.ValidationMetrics.Accuracy,
                 TrainingSamples = modelInfo.TrainingSampleCount,
-                ModelVersion = modelInfo.ModelVersion
+                ModelVersion = metadata.Version
             };
 
             var jsonData = JsonSerializer.Serialize(simpleMetadata, new JsonSerializerOptions
@@ -281,7 +282,7 @@ public class ModelTrainingService : IModelTrainingService
                 Metadata = metadata,
                 SavedAt = DateTime.UtcNow,
                 Checksum = checksum,
-                ModelVersion = modelInfo.ModelVersion
+                ModelVersion = metadata.Version
             };
 
             _logger.LogInformation("Model saved successfully. Size: {Size} bytes, Metadata: {MetadataPath}",

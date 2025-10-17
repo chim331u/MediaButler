@@ -95,7 +95,7 @@ public class ProductionModelTrainer
 
         // Act - Train model with production-quality configuration
         Console.WriteLine($"\n🤖 Training Production ML Model with {importResult.Value.ValidRows} samples...");
-        Console.WriteLine($"📁 Model will be saved to: {Path.Combine(modelsDirectory, "classification-model.zip")}");
+        Console.WriteLine($"📁 Model will be saved to: {Path.Combine(modelsDirectory, "classification-simplified-model.zip")}");
 
         var trainingConfig = TrainingModels.TrainingConfiguration.CreateDefault(); // Use DEFAULT for production quality
 
@@ -152,7 +152,7 @@ public class ProductionModelTrainer
         Assert.True(File.Exists(model.ModelPath), "Model file should exist at specified path");
 
         // Verify model is in the correct location
-        var expectedModelPath = Path.Combine(modelsDirectory, "classification-model.zip");
+        var expectedModelPath = Path.Combine(modelsDirectory, "classification-simplified-model.zip");
         Assert.True(File.Exists(expectedModelPath), $"Model should exist at {expectedModelPath}");
 
         Console.WriteLine($"\n✅ Production Model Training Complete!");

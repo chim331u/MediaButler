@@ -225,7 +225,7 @@ public sealed record TrainedModelInfo
     /// <summary>
     /// Model version for tracking and compatibility.
     /// </summary>
-    public required int ModelVersion { get; init; }
+    public required int ModelVersion { get; set; }
 
     /// <summary>
     /// Indicates if the model meets production quality standards.
