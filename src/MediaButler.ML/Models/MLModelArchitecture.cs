@@ -181,7 +181,7 @@ public sealed record AlgorithmConfiguration
     {
         return new AlgorithmConfiguration
         {
-            AlgorithmType = AlgorithmType.LightGBM,
+            AlgorithmType = AlgorithmType.SdcaMaximumEntropy,
             MaxIterations = 500,
             LearningRate = 0.1,
             RegularizationStrength = 0.01,
@@ -231,7 +231,9 @@ public enum AlgorithmType
     /// <summary>
     /// Random Forest - ensemble method with feature importance.
     /// </summary>
-    RandomForest = 4
+    RandomForest = 4,
+    
+    SdcaMaximumEntropy = 5
 }
 
 /// <summary>
