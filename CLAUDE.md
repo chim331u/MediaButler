@@ -288,19 +288,44 @@ The system organizes files into a flat folder structure:
 
 ## ML Classification Pipeline
 
-The system uses a 6-stage classification process:
+The system uses **ML.NET with FastText** for intelligent file classification, leveraging a trained machine learning model rather than simple pattern matching.
 
-1. **Pre-processing**: Clean filename input
-2. **Tokenization**: Extract meaningful tokens
+### Implementation: FastTextClassificationService
+
+**Core Technology Stack:**
+- **ML.NET Framework**: Microsoft's cross-platform ML framework
+- **FastText Algorithm**: Efficient text classification via word embeddings (~20MB model)
+- **Training Data**: User-confirmed file categorizations stored in database
+- **Hot Reload Support**: Model updates without service restart
+- **LRU Caching**: Prediction caching for improved performance
+
+**6-Stage Classification Process:**
+
+1. **Pre-processing**: Clean filename input (normalize separators, lowercase)
+2. **Tokenization**: Extract meaningful tokens using `TokenizerService`
 3. **Feature Extraction**: Identify series tokens, episode markers, quality tags
-4. **Embedding**: Convert to vector representation (dim=50-100)
-5. **Similarity Matching**: Compare with known series embeddings
+4. **ML.NET Prediction**: FastText model prediction with confidence scoring
+5. **Alternative Predictions**: Generate top-N alternative suggestions
 6. **Decision**: Output category + confidence score
 
 **Confidence Thresholds:**
-- `> 0.85`: Auto-classify (pending confirmation)
-- `0.50-0.85`: Suggest with alternatives
-- `< 0.50`: Likely new series
+- `> 0.85`: Auto-classify (high confidence, pending confirmation)
+- `0.50-0.85`: Suggest with alternatives (medium confidence)
+- `< 0.50`: Likely new series (low confidence)
+
+**Model Training Workflow:**
+1. Users confirm file categorizations via Web UI or API
+2. Training data accumulated in `TrainingData` table
+3. Manual or scheduled training via `/api/training/trainModel` endpoint
+4. Model versioning with automatic backup (max 3 versions retained)
+5. Hot reload: New model loaded without service restart
+6. Model performance metrics logged and tracked
+
+**Key Features:**
+- **Session-Based Training**: Tracks training sessions with metrics
+- **Model Versioning**: Semantic versioning (e.g., 1.0.0, 1.1.0)
+- **Prediction Caching**: LRU cache for frequently classified files
+- **Performance Monitoring**: Classification latency and accuracy tracking
 
 ## File States and Workflow
 
@@ -315,12 +340,12 @@ Additional states: ERROR, RETRY (max 3 attempts), IGNORED (terminal state)
 - IGNORED files cannot be moved (business rule enforcement)
 
 **Processing Pipeline:**
-1. File discovery via FileSystemWatcher
+1. File discovery via Hangfire recurring job (scheduled folder scans)
 2. SHA256 hash calculation and DB storage (with BaseEntity audit)
-3. ML classification with confidence scoring
+3. ML.NET classification with confidence scoring (FastText model)
 4. User confirmation required for all files
 5. Physical file movement with transaction support
-6. Feedback loop for model improvement
+6. Feedback loop for model improvement (training data accumulation)
 
 ## API Endpoints Structure
 
@@ -422,6 +447,65 @@ var jobId = BackgroundJob.Enqueue<BatchFileProcessingJob>(
 - Job retention: 7 days succeeded, 30 days failed
 - WAL mode for SQLite to improve concurrent access
 - Progress reporting via SignalR for real-time updates
+
+### Hangfire Recurring Jobs
+
+The system uses Hangfire's recurring jobs feature for automated maintenance and processing tasks. All recurring jobs are registered in `RecurringJobRegistrationService` and configured via `appsettings.json`.
+
+**Active Recurring Jobs:**
+
+| Job Name | Purpose | Schedule | Queue | Timeout | Location |
+|----------|---------|----------|-------|---------|----------|
+| **FileDiscoveryJob** | Scan watch folders for new files | Dev: Every 5 min<br>Prod: Every 12 hours | `default` | 10 min | `Jobs/Recurring/FileDiscoveryJob.cs` |
+| **LogCleanupJob** | Delete log files older than 30 days | Daily at 2:00 AM | `low-priority` | 5 min | `Jobs/Recurring/LogCleanupJob.cs` |
+| **ModelTrainingJob** | Retrain ML model with accumulated data | Weekly (Sunday 3:00 AM) | `low-priority` | 30 min | `Jobs/Recurring/ModelTrainingJob.cs` |
+
+**Job Configuration** (`appsettings.json`):
+```json
+"Hangfire": {
+  "RecurringJobs": {
+    "FileDiscovery": {
+      "Enabled": true,
+      "CronExpression": "*/5 * * * *"  // Dev: 5 min, Prod: "0 */12 * * *"
+    },
+    "ModelTraining": {
+      "Enabled": true,
+      "CronExpression": "0 3 * * 0"  // Sunday at 3:00 AM
+    },
+    "LogCleanup": {
+      "Enabled": true,
+      "CronExpression": "0 2 * * *"  // Daily at 2:00 AM
+    }
+  }
+}
+```
+
+**Key Features:**
+- **Automatic Registration**: Jobs registered on application startup
+- **Environment-Specific Schedules**: Different cron expressions for dev/prod
+- **Retry Logic**: Configurable retry attempts with exponential backoff
+- **Concurrent Execution Control**: Model training disables concurrent runs
+- **Progress Reporting**: Jobs report status via structured logging
+- **Hangfire Dashboard**: Monitor job status at `/hangfire` (development only)
+
+**Job Responsibilities:**
+
+1. **FileDiscoveryJob**:
+   - Scans configured watch folders for new media files
+   - Calculates SHA256 hashes for file identification
+   - Triggers ML classification pipeline
+   - Sends real-time notifications via SignalR
+
+2. **LogCleanupJob**:
+   - Removes log files older than configured retention period (default: 30 days)
+   - Reports deleted file count and freed disk space
+   - Prevents log directory from consuming excessive storage
+
+3. **ModelTrainingJob**:
+   - Trains ML.NET FastText model using accumulated training data
+   - Creates versioned model files with automatic backup
+   - Logs comprehensive training metrics (accuracy, precision, recall, F1)
+   - Triggers hot reload to activate new model without restart
 
 ## Configuration - Simplified Static Configuration
 
