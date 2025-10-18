@@ -59,7 +59,7 @@ USE_LOCAL_BUILD="${USE_LOCAL_BUILD:-true}"
 DIST_DIR="${DIST_DIR:-dist}"
 
 # Container Runtime Configuration
-HOST_PORT="${HOST_PORT:-3019}"
+HOST_PORT="${HOST_PORT:-5109}"
 CONTAINER_PORT="${CONTAINER_PORT:-8080}"
 
 # API Configuration - IMPORTANT: Configure this for your setup
