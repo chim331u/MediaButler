@@ -31,19 +31,23 @@ public class RecurringJobRegistrationService : IHostedService
 
         var recurringJobsConfig = _configuration.GetSection("Hangfire:RecurringJobs");
 
-        // File Discovery Job - Scan watch folders for new files
+        // File Discovery Job - Scan watch folders for new files (replaces FileSystemWatcher)
         var fileDiscoveryConfig = recurringJobsConfig.GetSection("FileDiscovery");
-        if (fileDiscoveryConfig.GetValue<bool>("Enabled", false))
+        if (fileDiscoveryConfig.GetValue<bool>("Enabled", true))
         {
-            var cronExpression = fileDiscoveryConfig["CronExpression"] ?? "*/10 * * * *";
+            var cronExpression = fileDiscoveryConfig["CronExpression"] ?? "*/5 * * * *"; // Every 5 minutes
             _logger.LogInformation("Registering FileDiscovery job with cron: {Cron}", cronExpression);
 
-            // TODO: Implement in Sprint 4
-            // _recurringJobManager.AddOrUpdate<FileDiscoveryJob>(
-            //     "file-discovery",
-            //     job => job.ScanWatchFoldersAsync(JobCancellationToken.Null),
-            //     cronExpression,
-            //     new RecurringJobOptions { TimeZone = TimeZoneInfo.Local });
+            _recurringJobManager.AddOrUpdate<MediaButler.API.Jobs.Recurring.FileDiscoveryJob>(
+                "file-discovery",
+                job => job.ScanForNewFilesAsync(),
+                cronExpression,
+                new RecurringJobOptions
+                {
+                    TimeZone = TimeZoneInfo.Local
+                });
+
+            _logger.LogInformation("FileDiscovery recurring job registered successfully");
         }
 
         // ML Model Training Job - Retrain classification model

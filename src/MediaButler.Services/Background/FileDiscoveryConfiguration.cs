@@ -4,6 +4,7 @@ namespace MediaButler.Services.Background;
 
 /// <summary>
 /// Configuration settings for file discovery and monitoring operations.
+/// Uses Hangfire-based polling instead of FileSystemWatcher for reliability.
 /// Follows "Simple Made Easy" principles with explicit, validated configuration.
 /// </summary>
 public class FileDiscoveryConfiguration
@@ -21,14 +22,8 @@ public class FileDiscoveryConfiguration
     public List<string> WatchFolders { get; set; } = new();
 
     /// <summary>
-    /// Whether to enable FileSystemWatcher for real-time file detection.
-    /// If false, only periodic scanning will be performed.
-    /// </summary>
-    public bool EnableFileSystemWatcher { get; set; } = true;
-
-    /// <summary>
-    /// Interval in minutes for periodic folder scanning.
-    /// Used as backup when FileSystemWatcher is disabled or for catching missed events.
+    /// Interval in minutes for Hangfire recurring job to scan folders.
+    /// Default: 5 minutes for regular polling.
     /// </summary>
     [Range(1, 1440, ErrorMessage = "Scan interval must be between 1 and 1440 minutes")]
     public int ScanIntervalMinutes { get; set; } = 5;
@@ -54,13 +49,6 @@ public class FileDiscoveryConfiguration
     [Range(0, 100000, ErrorMessage = "Minimum file size must be between 0 and 100000 MB")]
     public double MinFileSizeMB { get; set; } = 1.0;
 
-    /// <summary>
-    /// Delay in seconds before processing a newly detected file.
-    /// Helps ensure file writes are complete before processing.
-    /// ARM32 optimization: Increased to 8 seconds for better I/O management.
-    /// </summary>
-    [Range(0, 300, ErrorMessage = "Debounce delay must be between 0 and 300 seconds")]
-    public int DebounceDelaySeconds { get; set; } = 8;
 
     /// <summary>
     /// Maximum number of concurrent folder scan operations.

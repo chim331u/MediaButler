@@ -578,11 +578,35 @@
         return $"Move {filesToMove.Count} file(s) to their target locations";
     }
 
+    private bool _hasRunOnFirstAccess = false;
+
     protected override async Task OnInitializedAsync()
     {
         await InitializeNotificationSubscriptionsAsync();
         await LoadCategoriesAsync();
         await RefreshFileListAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_hasRunOnFirstAccess)
+        {
+            _hasRunOnFirstAccess = true;
+            await ExecuteOnFirstAccessAsync();
+        }
+    }
+
+    /// <summary>
+    /// Executes only once on the first page load/access.
+    /// Use this method for one-time initialization that should happen after the component has rendered.
+    /// </summary>
+    private async Task ExecuteOnFirstAccessAsync()
+    {
+        WriteConsole("Welcome to MediaButler File Management!");
+        WriteConsole("Auto-scanning folders for new files...");
+
+        // Perform initial folder scan on first access
+        await ScanFolders();
     }
 
     private async Task InitializeNotificationSubscriptionsAsync()

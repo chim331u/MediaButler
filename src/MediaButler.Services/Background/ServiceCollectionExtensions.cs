@@ -33,16 +33,16 @@ public static class ServiceCollectionExtensions
 
         // Register file processing queue as singleton for shared state
         services.AddSingleton<IFileProcessingQueue, FileProcessingQueue>();
-        
-        // Register file discovery service as singleton
+
+        // Register file discovery service as singleton (called by Hangfire recurring job)
         services.AddSingleton<IFileDiscoveryService, FileDiscoveryService>();
-        
+
         // Register processing coordinator as singleton
         services.AddSingleton<IProcessingCoordinator, ProcessingCoordinator>();
-        
+
         // Register background services as hosted services
         services.AddHostedService<FileProcessingService>();
-        services.AddHostedService<FileDiscoveryHostedService>();
+        // FileDiscoveryHostedService removed - replaced by Hangfire recurring job
         services.AddHostedService<ProcessingCoordinatorHostedService>();
 
         // Register processing log repository for audit trail
