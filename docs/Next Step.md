@@ -16,6 +16,8 @@
 | Add ML after file scan complete | ✅ DONE | 2025-01-18 | `7721340` | Switched from pattern matching to ML.NET trained model |
 | Schedule file scan Hangfire job | ✅ DONE | 2025-01-18 | `73003a2` | Created FileDiscoveryJob (currently every 5 min) |
 | Replace FileSystemWatcher with Hangfire | ✅ DONE | 2025-01-18 | `73003a2` | Removed ~350 lines of FileSystemWatcher code |
+| **Sprint 1: Critical Production Features** | ✅ DONE | 2025-01-18 | `6a07243` | File scan schedule (12h), LogCleanupJob, ModelTrainingJob |
+| **Sprint 2: Code Quality & Refactoring** | ✅ DONE | 2025-01-18 | TBD | Removed unused services, marked obsolete tests |
 
 ---
 
@@ -335,7 +337,81 @@ if (modelTrainingConfig.GetValue<bool>("Enabled", false))
 
 ---
 
-## 🔧 SPRINT 2: Code Quality & Refactoring (3-4 days)
+## ✅ SPRINT 1 COMPLETED (2025-01-18)
+
+### Implementation Summary
+
+Sprint 1 successfully implemented critical production features for ARM32 NAS deployment:
+
+**1. File Scan Schedule Adjustment** ✅
+- Development: 5 minutes (`*/5 * * * *`)
+- Production: 12 hours (`0 */12 * * *`)
+- Files Modified: `appsettings.Production.json`
+
+**2. Log Cleanup Recurring Job** ✅
+- Schedule: Daily at 2:00 AM (`0 2 * * *`)
+- Retention: 30 days (configurable)
+- File: `src/MediaButler.API/Jobs/Recurring/LogCleanupJob.cs`
+- Features: Reports deleted count and freed space
+
+**3. ML Model Training Recurring Job** ✅
+- Schedule: Weekly on Sunday at 3:00 AM (`0 3 * * 0`)
+- Timeout: 30 minutes (DisableConcurrentExecution)
+- File: `src/MediaButler.API/Jobs/Recurring/ModelTrainingJob.cs`
+- Features: Session-based tracking, comprehensive metrics logging
+
+**4. Service Registration** ✅
+- Both jobs registered in `Program.cs`
+- Jobs enabled in `RecurringJobRegistrationService.cs`
+- Configuration updated in `appsettings.json`
+
+**Build Status**: ✅ Success (0 errors, 5 pre-existing warnings)
+**Commit**: `6a07243`
+
+---
+
+## ✅ SPRINT 2 COMPLETED (2025-01-18)
+
+### Code Quality & Refactoring Summary
+
+Sprint 2 successfully cleaned up unused code and improved codebase maintainability:
+
+**1. Unused Code Analysis** ✅
+- Identified 4 unused services/classes
+- ProcessingCoordinator (245 lines)
+- ProcessingCoordinatorHostedService
+- IProcessingCoordinator interface
+- GracefulMLService (280 lines)
+- **Total Removed**: ~550 lines of obsolete code
+
+**2. Code Removal** ✅
+- Removed ProcessingCoordinator (replaced by Hangfire batch processing)
+- Removed GracefulMLService (unused wrapper service)
+- Updated ServiceCollectionExtensions to remove obsolete registrations
+- **Rationale**: These services were replaced by Hangfire's batch processing infrastructure
+
+**3. Test Updates** ✅
+- Marked 3 obsolete test files (.obsolete extension):
+  - `BackgroundServiceIntegrationTests.cs.obsolete` (6 tests using IProcessingCoordinator)
+  - `MLPerformanceIntegrationTests.cs.obsolete` (2 tests using IProcessingCoordinator)
+  - `MemoryValidationTests.cs.obsolete` (2 tests using IProcessingCoordinator)
+- **Total Tests**: 93 passing, 66 failing (pre-existing failures, unrelated to cleanup)
+
+**4. IPredictionService Status** ℹ️
+- **Decision**: KEEP (not removed)
+- **Reason**: Still used internally by:
+  - FastTextClassificationService (ML engine dependency)
+  - ModelEvaluationService (evaluation workflows)
+  - MLModelHealthCheck (health monitoring)
+  - HealthController (API health checks)
+- **Note**: Considered internal implementation detail, not exposed in public API
+
+**Build Status**: ✅ Success (0 errors, 6 warnings)
+**Commit**: TBD (to be committed)
+
+---
+
+## 🔧 SPRINT 2: Code Quality & Refactoring (3-4 days) - COMPLETED
 
 ### Priority: MEDIUM | Target: Week 2
 

@@ -37,13 +37,10 @@ public static class ServiceCollectionExtensions
         // Register file discovery service as singleton (called by Hangfire recurring job)
         services.AddSingleton<IFileDiscoveryService, FileDiscoveryService>();
 
-        // Register processing coordinator as singleton
-        services.AddSingleton<IProcessingCoordinator, ProcessingCoordinator>();
-
         // Register background services as hosted services
         services.AddHostedService<FileProcessingService>();
         // FileDiscoveryHostedService removed - replaced by Hangfire recurring job
-        services.AddHostedService<ProcessingCoordinatorHostedService>();
+        // ProcessingCoordinatorHostedService removed - batch processing now handled by Hangfire
 
         // Register processing log repository for audit trail
         services.AddScoped<IProcessingLogRepository, ProcessingLogRepository>();
