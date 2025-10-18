@@ -1,839 +1,639 @@
-# 🎩 MediaButler - NEXT STEP list -
+# 🎩 MediaButler - NEXT STEP Implementation Plan
 
 [![Version](https://img.shields.io/badge/version-1.0.6-blue.svg)]()
 [![Platform](https://img.shields.io/badge/platform-ARM32%20|%20ARM64%20|%20x64-green.svg)]()
 [![.NET](https://img.shields.io/badge/.NET-8.0%20|%2010-purple.svg)]()
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)]()
 
-## 📊 CODE ANALYSIS & IMPROVEMENT PLAN (2025-01-10)
+---
 
-### ✅ Strengths - What's Working Well
+## 📊 STATUS OVERVIEW (Last Updated: 2025-01-18)
 
-#### 1. **Excellent Domain Model Design** (Core Layer)
-- `TrackedFile` entity with rich domain events
-- `BaseEntity` pattern provides consistent audit trail
-- Clear state machine with explicit transitions
-- Domain events enable loose coupling
+### ✅ COMPLETED TASKS
 
-#### 2. **Clean Repository Pattern** (Data Layer)
-- Well-designed `TrackedFileRepository` with focused methods
-- Excellent use of EF Core indexes for performance
-- Clear separation of concerns
-- Proper use of `AsNoTracking()` for read-only queries
-
-#### 3. **Strong Result Pattern** (Core Layer)
-- Railway-oriented programming with `Result<T>`
-- Eliminates exception throwing for business logic failures
-- Clear success/failure semantics
-
-#### 4. **Good Service Composition** (Services Layer)
-- Services compose rather than inherit
-- Clear single responsibility
-- Proper use of Unit of Work pattern
+| Task | Status | Completed Date | Commit | Notes |
+|------|--------|----------------|--------|-------|
+| Add ML after file scan complete | ✅ DONE | 2025-01-18 | `7721340` | Switched from pattern matching to ML.NET trained model |
+| Schedule file scan Hangfire job | ✅ DONE | 2025-01-18 | `73003a2` | Created FileDiscoveryJob (currently every 5 min) |
+| Replace FileSystemWatcher with Hangfire | ✅ DONE | 2025-01-18 | `73003a2` | Removed ~350 lines of FileSystemWatcher code |
 
 ---
 
-## 🚨 CRITICAL ISSUES - Priority Fixes
+## 🎯 SPRINT 1: Critical Production Features (2-3 days)
 
-### **Issue #1: Static State in FileOrganizationService**
-**Location**: `src/MediaButler.Services/FileOrganizationService.cs:38-39`
+### Priority: HIGH | Target: Week 1
 
-**Problem**: Complecting value with time (static mutable state)
-- Breaks testability (shared state across test runs)
-- Not thread-safe for high concurrency
-- Violates "Simple Made Easy" principles
+#### 1.1 Adjust File Scan Schedule to 12 Hours ⏰
+**Current**: Every 5 minutes (`*/5 * * * *`)
+**Target**: Every 12 hours (`0 */12 * * *`)
 
-**Solution**: Extract to `IOrganizationStateService` using database state
-```csharp
-public interface IOrganizationStateService
-{
-    Task<OrganizationState> GetStateAsync(string fileHash);
-    Task SetStateAsync(string fileHash, OrganizationState state);
+**Files to Modify**:
+- `src/MediaButler.API/appsettings.json:159` - Keep at 5 min for development
+- `src/MediaButler.API/appsettings.Production.json` - Change to 12 hours
+
+**Implementation**:
+```json
+// appsettings.Development.json (keep for quick testing)
+"FileDiscovery": {
+  "Enabled": true,
+  "CronExpression": "*/5 * * * *"
 }
 
-public class DbOrganizationStateService : IOrganizationStateService
-{
-    private readonly IUnitOfWork _unitOfWork;
+// appsettings.Production.json (production use)
+"FileDiscovery": {
+  "Enabled": true,
+  "CronExpression": "0 */12 * * *"  // Every 12 hours at minute 0
+}
+```
 
-    public async Task<OrganizationState> GetStateAsync(string fileHash)
+**Estimated Time**: 15 minutes
+**Testing**: Verify cron expression in Hangfire Dashboard
+
+---
+
+#### 1.2 Create Housekeeping Job - Log Cleanup 🧹
+**Purpose**: Delete log files older than 30 days
+**Schedule**: Daily at 2:00 AM (`0 2 * * *`)
+
+**Implementation Steps**:
+
+1. **Create Job Class** (`src/MediaButler.API/Jobs/Recurring/LogCleanupJob.cs`):
+```csharp
+using Hangfire;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+
+namespace MediaButler.API.Jobs.Recurring;
+
+/// <summary>
+/// Hangfire recurring job for cleaning up old log files.
+/// Removes log files older than configured retention period (default: 30 days).
+/// </summary>
+[Queue("low-priority")]
+[AutomaticRetry(Attempts = 2, DelaysInSeconds = new[] { 60, 300 })]
+public class LogCleanupJob
+{
+    private readonly ILogger<LogCleanupJob> _logger;
+    private readonly IConfiguration _configuration;
+    private const int DefaultRetentionDays = 30;
+
+    public LogCleanupJob(
+        ILogger<LogCleanupJob> logger,
+        IConfiguration configuration)
     {
-        var file = await _unitOfWork.TrackedFiles.GetByHashAsync(fileHash);
-        return file?.Status switch
-        {
-            FileStatus.Moving => OrganizationState.InProgress,
-            FileStatus.Moved => OrganizationState.Completed,
-            FileStatus.Error => OrganizationState.Failed,
-            _ => OrganizationState.Pending
-        };
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
     }
 
-    public Task SetStateAsync(string fileHash, OrganizationState state) =>
-        Task.CompletedTask; // State derived from FileStatus
-}
-```
-
-**Effort**: Medium | **Impact**: High
-
----
-
-### **Issue #2: Path Logic Embedded in FileService**
-**Location**: `src/MediaButler.Services/FileService.cs:284-285, 700-713`
-
-**Problem**: Complecting file management with path generation
-- Hardcoded `/library` path (should come from configuration)
-- Duplicates logic in `PathGenerationService`
-
-**Solution**: Delegate to `PathGenerationService` consistently
-```csharp
-public async Task<Result<TrackedFile>> ConfirmCategoryAsync(
-    string hash, string confirmedCategory, CancellationToken cancellationToken = default)
-{
-    var file = await _trackedFileRepository.GetByHashAsync(hash, cancellationToken);
-    if (file == null)
-        return Result<TrackedFile>.Failure($"File with hash {hash} not found");
-
-    // Delegate to PathGenerationService
-    var pathResult = await _pathGenerationService.GenerateTargetPathAsync(file, confirmedCategory);
-    if (pathResult.IsFailure)
-        return Result<TrackedFile>.Failure($"Path generation failed: {pathResult.Error}");
-
-    file.Category = confirmedCategory;
-    file.Status = FileStatus.ReadyToMove;
-    file.TargetPath = pathResult.Value;
-
-    _trackedFileRepository.Update(file);
-    await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-    return Result<TrackedFile>.Success(file);
-}
-```
-
-**Effort**: Low | **Impact**: Medium
-
----
-
-### **Issue #3: Over-Complicated FileOrganizationService**
-**Location**: `src/MediaButler.Services/FileOrganizationService.cs` (744 lines)
-
-**Problem**: Multiple concerns braided together
-- Orchestration + validation + error handling + state management + logging
-- Methods like `ValidateOrganizationSafetyAsync` are 126 lines long
-- Complects "what to do" with "how to handle errors"
-
-**Solution**: Extract validators and error handlers
-```csharp
-// Extract validation
-public interface IOrganizationValidator
-{
-    Task<Result<ValidationResult>> ValidateAsync(TrackedFile file, string targetPath);
-}
-
-public class OrganizationValidator : IOrganizationValidator
-{
-    public async Task<Result<ValidationResult>> ValidateAsync(TrackedFile file, string targetPath)
+    [JobDisplayName("Log Cleanup - Delete Old Logs")]
+    public async Task CleanupOldLogsAsync()
     {
-        var validators = new IFileValidator[]
+        _logger.LogInformation("Log cleanup job started");
+
+        try
         {
-            new SourceFileAccessValidator(),
-            new TargetDirectoryValidator(),
-            new DiskSpaceValidator(),
-            new PathLengthValidator()
-        };
+            var logPath = _configuration.GetValue<string>("Serilog:WriteTo:1:Args:path", "/data/logs/");
+            var logDirectory = Path.GetDirectoryName(logPath) ?? "/data/logs";
+            var retentionDays = _configuration.GetValue<int>("Serilog:ARM32Optimization:LogRetentionDays", DefaultRetentionDays);
+            var cutoffDate = DateTime.UtcNow.AddDays(-retentionDays);
 
-        var issues = new List<string>();
-        foreach (var validator in validators)
-        {
-            var result = await validator.ValidateAsync(file, targetPath);
-            if (!result.IsValid)
-                issues.AddRange(result.Issues);
-        }
-
-        return Result<ValidationResult>.Success(new ValidationResult
-        {
-            IsSafe = issues.Count == 0,
-            Issues = issues
-        });
-    }
-}
-
-// Simplified FileOrganizationService
-public class FileOrganizationService : IFileOrganizationService
-{
-    private readonly IOrganizationValidator _validator;
-    private readonly IFileOperationService _fileOps;
-    private readonly IUnitOfWork _unitOfWork;
-
-    public async Task<Result<FileOrganizationResult>> OrganizeFileAsync(
-        string fileHash, string confirmedCategory)
-    {
-        var file = await _unitOfWork.TrackedFiles.GetByHashAsync(fileHash);
-        if (file == null)
-            return Result<FileOrganizationResult>.Failure("File not found");
-
-        var targetPath = await GenerateTargetPathAsync(file, confirmedCategory);
-
-        var validation = await _validator.ValidateAsync(file, targetPath);
-        if (!validation.Value.IsSafe)
-            return Result<FileOrganizationResult>.Failure(validation.Value.Issues.First());
-
-        var moveResult = await _fileOps.MoveFileAsync(fileHash, targetPath);
-        if (moveResult.IsFailure)
-            return Result<FileOrganizationResult>.Failure(moveResult.Error);
-
-        file.MarkAsMoved(moveResult.Value.TargetPath);
-        _unitOfWork.TrackedFiles.Update(file);
-        await _unitOfWork.SaveChangesAsync();
-
-        return Result<FileOrganizationResult>.Success(new FileOrganizationResult
-        {
-            IsSuccess = true,
-            ActualPath = moveResult.Value.TargetPath
-        });
-    }
-}
-```
-
-**Effort**: High | **Impact**: High
-
----
-
-## 🟡 MEDIUM PRIORITY IMPROVEMENTS
-
-### **Improvement #1: Controller Validation Logic**
-**Location**: `src/MediaButler.API/Controllers/FilesController.cs:105-132`
-
-**Problem**: Parsing and validation logic in controller
-- Controllers should be thin
-- Validation should be in request models with FluentValidation
-
-**Solution**: Use FluentValidation for request models
-```csharp
-public class GetFilesByStatusesRequest
-{
-    public int Skip { get; set; }
-    public int Take { get; set; }
-    public string[] Statuses { get; set; } = Array.Empty<string>();
-    public string? Category { get; set; }
-
-    public IEnumerable<FileStatus> ParsedStatuses =>
-        Statuses.Select(s => Enum.Parse<FileStatus>(s, true));
-}
-
-public class GetFilesByStatusesRequestValidator : AbstractValidator<GetFilesByStatusesRequest>
-{
-    public GetFilesByStatusesRequestValidator()
-    {
-        RuleFor(x => x.Skip).GreaterThanOrEqualTo(0);
-        RuleFor(x => x.Take).InclusiveBetween(1, 100);
-        RuleFor(x => x.Statuses).NotEmpty();
-        RuleForEach(x => x.Statuses)
-            .Must(s => Enum.TryParse<FileStatus>(s, true, out _))
-            .WithMessage(s => $"Invalid status: {s}");
-    }
-}
-```
-
-**Effort**: Medium | **Impact**: Low
-
----
-
-### **Improvement #2: Extract Configuration Hardcoding**
-**Locations**: Multiple files reference `/library`, `/watch`, `/data` paths
-
-**Solution**: Centralized configuration service
-```csharp
-public interface IMediaButlerConfiguration
-{
-    string MediaLibraryPath { get; }
-    string WatchFolderPath { get; }
-    string PendingReviewPath { get; }
-    int MaxRetryCount { get; }
-    decimal AutoClassifyThreshold { get; }
-}
-
-public class MediaButlerConfiguration : IMediaButlerConfiguration
-{
-    private readonly IConfiguration _config;
-
-    public MediaButlerConfiguration(IConfiguration config) => _config = config;
-
-    public string MediaLibraryPath =>
-        _config["MediaButler:Paths:MediaLibrary"] ?? "/library";
-
-    public int MaxRetryCount =>
-        _config.GetValue<int>("MediaButler:FileProcessing:MaxRetryCount", 3);
-}
-```
-
-**Effort**: Low | **Impact**: Medium
-
----
-
-### **Improvement #3: Reduce Batch Job Responsibilities**
-**Location**: `src/MediaButler.API/Jobs/Batch/BatchFileProcessingJob.cs`
-
-**Problem**: Mixed concerns - job execution + progress tracking + throttling
-
-**Solution**: Extract progress reporting
-```csharp
-public interface IProgressReporter
-{
-    Task ReportProgressAsync(string jobId, int current, int total, string? currentItem = null);
-}
-
-public class BatchFileProcessingJob
-{
-    private readonly IFileOrganizationService _organizationService;
-    private readonly IProgressReporter _progressReporter;
-    private readonly IBatchThrottler _throttler;
-
-    public async Task ProcessBatchAsync(
-        List<FileOrganizeOperation> operations,
-        string jobId,
-        CancellationToken cancellationToken)
-    {
-        for (int i = 0; i < operations.Count; i++)
-        {
-            await _organizationService.OrganizeFileAsync(
-                operations[i].TrackedFile.Hash,
-                operations[i].ConfirmedCategory);
-
-            await _progressReporter.ReportProgressAsync(jobId, i + 1, operations.Count);
-            await _throttler.ThrottleAsync(cancellationToken);
-        }
-    }
-}
-```
-
-**Effort**: Medium | **Impact**: Medium
-
----
-
-## 🎯 QUICK WINS - Immediate Improvements
-
-### **1. Extract Magic Numbers to Constants**
-```csharp
-// ❌ Current
-if (confidence < 0 || confidence > 1)
-
-// ✅ Better
-private const decimal MinConfidence = 0.0m;
-private const decimal MaxConfidence = 1.0m;
-```
-
-### **2. Use Primary Constructors (.NET 8)**
-```csharp
-public class FileService(
-    ITrackedFileRepository trackedFileRepository,
-    IUnitOfWork unitOfWork,
-    ILogger<FileService> logger) : IFileService
-{
-    private const int MaxRetryCount = 3;
-}
-```
-
-### **3. Add CancellationToken Consistently**
-Many async methods missing `CancellationToken` parameter
-
----
-
-## 📝 PRIORITY MATRIX
-
-| Priority | Issue | Impact | Effort | Status |
-|----------|-------|--------|--------|--------|
-| 🚨 P1 | Static state in FileOrganizationService | High | Medium | ✅ **DONE** |
-| 🚨 P1 | Path logic in FileService | Medium | Low | ✅ **DONE** |
-| 🔴 P2 | Over-complicated FileOrganizationService | High | High | ✅ **DONE** |
-| 🟡 P3 | Controller validation logic | Low | Medium | ✅ **DONE** |
-| 🟢 P4 | Configuration hardcoding | Medium | Low | ✅ **DONE** |
-| 🟢 P4 | Batch job responsibilities | Medium | Medium | ✅ **DONE** |
-| 🎯 Quick | Magic numbers + Primary constructors | Low | Low | ✅ **DONE** |
-
----
-
-## 🔬 ML PIPELINE OPTIMIZATION - DETAILED ANALYSIS
-
-### **ML Component Health Assessment**
-
-| Component | Status | Performance | Memory | ARM32 Ready |
-|-----------|--------|-------------|--------|-------------|
-| TokenizerService | ✅ Excellent | Fast | Low | ✅ Yes |
-| FeatureEngineeringService | ✅ Good | Medium | Medium | ⚠️ Optimize |
-| PredictionService | ⚠️ Needs Work | Medium | **High** | ❌ Issues |
-| ClassificationService | ⚠️ Mock | N/A | N/A | 🔄 Pending |
-
----
-
-### 🚨 **Critical ARM32 Performance Issues**
-
-#### **Issue #1: Unbounded Memory Growth in PredictionService**
-**Location**: `src/MediaButler.ML/Services/PredictionService.cs:32-34`
-
-**Problem**:
-```csharp
-// ❌ MEMORY LEAK RISK: Unbounded dictionary + 1000-item queue
-private readonly ConcurrentDictionary<string, long> _predictionStats = new();
-private readonly ConcurrentQueue<PredictionMetric> _recentPredictions = new();
-private const int MaxRecentPredictions = 1000;
-```
-
-**Impact**:
-- Dictionary never cleared → unbounded growth
-- Queue limited to 1000 items but each `PredictionMetric` ~200 bytes
-- Total: **~200KB just for metrics** + dictionary overhead
-- Long-running service on ARM32 will exhaust memory
-
-**Solution**: Fixed-size circular buffer
-```csharp
-// ✅ OPTIMIZED: Circular buffer with fixed memory footprint
-public class PredictionService
-{
-    private readonly CircularBuffer<PredictionMetric> _recentPredictions;
-    private long _totalPredictions;
-    private long _successfulPredictions;
-    private readonly object _statsLock = new();
-
-    public PredictionService(...)
-    {
-        // ARM32 optimization: Keep buffer small (100 items = ~20KB)
-        _recentPredictions = new CircularBuffer<PredictionMetric>(capacity: 100);
-    }
-
-    private void RecordPredictionMetric(ClassificationResult result, TimeSpan duration)
-    {
-        lock (_statsLock)
-        {
-            _totalPredictions++;
-            if (result.Decision != ClassificationDecision.Failed)
-                _successfulPredictions++;
-
-            _recentPredictions.Add(new PredictionMetric
+            if (!Directory.Exists(logDirectory))
             {
-                Timestamp = DateTime.UtcNow,
-                Confidence = result.Confidence,
-                Duration = duration,
-                Success = result.Decision != ClassificationDecision.Failed
-            });
+                _logger.LogWarning("Log directory not found: {LogDirectory}", logDirectory);
+                return;
+            }
+
+            // Find all .log files older than retention period
+            var logFiles = Directory.GetFiles(logDirectory, "*.log", SearchOption.AllDirectories);
+            var oldLogs = logFiles
+                .Where(f => File.GetCreationTimeUtc(f) < cutoffDate)
+                .ToList();
+
+            _logger.LogInformation("Found {Count} log files older than {Days} days", oldLogs.Count, retentionDays);
+
+            var deletedCount = 0;
+            var deletedSize = 0L;
+
+            foreach (var logFile in oldLogs)
+            {
+                try
+                {
+                    var fileInfo = new FileInfo(logFile);
+                    var fileSize = fileInfo.Length;
+
+                    File.Delete(logFile);
+                    deletedCount++;
+                    deletedSize += fileSize;
+
+                    _logger.LogDebug("Deleted old log file: {LogFile} ({Size} bytes)", logFile, fileSize);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to delete log file: {LogFile}", logFile);
+                }
+            }
+
+            _logger.LogInformation(
+                "Log cleanup completed. Deleted {DeletedCount}/{TotalCount} files, freed {FreedMB:F2} MB",
+                deletedCount, oldLogs.Count, deletedSize / (1024.0 * 1024.0));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Log cleanup job failed");
+            throw;
         }
     }
 }
-
-// Circular buffer implementation (zero-allocation after initialization)
-public class CircularBuffer<T>
-{
-    private readonly T[] _buffer;
-    private int _head;
-    private int _count;
-
-    public CircularBuffer(int capacity) => _buffer = new T[capacity];
-
-    public void Add(T item)
-    {
-        _buffer[_head] = item;
-        _head = (_head + 1) % _buffer.Length;
-        if (_count < _buffer.Length) _count++;
-    }
-
-    public IEnumerable<T> GetItems() => _buffer.Take(_count);
-}
 ```
 
-**Effort**: Low | **Impact**: High | **Memory Savings**: 90% (200KB → 20KB)
-
----
-
-#### **Issue #2: LINQ Allocations in N-gram Generation**
-**Location**: `src/MediaButler.ML/Services/FeatureEngineeringService.cs:194-231`
-
-**Problem**:
+2. **Register Job** (`src/MediaButler.API/Program.cs`):
 ```csharp
-// ❌ O(n²) complexity + LINQ allocations
-for (int i = 0; i <= tokens.Count - n; i++)
-{
-    var ngramTokens = tokens.Skip(i).Take(n).ToList(); // Allocates on each iteration
-    var context = DetermineNGramContext(ngramTokens);
-    var discriminativePower = CalculateDiscriminativePower(ngramTokens);
-    ...
-}
+// Add after line 135 (FileDiscoveryJob registration)
+builder.Services.AddScoped<MediaButler.API.Jobs.Recurring.LogCleanupJob>();
 ```
 
-**Impact**:
-- **50ms per file** for N-gram generation
-- Excessive allocations on ARM32 (triggers GC)
-- LINQ overhead compounds with large token lists
-
-**Solution**: Use `ReadOnlySpan<T>` for zero-allocation iteration
+3. **Enable in RecurringJobRegistrationService** (`src/MediaButler.API/Services/RecurringJobRegistrationService.cs:83-96`):
 ```csharp
-// ✅ OPTIMIZED: Zero-allocation span-based iteration
-public Result<IReadOnlyList<NGramFeature>> GenerateNGrams(
-    IReadOnlyList<string> tokens, int n)
+// Uncomment and update existing code (lines 83-96)
+var logCleanupConfig = recurringJobsConfig.GetSection("LogCleanup");
+if (logCleanupConfig.GetValue<bool>("Enabled", false))
 {
-    if (tokens == null || !tokens.Any())
-        return Result<IReadOnlyList<NGramFeature>>.Failure("Tokens cannot be null or empty");
+    var cronExpression = logCleanupConfig["CronExpression"] ?? "0 2 * * *";
+    _logger.LogInformation("Registering LogCleanup job with cron: {Cron}", cronExpression);
 
-    if (n < 1 || n > 5)
-        return Result<IReadOnlyList<NGramFeature>>.Failure("N-gram size must be between 1 and 5");
-
-    // Pre-allocate to avoid resizing
-    var ngrams = new List<NGramFeature>(capacity: Math.Max(0, tokens.Count - n + 1));
-
-    // Use span for zero-allocation iteration
-    var tokenArray = tokens as string[] ?? tokens.ToArray();
-    var span = tokenArray.AsSpan();
-
-    for (int i = 0; i <= span.Length - n; i++)
-    {
-        var ngramSlice = span.Slice(i, n);
-
-        // Only allocate the final array once
-        var ngramTokens = ngramSlice.ToArray();
-
-        var context = DetermineNGramContext(ngramTokens);
-        var discriminativePower = CalculateDiscriminativePower(ngramTokens);
-        var isCrossBoundary = DetermineIfCrossBoundary(ngramTokens, context);
-
-        ngrams.Add(new NGramFeature
+    _recurringJobManager.AddOrUpdate<MediaButler.API.Jobs.Recurring.LogCleanupJob>(
+        "log-cleanup",
+        job => job.CleanupOldLogsAsync(),
+        cronExpression,
+        new RecurringJobOptions
         {
-            N = n,
-            Tokens = ngramTokens,
-            Frequency = 1,
-            RelativeFrequency = 1.0 / (span.Length - n + 1),
-            DiscriminativePower = discriminativePower,
-            Context = context,
-            IsCrossBoundary = isCrossBoundary
+            TimeZone = TimeZoneInfo.Local
         });
+
+    _logger.LogInformation("LogCleanup recurring job registered successfully");
+}
+```
+
+4. **Update Configuration** (`src/MediaButler.API/appsettings.json:169-172`):
+```json
+"LogCleanup": {
+  "Enabled": true,  // Change from false
+  "CronExpression": "0 2 * * *"  // Daily at 2:00 AM
+}
+```
+
+**Estimated Time**: 2 hours
+**Testing**:
+- Check Hangfire Dashboard for job registration
+- Manually trigger job to verify log deletion
+- Monitor logs for completion messages
+
+---
+
+#### 1.3 Create ML Training Recurring Job 🤖
+**Purpose**: Retrain ML model weekly to improve accuracy
+**Schedule**: Weekly on Sunday at 3:00 AM (`0 3 * * 0`)
+
+**Implementation Steps**:
+
+1. **Create Job Class** (`src/MediaButler.API/Jobs/Recurring/ModelTrainingJob.cs`):
+```csharp
+using Hangfire;
+using MediaButler.Services.ML;
+using Microsoft.Extensions.Logging;
+
+namespace MediaButler.API.Jobs.Recurring;
+
+/// <summary>
+/// Hangfire recurring job for ML model training.
+/// Retrains classification model weekly using database training data.
+/// </summary>
+[Queue("low-priority")]
+[AutomaticRetry(Attempts = 1, DelaysInSeconds = new[] { 300 })]  // Retry once after 5 min
+[DisableConcurrentExecution(timeoutInSeconds: 1800)]  // 30 min max, no concurrent runs
+public class ModelTrainingJob
+{
+    private readonly IDatabaseTrainingService _trainingService;
+    private readonly ILogger<ModelTrainingJob> _logger;
+
+    public ModelTrainingJob(
+        IDatabaseTrainingService trainingService,
+        ILogger<ModelTrainingJob> logger)
+    {
+        _trainingService = trainingService ?? throw new ArgumentNullException(nameof(trainingService));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    // Aggregate and deduplicate
-    var uniqueNGrams = ngrams.GroupBy(ng => ng.NGramText.ToLowerInvariant())
-        .Select(g => CreateAggregatedNGram(g.ToList()))
-        .OrderByDescending(ng => ng.DiscriminativePower)
-        .Take(Math.Min(20, ngrams.Count))
-        .ToList();
-
-    return Result<IReadOnlyList<NGramFeature>>.Success(uniqueNGrams.AsReadOnly());
-}
-```
-
-**Effort**: Medium | **Impact**: High | **Speed Improvement**: 5x faster (50ms → 10ms)
-
----
-
-#### **Issue #3: Source-Generated Regexes for .NET 7+**
-**Location**: `src/MediaButler.ML/Services/TokenizerService.cs:30-83`
-
-**Current State** (Already Good):
-```csharp
-// ✅ GOOD: Already using compiled regexes
-private static readonly Regex[] EpisodePatterns = new[]
-{
-    new Regex(@"(\d{1,2})x(\d{1,2})", RegexOptions.Compiled | RegexOptions.IgnoreCase),
-    new Regex(@"[Ss](\d{1,2})[Ee](\d{1,2})", RegexOptions.Compiled),
-    ...
-};
-```
-
-**Recommendation**: Upgrade to source generators (.NET 7+) for even better performance
-```csharp
-// ✅ BETTER (.NET 7+): Source-generated regex (15-20% faster + no JIT overhead)
-public partial class TokenizerService : ITokenizerService
-{
-    [GeneratedRegex(@"(\d{1,2})x(\d{1,2})", RegexOptions.IgnoreCase)]
-    private static partial Regex EpisodePatternAlternative();
-
-    [GeneratedRegex(@"[Ss](\d{1,2})[Ee](\d{1,2})")]
-    private static partial Regex EpisodePatternStandard();
-
-    [GeneratedRegex(@"Season\s*(\d{1,2}).*?Episode\s*(\d{1,2})", RegexOptions.IgnoreCase)]
-    private static partial Regex EpisodePatternVerbose();
-
-    [GeneratedRegex(@"\b(2160p|4K|UHD)\b", RegexOptions.IgnoreCase)]
-    private static partial Regex QualityPattern4K();
-
-    [GeneratedRegex(@"\b(1080p|FHD)\b", RegexOptions.IgnoreCase)]
-    private static partial Regex QualityPattern1080p();
-
-    // Use in array initialization
-    private static readonly Regex[] EpisodePatterns = new[]
+    [JobDisplayName("ML Model Training - Weekly Retraining")]
+    public async Task TrainModelAsync()
     {
-        EpisodePatternAlternative(),
-        EpisodePatternStandard(),
-        EpisodePatternVerbose(),
-        ...
-    };
-}
-```
+        _logger.LogInformation("Weekly ML model training job started");
 
-**Benefits**:
-- **15-20% faster** than compiled regexes
-- **Zero JIT overhead** (pre-compiled to IL)
-- **Better for ARM32** - no runtime regex compilation
-- **Type-safe** - compile-time validation
-
-**Effort**: Low | **Impact**: Medium | **ARM32 Benefit**: Reduced CPU + startup time
-
----
-
-#### **Issue #4: Feature Extraction Multiple Passes**
-**Location**: `src/MediaButler.ML/Services/FeatureEngineeringService.cs:55-120`
-
-**Problem**: Multiple passes over token lists
-```csharp
-// Current: 3+ separate passes over tokens
-var tokenAnalysisResult = AnalyzeTokenFrequency(tokenizedFilename.SeriesTokens);
-var ngramResult = GenerateNGrams(tokenizedFilename.AllTokens, 2);
-var qualityFeaturesResult = ExtractQualityFeatures(...);
-```
-
-**Solution**: Single-pass feature extraction
-```csharp
-// ✅ OPTIMIZED: Single-pass feature extraction
-public Result<FeatureVector> ExtractFeatures(TokenizedFilename tokenizedFilename)
-{
-    var tokens = tokenizedFilename.SeriesTokens;
-
-    // Single pass: collect all features at once
-    var tokenCounts = new Dictionary<string, int>();
-    var ngrams = new List<NGramFeature>();
-    var languageIndicators = new HashSet<string>();
-
-    for (int i = 0; i < tokens.Count; i++)
-    {
-        var token = tokens[i].ToLowerInvariant();
-
-        // Token frequency
-        tokenCounts.TryGetValue(token, out var count);
-        tokenCounts[token] = count + 1;
-
-        // Bigrams (n=2)
-        if (i < tokens.Count - 1)
+        try
         {
-            var bigram = new[] { tokens[i], tokens[i + 1] };
-            ngrams.Add(CreateNGramFeature(bigram));
+            var result = await _trainingService.TrainModelFromDatabaseAsync(CancellationToken.None);
+
+            if (result.IsSuccess)
+            {
+                var trainingResult = result.Value;
+                _logger.LogInformation(
+                    "Weekly ML training completed successfully. " +
+                    "Model Version: {Version}, " +
+                    "Accuracy: {Accuracy:P2}, " +
+                    "Training Samples: {TrainingSamples}, " +
+                    "Categories: {Categories}, " +
+                    "Duration: {Duration}s",
+                    trainingResult.ModelVersion,
+                    trainingResult.Metrics.Accuracy,
+                    trainingResult.TrainingSamples.Count,
+                    trainingResult.Categories.Count,
+                    trainingResult.TrainingDuration.TotalSeconds);
+
+                // Log per-category metrics
+                foreach (var categoryMetric in trainingResult.Metrics.PerCategoryMetrics)
+                {
+                    _logger.LogDebug(
+                        "Category '{Category}': Precision={Precision:P2}, Recall={Recall:P2}, F1={F1:P2}",
+                        categoryMetric.Category,
+                        categoryMetric.Precision,
+                        categoryMetric.Recall,
+                        categoryMetric.F1Score);
+                }
+            }
+            else
+            {
+                _logger.LogError("Weekly ML training failed: {Error}", result.Error);
+                throw new InvalidOperationException($"Model training failed: {result.Error}");
+            }
         }
-
-        // Language detection (inline)
-        if (IsLanguageIndicator(token))
-            languageIndicators.Add(token);
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Weekly ML model training job failed with exception");
+            throw;
+        }
     }
-
-    // Build features from collected data (no re-iteration)
-    return BuildFeatureVector(tokenCounts, ngrams, languageIndicators);
 }
 ```
 
-**Effort**: Medium | **Impact**: Medium | **Speed Improvement**: 2x faster (30ms → 15ms)
+2. **Register Job** (`src/MediaButler.API/Program.cs`):
+```csharp
+// Add after LogCleanupJob registration
+builder.Services.AddScoped<MediaButler.API.Jobs.Recurring.ModelTrainingJob>();
+```
+
+3. **Enable in RecurringJobRegistrationService** (`src/MediaButler.API/Services/RecurringJobRegistrationService.cs:53-66`):
+```csharp
+// Uncomment and update existing code (lines 53-66)
+var modelTrainingConfig = recurringJobsConfig.GetSection("ModelTraining");
+if (modelTrainingConfig.GetValue<bool>("Enabled", false))
+{
+    var cronExpression = modelTrainingConfig["CronExpression"] ?? "0 3 * * 0";
+    _logger.LogInformation("Registering ModelTraining job with cron: {Cron}", cronExpression);
+
+    _recurringJobManager.AddOrUpdate<MediaButler.API.Jobs.Recurring.ModelTrainingJob>(
+        "model-training",
+        job => job.TrainModelAsync(),
+        cronExpression,
+        new RecurringJobOptions
+        {
+            TimeZone = TimeZoneInfo.Local
+        });
+
+    _logger.LogInformation("ModelTraining recurring job registered successfully");
+}
+```
+
+4. **Update Configuration** (`src/MediaButler.API/appsettings.json:161-164`):
+```json
+"ModelTraining": {
+  "Enabled": true,  // Change from false
+  "CronExpression": "0 3 * * 0"  // Weekly Sunday at 3:00 AM
+}
+```
+
+**Estimated Time**: 3 hours
+**Testing**:
+- Manually trigger job in Hangfire Dashboard
+- Verify model file updated in `models/` directory
+- Check model version incremented
+- Verify hot reload picks up new model
 
 ---
 
-### 📊 **Performance Optimization Summary**
+#### 1.4 Test All Recurring Jobs ✅
+**Purpose**: Ensure all Hangfire jobs work correctly
 
-| Optimization | Current | Optimized | Memory Saved | Speed Gain | Effort |
-|--------------|---------|-----------|--------------|------------|--------|
-| Circular buffer for stats | 200KB | 20KB | **90%** | N/A | Low |
-| Span-based N-grams | 50ms | 10ms | 80% | **5x** | Medium |
-| Source-generated regex | N/A | N/A | 10% | **1.2x** | Low |
-| Single-pass features | 30ms | 15ms | 50% | **2x** | Medium |
-| **TOTAL IMPROVEMENT** | **~100ms** | **~25ms** | **~180KB** | **4x faster** | - |
+**Test Checklist**:
+- [ ] FileDiscoveryJob executes on schedule
+- [ ] LogCleanupJob deletes old logs correctly
+- [ ] ModelTrainingJob trains and saves model
+- [ ] Jobs appear in Hangfire Dashboard
+- [ ] Retry logic works on failures
+- [ ] Logs are properly written
 
-**ARM32 Impact**:
-- **95% memory reduction** for prediction statistics
-- **75% faster** overall ML classification pipeline
-- **Reduced GC pressure** - critical for 1GB RAM constraint
-- **Lower CPU usage** - better battery life for NAS devices
+**Estimated Time**: 2 hours
 
 ---
 
-### 🎯 **ML Optimization Roadmap**
+## 🔧 SPRINT 2: Code Quality & Refactoring (3-4 days)
 
-#### **Phase 1: Critical Fixes (Week 1)** ✅ **COMPLETE**
-- [x] Implement circular buffer in PredictionService ✅ **DONE** (90% memory reduction: 200KB → 20KB)
-- [x] Add span-based N-gram generation ✅ **DONE** (Zero-allocation iteration, 5x speed improvement: 50ms → 10ms)
-- [x] Unit tests for memory boundaries ✅ **DONE** (20 comprehensive CircularBuffer tests passing)
-- [x] Verify ML integration with tests ✅ **DONE** (92% unit test pass rate: 404/437 tests passing)
-- [ ] Benchmark before/after performance ⏭️ **Deferred to Phase 2**
+### Priority: MEDIUM | Target: Week 2
 
-#### **Phase 2: Performance Enhancements (Week 2)** ✅ **COMPLETE**
-- [x] Migrate to source-generated regexes (.NET 7+) ✅ **DONE** (15-20% faster, zero JIT overhead, 52/53 tests passing)
-- [x] Single-pass feature extraction ✅ **DONE** (Eliminated 4 LINQ passes in AnalyzeTokenFrequency, 2x faster: 30ms → 15ms, all tests passing)
-- [x] Profile ARM32 memory usage ✅ **DONE** (Comprehensive profiling document created: 96% allocation reduction, 110MB footprint)
-- [x] Integration tests with real workload ✅ **DONE** (7/9 tests passing, 2 failures expected with mock classifier)
+#### 2.1 Run Unused Code Analysis 🔍
 
-#### **Phase 3: FastText Integration (Week 3-4)** 🚧 **IN PROGRESS**
-- [x] **Phase 3A Planning** ✅ **DONE** (Comprehensive Phase-3-FastText-Integration-Plan.md created)
-- [x] **Training Data CSV Creation** ✅ **DONE** (114 Italian TV series samples, 22 categories)
-- [x] **CSV Import Utility** ✅ **DONE** (CsvTrainingDataImporter with validation and error handling)
-- [x] **Integration Tests** ✅ **DONE** (9 CSV import & training tests, 8/9 passing - 88.9%)
-- [x] **Phase 3A Training Validation** ✅ **DONE** (100% accuracy achieved with 114 samples, 1.5s training time)
-- [x] **Phase 3B: FastTextClassificationService** ✅ **DONE** (Complete ML.NET integration with lazy loading)
-- [x] **Unit Tests for Classification Service** ✅ **DONE** (17/17 tests passing - 100%)
-- [x] **Production Model Training Script** ✅ **DONE** (ProductionModelTrainer with quality gates)
-- [x] **Prediction Caching (LRU)** ✅ **DONE** (1000 items capacity, ~5MB memory footprint, 48/48 tests passing)
-- [x] **Model Training Service Implementation** ✅ **DONE** (ML.NET model persistence with schema, metadata files, 17/22 tests passing)
-- [x] **Integration Tests with Real Model** ✅ **DONE** (End-to-end Train→Save→Load→Classify workflow, 7 comprehensive tests)
-- [ ] **Fix Integration Test Property Issues** ⏭️ **NEXT** (Minor fixes needed for TrainedModelInfo properties)
-- [ ] Benchmark FastText model loading on ARM32
-- [ ] Optimize model inference for <50ms target
-- [ ] A/B test accuracy vs. pattern-based predictions
+**Tools**:
+```bash
+# Install dotnet-unused
+dotnet tool install -g dotnet-unused
 
-**Phase 3A/3B Progress Details**:
-- **Training Data**: `data/training/tv-series-training-data.csv` - 114 manually curated samples
-  - 22 popular Italian TV series (Game of Thrones, One Piece, Breaking Bad, Stranger Things, etc.)
-  - 5-8 samples per series with quality variations (480p, 720p, 1080p, 4K)
-  - Multiple sources (BluRay, WEB-DLMux, HDTV, Netflix, Amazon, HBO)
-  - Language variants (ITA, ENG, Sub.ITA, dual audio)
+# Run analysis
+dotnet unused --solution MediaButler.sln
 
-- **CSV Import Utility**: `src/MediaButler.ML/Utils/CsvTrainingDataImporter.cs`
-  - Flexible CSV parsing with configurable separator (default: semicolon)
-  - Duplicate detection and skipping
-  - File extension validation
-  - Category name normalization (UPPERCASE)
-  - Comprehensive error reporting
-  - CSV format validation and preview functionality
+# Alternative: Use Roslyn analyzers
+dotnet add package Microsoft.CodeAnalysis.NetAnalyzers
+```
 
-- **Integration Tests**: `tests/MediaButler.Tests.Unit/ML/CsvTrainingIntegrationTests.cs`
-  - 9 comprehensive tests covering:
-    ✅ Valid CSV import (5/5 samples)
-    ✅ Duplicate handling (skips duplicate filenames)
-    ✅ Invalid extension filtering (.pdf skipped)
-    ✅ Max rows limiting (respects configured limit)
-    ✅ CSV format validation (header detection)
-    ✅ CSV preview (first N rows)
-    ✅ Model training with generated data (50 samples, >50% accuracy)
-    ✅ Real CSV file loading (120 samples)
-  - **Test Results**: 8/9 passing (88.9% pass rate)
-  - 1 minor assertion issue (expected 1 skipped row, found 2)
+**Known Candidates for Review**:
+- `IPredictionService` (replaced by `IClassificationService`) - Keep for backward compatibility
+- `PredictionService.PredictAsync()` - May still be used in tests
+- Unused repository methods
+- Deprecated DTOs/models
 
-- **FastTextClassificationService**: `src/MediaButler.ML/Services/FastTextClassificationService.cs`
-  - Complete ML.NET integration (PredictionEngine, ITransformer, MLContext)
-  - Lazy model loading with thread-safe access (lock-based synchronization)
-  - Pipeline: Filename → Tokenize → Extract Features → Predict → Format Result
-  - Confidence-based decisions: Auto (≥85%), Suggest (50-85%), Failed (<50%)
-  - Batch classification support with error handling
-  - Model metadata extraction: version, accuracy, categories, file size
-  - Graceful degradation when model file missing
+**Output**: Generate report of unused code for manual review
 
-- **Unit Tests**: `tests/MediaButler.Tests.Unit/ML/FastTextClassificationServiceTests.cs`
-  - **17/17 tests passing** (100% pass rate in 81ms)
-  - Input validation (null, empty, whitespace)
-  - Error scenarios (tokenization failures, feature extraction failures)
-  - Model state checks (IsModelReady, GetModelInfo, GetAvailableCategories)
-  - Batch processing (empty batches, multiple files, error handling)
-  - Test helper methods using real FeatureEngineeringService for valid test data
-
-- **Production Training Script**: `tests/MediaButler.Tests.Unit/ML/ProductionModelTrainer.cs`
-  - Trains model with real CSV data from `data/training/tv-series-training-data.csv`
-  - Saves to production `models/classification-model.zip` location
-  - Quality gates: >80% accuracy, >70% F1 score, <10 min training time
-  - Full metrics reporting: accuracy, precision, recall, F1 scores, log loss
-  - Uses TrainingConfiguration.CreateDefault() for production quality
-
-- **LRU Prediction Cache**: `src/MediaButler.ML/Utils/LruCache.cs`
-  - Thread-safe LRU (Least Recently Used) eviction policy
-  - Fixed capacity prevents unbounded memory growth (default: 1000 items)
-  - ConcurrentDictionary + LinkedList for O(1) get/set operations
-  - Lock-based synchronization for thread safety
-  - Cache statistics tracking: hits, misses, hit rate
-  - ARM32 optimized: ~5KB overhead + ~5KB per result = ~5MB total for 1000 items
-  - GetOrAdd pattern with async support for lazy value creation
-  - **26/26 comprehensive unit tests passing** (100% pass rate)
-    - Constructor validation, basic operations, LRU eviction correctness
-    - Thread safety verification (concurrent access with 10 threads)
-    - Complex eviction scenarios, statistics accuracy, null value handling
-
-- **Cache Integration**: `src/MediaButler.ML/Services/FastTextClassificationService.cs`
-  - Cache check before expensive ML prediction (cache hit: <1ms)
-  - Automatic caching of successful classifications
-  - Failed classifications NOT cached by default (configurable)
-  - Cache statistics included in GetModelInfo() metadata
-  - **22/22 tests passing** (17 original + 5 new cache integration tests)
-  - Configuration: `Features.EnablePredictionCaching`, `Cache.MaxCacheSize`
-
-- **Model Training Service**: `src/MediaButler.ML/Services/ModelTrainingService.cs`
-  - Actual ML.NET model persistence (not JSON placeholders)
-  - Stores trained ITransformer with DataView schema for proper serialization
-  - Binary model saving using `MLContext.Model.Save()`
-  - Companion `.meta.json` files for model metadata
-  - SHA256 checksum calculation for integrity verification
-  - Memory cleanup after successful save (removes from in-memory cache)
-  - **17/22 tests passing** (77% pass rate)
-    - Core train→save→load workflow fully functional
-    - 5 test failures in validation/optimization edge cases (non-critical)
-  - Model versioning through metadata files
-  - Proper error handling with Result<T> pattern
-
-- **Integration Tests with Real Model**: `tests/MediaButler.Tests.Integration/ML/ModelTrainingIntegrationTests.cs`
-  - **7 comprehensive integration tests** covering end-to-end ML workflows
-  - Tests implemented:
-    1. `CompleteMLWorkflow_TrainSaveLoadClassify_ShouldWorkEndToEnd` - Full pipeline from CSV to classification
-    2. `TrainModel_WithRealCSVData_ShouldProduceValidModel` - Real training data validation
-    3. `SaveAndLoadModel_WithMetadata_ShouldPreserveInformation` - Metadata persistence
-    4. `TrainMultipleModels_SaveSequentially_ShouldNotInterfere` - Multiple model handling
-    5. `LoadModel_FromNonExistentPath_ShouldReturnFailure` - Error handling
-    6. `ModelPersistence_WithChecksum_ShouldDetectCorruption` - Integrity verification
-    7. Helper method: `CreateMinimalTrainingData()` - 21 training samples across 7 categories
-  - Uses real CSV training data from `data/training/tv-series-training-data.csv`
-  - Tests model training with TrainingConfig.CreateFast() for quick execution
-  - Validates model save/load with proper cleanup in finally blocks
-  - Tests ModelMetadata creation with required properties (ModelName, Version, CreatedAt, Author, Tags)
-  - **Status**: Implementation complete, minor property fixes needed for TrainedModelInfo access
-
-**Commits**:
-- `b48b9df` - Phase 3 foundation: training data, CSV importer, integration tests
-- `e54ca42` - Test compilation fixes and validation
-- `[commit]` - Phase 3B: FastTextClassificationService implementation (393 lines)
-- `[commit]` - Comprehensive unit tests for FastTextClassificationService (17/17 passing)
-- `[commit]` - Production model training script with quality gates
-- `[commit]` - LRU cache implementation with 26/26 unit tests passing
-- `9eda8d6` - Integrate LRU cache with FastTextClassificationService (22/22 tests passing)
-- `a9f4ceb` - ModelTrainingService disk persistence with ML.NET binary format (17/22 tests passing)
-- `[pending]` - Integration tests for end-to-end model training workflow (7 tests implemented)
-
-**Phase 3A Training Results** (ManualTrainingRunner):
-- ✅ **100% accuracy** achieved on validation set
-- ✅ **114 training samples** across 22 categories
-- ✅ **1.5s training time** (Fast config) / 5.4s (Default config)
-- ✅ **Macro F1 Score**: 90%
-- ✅ **Weighted F1 Score**: 92%
-- ✅ **Log Loss**: 0.3415
-
-**Next Immediate Steps**:
-1. ✅ ~~Implement FastTextClassificationService~~ **DONE** (393 lines, 17/17 tests passing)
-2. ✅ ~~Create comprehensive unit tests~~ **DONE** (100% pass rate)
-3. ✅ ~~Add prediction caching (LRU, 1000 items, <5MB memory)~~ **DONE** (26/26 cache tests + 5 integration tests passing)
-4. ✅ ~~Implement ModelTrainingService to save models to disk~~ **DONE** (ML.NET binary persistence, 17/22 tests passing)
-5. ✅ ~~Create integration tests with real trained model~~ **DONE** (7 comprehensive tests, minor fixes pending)
-6. ⏭️ **NEXT**: Fix integration test property access (TrainedModelInfo properties)
-7. ⏭️ Update dependency injection registration for production use
-8. ⏭️ Fix remaining 5 ModelTrainingService test failures (validation/optimization edge cases)
+**Estimated Time**: 4 hours
 
 ---
 
-### ✅ **Completed ML Analysis**
-- ✅ TokenizerService analysis (Excellent - Italian-optimized)
-- ✅ FeatureEngineeringService analysis (Good - needs optimization)
-- ✅ PredictionService analysis (Critical issues identified)
-- ✅ ClassificationService analysis (Mock - pending FastText)
-- ✅ ARM32 bottleneck identification
-- ✅ Memory leak prevention strategies
-- ✅ Performance optimization proposals
+#### 2.2 Remove Unused Methods and Code 🧹
+
+**Process**:
+1. Review unused code analysis report
+2. Verify code is truly unused (check tests, dependencies)
+3. Remove safe candidates
+4. Update tests if needed
+5. Run full test suite to verify no breakage
+
+**Safety Rules**:
+- Don't remove public APIs (may be used by external consumers)
+- Keep code marked as "Future use"
+- Don't remove test utilities
+
+**Estimated Time**: 6 hours
 
 ---
 
-## ✅ COMPLETED TASKS
+#### 2.3 Check Architectural Issues and Fix Them 🏗️
 
-- ✅ Comprehensive code analysis (API, Core, Data, Services layers)
-- ✅ Identified "Simple Made Easy" violations
-- ✅ Documented improvement recommendations with code examples
-- ✅ Created priority matrix for implementation
+**Review Areas**:
+
+1. **Service Boundaries**:
+   - Verify ML services isolated in `MediaButler.ML`
+   - Check for circular dependencies
+   - Ensure clean layer separation
+
+2. **Dependency Injection**:
+   - Verify correct lifetimes (Scoped vs Singleton)
+   - Check for service locator anti-pattern
+   - Validate background job service resolution
+
+3. **"Simple Made Easy" Compliance**:
+   - Check for complecting (braiding of concerns)
+   - Verify single responsibility
+   - Ensure values over state
+   - Validate declarative patterns
+
+4. **Error Handling**:
+   - Ensure Result pattern used consistently
+   - Verify all exceptions logged
+   - Check error classification coverage
+
+**Tools**:
+```bash
+# Install ArchUnitNET for architecture testing
+dotnet add package ArchUnitNET --version 0.10.6
+
+# Create architecture tests
+# tests/MediaButler.Tests.Architecture/ArchitectureTests.cs
+```
+
+**Estimated Time**: 8 hours
 
 ---
 
-## 📅 NEXT SPRINT GOALS
+#### 2.4 Fix Tests After ML Architecture Change 🧪
 
-1. **Fix Critical Issues** (P1 items) - Target: 3-5 days
-2. **ML Pipeline Optimization** - Target: 2-3 days
-3. **Unit Test Coverage for Refactorings** - Target: 2 days
-4. **Performance Benchmarking** - Target: 1 day
+**Test Categories to Review**:
 
-**Overall Assessment**: 7/10 - Good adherence to "Simple Made Easy" with a few critical violations around state management and service complexity.
+1. **Unit Tests** (250+ tests):
+   - Update mocks from `IPredictionService` to `IClassificationService`
+   - Verify ML.NET prediction expectations
+   - Fix TokenizerService test (1 pre-existing failure)
+
+2. **Integration Tests** (300+ tests):
+   - Update file processing workflow tests
+   - Verify model loading in test environment
+   - Check classification result assertions
+
+3. **Acceptance Tests** (240+ tests):
+   - Validate end-to-end file processing
+   - Verify ML classification in full workflow
+   - Check confidence threshold behaviors
+
+**Commands**:
+```bash
+# Run all tests
+dotnet test
+
+# Run by category
+dotnet test --filter "Category=Unit"
+dotnet test --filter "Category=Integration"
+dotnet test --filter "Category=Acceptance"
+
+# Run with coverage
+dotnet test --collect:"XPlat Code Coverage"
+```
+
+**Target**: 100% test pass rate (790+ tests)
+
+**Estimated Time**: 8 hours
+
+---
+
+## 📚 SPRINT 3: Documentation Updates (1-2 days)
+
+### Priority: MEDIUM | Target: Week 2-3
+
+#### 3.1 Update CLAUDE.md 📖
+
+**Sections to Update**:
+
+1. **ML Classification Pipeline**:
+   - Document switch from pattern matching to ML.NET
+   - Add FastTextClassificationService details
+   - Document hot reload feature
+   - Add model training workflow
+
+2. **Hangfire Recurring Jobs**:
+   - Update recurring jobs table with all 3 jobs
+   - Add cron expressions
+   - Document job priorities and queues
+
+3. **Background Processing Architecture**:
+   - Update architecture diagram
+   - Document single-process combined mode
+   - Add job registration flow
+
+4. **Configuration Section**:
+   - Add Hangfire:RecurringJobs configuration details
+   - Document log cleanup settings
+   - Add model training configuration
+
+**Estimated Time**: 2 hours
+
+---
+
+#### 3.2 Update API Documentation 📄
+
+**File**: `docs/api-documentation.md`
+
+**Sections to Add/Update**:
+
+1. **ML Training Endpoints**:
+   - `GET /api/training/trainModel` - Trigger manual training
+   - Document training response schema
+   - Add model version tracking
+
+2. **Model Info Endpoints**:
+   - Document model metadata endpoint
+   - Add cache statistics
+   - Document category discovery
+
+3. **Classification Workflow**:
+   - Update workflow diagram
+   - Document confidence thresholds
+   - Add alternative predictions
+
+**Estimated Time**: 2 hours
+
+---
+
+#### 3.3 Update README.md 📝
+
+**Updates Needed**:
+
+1. **Features Section**:
+   - Change "ML classification (placeholder)" to "ML.NET SDCA Maximum Entropy"
+   - Add hot reload support
+   - Add LRU prediction caching
+   - Add weekly auto-retraining
+
+2. **Architecture Section**:
+   - Update to reflect Hangfire recurring jobs
+   - Add recurring jobs list:
+     - File Discovery (every 12 hours)
+     - Log Cleanup (daily)
+     - Model Training (weekly)
+
+3. **Version Bump**:
+   - Update from 1.0.6 to 1.1.0 (feature additions)
+
+**Estimated Time**: 1 hour
+
+---
+
+#### 3.4 Update Deployment Guide 📦
+
+**File**: `docs/deployment-guide.md`
+
+**Sections to Add/Update**:
+
+1. **Model Files**:
+   - Document model file requirements
+   - Add model versioning
+   - Document hot reload behavior
+
+2. **Hangfire Configuration**:
+   - Add recurring jobs configuration
+   - Document Hangfire Dashboard access
+   - Add job monitoring instructions
+
+3. **Production Checklist**:
+   - Verify model file exists
+   - Check recurring job schedules
+   - Configure log retention
+   - Set up model training schedule
+
+**Estimated Time**: 2 hours
+
+---
+
+## 📊 ADDITIONAL RECOMMENDATIONS
+
+### Performance Monitoring
+
+**Add Metrics For**:
+- ML classification latency (per file)
+- Model cache hit rate
+- Hangfire job execution times
+- File processing throughput
+- Background queue depth
+
+**Tools**:
+- Application Insights (Azure)
+- Prometheus + Grafana
+- Custom metrics endpoint
+
+---
+
+### Health Checks Enhancement
+
+**Verify/Add**:
+- ✅ ML model health check (already exists: `MLModelHealthCheck`)
+- [ ] Database connection health check
+- [ ] Hangfire server health check
+- [ ] File system access health check
+- [ ] Model file existence check
+
+**Endpoint**: `GET /api/health`
+
+---
+
+### Logging Improvements
+
+**Enhancements**:
+- [ ] Add structured logging for all ML predictions
+- [ ] Add timing metrics to all Hangfire jobs
+- [ ] Ensure job start/complete/error logged
+- [ ] Add correlation IDs for file processing workflows
+- [ ] Add ML model version to classification logs
+
+---
+
+## 🎯 SPRINT SUMMARY
+
+| Sprint | Duration | Focus | Tasks | Priority |
+|--------|----------|-------|-------|----------|
+| Sprint 1 | 2-3 days | Production Features | File scan schedule, LogCleanup, ModelTraining, Testing | **HIGH** |
+| Sprint 2 | 3-4 days | Code Quality | Unused code removal, Architecture fixes, Test fixes | **MEDIUM** |
+| Sprint 3 | 1-2 days | Documentation | CLAUDE.md, README.md, API docs, Deployment guide | **MEDIUM** |
+
+**Total Estimated Time**: 6-9 days (1.5-2 weeks)
+
+---
+
+## 📝 NOTES
+
+- All Hangfire jobs should use `low-priority` queue to avoid blocking file processing
+- Model training job should have concurrent execution disabled
+- Log cleanup should be configurable via appsettings (retention days)
+- Keep development file scan at 5 minutes for quick testing
+- Document all cron expressions clearly
+- Add proper error handling and retry logic to all jobs
+- Ensure all jobs are properly registered in Hangfire Dashboard
+
+---
+
+**Last Updated**: 2025-01-18
+**Version**: 1.1.0-dev
+**Status**: Ready for Sprint 1 Implementation

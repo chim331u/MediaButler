@@ -57,12 +57,16 @@ public class RecurringJobRegistrationService : IHostedService
             var cronExpression = modelTrainingConfig["CronExpression"] ?? "0 3 * * 0";
             _logger.LogInformation("Registering ModelTraining job with cron: {Cron}", cronExpression);
 
-            // TODO: Implement in Sprint 4
-            // _recurringJobManager.AddOrUpdate<ModelTrainingJob>(
-            //     "model-training",
-            //     job => job.TrainModelAsync(JobCancellationToken.Null),
-            //     cronExpression,
-            //     new RecurringJobOptions { Queue = "low-priority", TimeZone = TimeZoneInfo.Local });
+            _recurringJobManager.AddOrUpdate<MediaButler.API.Jobs.Recurring.ModelTrainingJob>(
+                "model-training",
+                job => job.TrainModelAsync(),
+                cronExpression,
+                new RecurringJobOptions
+                {
+                    TimeZone = TimeZoneInfo.Local
+                });
+
+            _logger.LogInformation("ModelTraining recurring job registered successfully");
         }
 
         // Database Maintenance Job - VACUUM and ANALYZE
@@ -84,15 +88,19 @@ public class RecurringJobRegistrationService : IHostedService
         var logCleanupConfig = recurringJobsConfig.GetSection("LogCleanup");
         if (logCleanupConfig.GetValue<bool>("Enabled", false))
         {
-            var cronExpression = logCleanupConfig["CronExpression"] ?? "0 1 * * *";
+            var cronExpression = logCleanupConfig["CronExpression"] ?? "0 2 * * *";
             _logger.LogInformation("Registering LogCleanup job with cron: {Cron}", cronExpression);
 
-            // TODO: Implement in Sprint 4
-            // _recurringJobManager.AddOrUpdate<LogCleanupJob>(
-            //     "log-cleanup",
-            //     job => job.CleanupOldLogsAsync(JobCancellationToken.Null),
-            //     cronExpression,
-            //     new RecurringJobOptions { Queue = "low-priority", TimeZone = TimeZoneInfo.Local });
+            _recurringJobManager.AddOrUpdate<MediaButler.API.Jobs.Recurring.LogCleanupJob>(
+                "log-cleanup",
+                job => job.CleanupOldLogsAsync(),
+                cronExpression,
+                new RecurringJobOptions
+                {
+                    TimeZone = TimeZoneInfo.Local
+                });
+
+            _logger.LogInformation("LogCleanup recurring job registered successfully");
         }
 
         _logger.LogInformation("Recurring jobs registration completed");

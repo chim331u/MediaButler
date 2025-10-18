@@ -133,6 +133,8 @@ builder.Services.AddHangfireServer(options =>
 builder.Services.AddScoped<MediaButler.API.Jobs.Batch.BatchFileProcessingJob>();
 builder.Services.AddScoped<IBatchFileProcessor, MediaButler.API.Jobs.Batch.BatchFileProcessingJob>();
 builder.Services.AddScoped<MediaButler.API.Jobs.Recurring.FileDiscoveryJob>();
+builder.Services.AddScoped<MediaButler.API.Jobs.Recurring.LogCleanupJob>();
+builder.Services.AddScoped<MediaButler.API.Jobs.Recurring.ModelTrainingJob>();
 
 // Register batch job services (progress reporting and throttling)
 builder.Services.AddScoped<IProgressReporter, SignalRProgressReporter>();
