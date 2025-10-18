@@ -136,6 +136,7 @@ public class FileOrganizationService : IFileOrganizationService
             trackedFile.TargetPath = targetPath;
             trackedFile.MovedToPath = moveResult.Value.TargetPath;
             trackedFile.Status = FileStatus.Moved;
+            trackedFile.MovedAt = DateTime.UtcNow;
             trackedFile.MarkAsModified();
 
             _unitOfWork.TrackedFiles.Update(trackedFile);
