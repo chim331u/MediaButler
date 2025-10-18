@@ -139,12 +139,12 @@ public class FileProcessingService : BackgroundService
             // Create service scope for proper dependency injection lifecycle
             using var scope = _serviceScopeFactory.CreateScope();
             var fileService = scope.ServiceProvider.GetRequiredService<IFileService>();
-            var predictionService = scope.ServiceProvider.GetRequiredService<IPredictionService>();
+            var classificationService = scope.ServiceProvider.GetRequiredService<IClassificationService>();
             var fileOrganizationService = scope.ServiceProvider.GetRequiredService<IFileOrganizationService>();
-            
-            // Perform ML classification using the filename
-            _logger.LogDebug("Starting ML classification for file: {FileName}", file.FileName);
-            var mlResult = await predictionService.PredictAsync(file.FileName, cancellationToken);
+
+            // Perform ML classification using the trained ML.NET model
+            _logger.LogDebug("Starting ML.NET classification for file: {FileName}", file.FileName);
+            var mlResult = await classificationService.ClassifyFilenameAsync(file.FileName);
             
             if (!mlResult.IsSuccess)
             {
