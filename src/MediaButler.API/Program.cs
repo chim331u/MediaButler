@@ -22,6 +22,7 @@ using FluentValidation.AspNetCore;
 using MediaButler.API.Configuration;
 using Hangfire;
 using Hangfire.Storage.SQLite;
+using Hangfire.InMemory;
 using Hangfire.Dashboard;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -103,19 +104,33 @@ builder.Services.AddScoped<MediaButler.Services.ML.IDatabaseTrainingService, Med
 builder.Services.AddScoped<IFileActionsService, FileActionsService>();
 
 // Add Hangfire services with SQLite storage (client mode - job enqueueing only)
-builder.Services.AddHangfire(config => config
-    .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+builder.Services.AddHangfire(config => 
+{
+    config.SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
     .UseSimpleAssemblyNameTypeSerializer()
-    .UseRecommendedSerializerSettings()
-    .UseSQLiteStorage(
-        builder.Configuration.GetConnectionString("HangfireConnection"),
-        new SQLiteStorageOptions
-        {
-            QueuePollInterval = TimeSpan.FromSeconds(15),
-            JobExpirationCheckInterval = TimeSpan.FromHours(1),
-            InvisibilityTimeout = TimeSpan.FromMinutes(30)
-        }
-    ));
+    .UseRecommendedSerializerSettings();
+    // Check if we should use in-memory storage (default) or SQLite
+    var useInMemory = builder.Configuration.GetValue<bool>("Hangfire:UseInMemoryStorage", true);
+
+    if (useInMemory)
+    {
+        config.UseInMemoryStorage();
+        Log.Information("Hangfire configured to use In-Memory storage");
+    }
+    else
+    {
+        config.UseSQLiteStorage(
+            builder.Configuration.GetConnectionString("HangfireConnection"),
+            new SQLiteStorageOptions
+            {
+                QueuePollInterval = TimeSpan.FromSeconds(15),
+                JobExpirationCheckInterval = TimeSpan.FromHours(1),
+                InvisibilityTimeout = TimeSpan.FromMinutes(30)
+            }
+        );
+        Log.Information("Hangfire configured to use SQLite storage");
+    }
+});
 
 // Add Hangfire server (combined mode - both enqueue and execute jobs)
 var hangfireConfig = builder.Configuration.GetSection("Hangfire:Server");
