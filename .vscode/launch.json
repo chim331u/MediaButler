@@ -1,0 +1,26 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Go API - Debug",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}/src/MediaButler-Go/cmd/api",
+            "cwd": "${workspaceFolder}/src/MediaButler-Go",
+            "env": {},
+            "args": [],
+            "showLog": true,
+            "trace": "verbose"
+        },
+        {
+            "name": "Go API - Run",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}/src/MediaButler-Go/cmd/api/main.go",
+            "cwd": "${workspaceFolder}/src/MediaButler-Go",
+            "console": "integratedTerminal"
+        }
+    ]
+}

@@ -132,6 +132,43 @@ Databases
 
 ## Development Commands
 
+### Prerequisites
+
+**Multi-SDK Development Environment:**
+
+This project uses **three different .NET SDK versions** for different components:
+
+- **✅ .NET 8.0 SDK** (for API, Services, Core, Data, ML components)
+  - Stable, production-ready
+  - ARM32 optimized
+  - Used for backend services and Hangfire worker
+
+- **✅ .NET 10.0 SDK** (for Web UI - Blazor WebAssembly)
+  - Preview version with latest Blazor features
+  - Client-side WebAssembly execution
+  - Modern UI components (Radzen.Blazor)
+
+- **✅ .NET 9.0 SDK** (for Mobile - MAUI Android)
+  - Latest stable MAUI version
+  - Android-only app for NAS monitoring
+  - Push notifications and quick file confirmations
+
+**Additional Prerequisites for Go API Migration:**
+- **Go 1.21+** (for Go API implementation)
+- **SQLC** (for type-safe SQL code generation)
+
+**Check installed SDKs:**
+```bash
+# Check .NET SDKs
+dotnet --list-sdks
+
+# Check Go version
+go version
+
+# Check SQLC installation
+sqlc version
+```
+
 ### Build and Run
 ```bash
 # Build entire solution
@@ -146,8 +183,10 @@ dotnet run --project src/MediaButler.API
 # Run in production mode
 dotnet run --project src/MediaButler.API --configuration Release
 
-# Access Hangfire Dashboard (development only)
-# Navigate to http://localhost:5000/hangfire after starting API
+# Access API endpoints
+# Swagger UI: http://localhost:5000/swagger
+# Hangfire Dashboard: http://localhost:5000/hangfire (development only)
+# Health Check: http://localhost:5000/api/health
 ```
 
 ### Web Development (Blazor WebAssembly - .NET 10)
@@ -620,8 +659,14 @@ Performance and memory optimization settings for ARM32 NAS deployment.
 
 **Configuration Files:**
 - `src/MediaButler.API/appsettings.json` - Base configuration with ARM32 optimization
-- `src/MediaButler.API/appsettings.Development.json` - Development overrides
-- `src/MediaButler.API/appsettings.Production.json` - Production overrides
+- `src/MediaButler.API/appsettings.Development.json` - Development overrides (more verbose logging, faster Hangfire intervals)
+- `src/MediaButler.API/appsettings.Production.json` - Production overrides (optimized for NAS deployment)
+
+**Important Configuration Notes:**
+- Hangfire uses in-memory storage in development for faster testing
+- Production uses SQLite storage at `/data/mediabutler-hangfire.db`
+- CORS settings are configurable via `CorsSettings` section
+- All paths use `/data` prefix for Docker volume mounting
 
 ## Development Philosophy - "Simple Made Easy"
 
@@ -731,6 +776,238 @@ CREATE TABLE SeriesPatterns (
 - Rollback capability: change active version in config, restart service
 - Maximum 3 model versions retained (disk space optimization)
 - Version format: semantic versioning (1.0.0, 1.1.0, 2.0.0)
+
+## Current Development Status
+
+Based on the development planning document and git history:
+
+**Completed Sprints:**
+- ✅ **Sprint 1**: Foundation & Domain (Complete - 243+ tests)
+- ✅ **Sprint 2**: ML Classification Engine (Complete - Italian content optimization)
+- ✅ **Sprint 3**: File Operations & Automation (Substantially complete - 92.9% test pass rate)
+
+**Current Branch**: `golangApi` - Active Go API migration project (see Go Migration section below)
+
+**Active Work Areas:**
+1. Go API migration (PoC in progress - Week 2: Service layer)
+2. API endpoint expansion and documentation
+3. Hangfire background job implementation with in-memory storage
+4. ML.NET integration with FastText classification
+5. File organization and rollback services
+6. Comprehensive testing infrastructure (790+ tests)
+
+**Known Items to Address:**
+- Minor test failures in ML performance validation (37 of 520 tests)
+- Documentation updates for new API endpoints
+- Final Sprint 4 tasks (Web UI polish and mobile app)
+
+## Go API Migration Project (Active)
+
+**Status**: Proof of Concept (PoC) - Week 1 Complete, Week 2 In Progress
+
+MediaButler is undergoing a parallel Go API implementation to achieve significant performance improvements for ARM32 NAS deployment while maintaining full compatibility with existing clients.
+
+### Migration Goals
+
+| Metric | .NET Baseline | Go Target | Improvement |
+|--------|---------------|-----------|-------------|
+| Memory (idle) | 150MB | 50MB | **66% reduction** |
+| Memory (peak) | 280MB | 120MB | **57% reduction** |
+| Response (p50) | 80ms | 20ms | **75% faster** |
+| Response (p95) | 400ms | 150ms | **62% faster** |
+| Binary size | 45MB | 12MB | **73% smaller** |
+| Cold start | 3.5s | 0.8s | **77% faster** |
+
+### Go Technology Stack
+
+| Component | Technology | Rationale |
+|-----------|-----------|-----------|
+| **Web Framework** | Chi Router | Lightweight (10KB), idiomatic Go, excellent middleware |
+| **Database** | SQLC | Compile-time SQL generation, zero reflection, ARM32-friendly |
+| **Background Jobs** | Asynq (or goroutines) | Redis-backed queue matching Hangfire architecture |
+| **Real-time** | HTTP → .NET Bridge | Use existing SignalR Hubs via .NET API Bridge (Zero Frontend Change) |
+| **ML Integration** | HTTP → .NET Internal | Keep existing ML.NET service, expose via internal API |
+| **Config** | Viper | Multi-source config (JSON/ENV), live reload |
+| **Logging** | Zerolog | Zero-allocation, 10x faster than stdlib |
+
+### Migration Strategy
+
+**Parallel Deployment with nginx:**
+```
+┌─────────────────┐
+│  API Gateway    │
+│  (nginx)        │
+└────────┬────────┘
+         │
+    ┌────┴────┐
+    │         │
+┌───▼───┐ ┌──▼───┐
+│.NET   │ │Go    │
+│API    │ │API   │
+│:5000  │ │:5001 │
+└───┬───┘ └──┬───┘
+    │         │
+┌───▼─────────▼───┐
+│  SQLite DB      │
+│  (shared)       │
+└─────────────────┘
+```
+
+**nginx Routing:**
+```nginx
+# Route Tier 1 endpoints to Go (files, health, processing, stats)
+location ~ ^/api/(files|health|processing|stats) {
+    proxy_pass http://localhost:5001;
+}
+
+# Route remaining endpoints to .NET
+location /api/ {
+    proxy_pass http://localhost:5000;
+}
+```
+
+### PoC Scope (25 Core Endpoints - 40% of Total)
+
+**Tier 1 Critical Path (15 endpoints):**
+- File Management (9): `/api/files/*`, `/api/files/by-statuses`, `/api/files/{hash}/confirm`
+- Health & Monitoring (3): `/api/health`, `/api/health/ready`, `/api/health/detailed`
+- Processing (3): `/api/stats/processing`, `/api/processing/queue/status`, `/api/v1/file-actions/ignore/{hash}`
+
+### Go Project Structure
+
+```
+src/MediaButler-Go/
+├── cmd/
+│   ├── api/main.go                    # HTTP server entrypoint
+│   └── worker/main.go                 # Background job worker
+├── internal/
+│   ├── api/
+│   │   ├── handlers/                  # HTTP handlers (controllers)
+│   │   ├── middleware/                # CORS, logging, recovery
+│   │   └── router.go                  # Chi router setup
+│   ├── db/
+│   │   ├── queries/                   # SQLC SQL definitions
+│   │   │   ├── schema.sql             # Exported from EF Core
+│   │   │   └── files.sql              # TrackedFile queries (40+)
+│   │   └── *.go                       # Generated SQLC code
+│   ├── domain/
+│   │   ├── file.go                    # TrackedFile business logic
+│   │   └── status.go                  # FileStatus enum
+│   ├── service/
+│   │   ├── file_service.go            # IFileService implementation
+│   │   ├── ml_client.go               # ML HTTP client
+│   │   └── stats_service.go           # Statistics service
+│   ├── repository/
+│   │   ├── file_repo.go               # Repository pattern
+│   │   └── transaction.go             # UnitOfWork pattern
+│   └── config/
+│       └── config.go                  # Viper configuration
+├── pkg/
+│   ├── result/result.go               # Result<T> pattern
+│   └── pagination/pagination.go       # Pagination utilities
+├── configs/
+│   └── config.json                    # Configuration file
+├── go.mod                             # Go module dependencies
+├── sqlc.yaml                          # SQLC configuration
+├── Makefile                           # Build automation
+└── README.md                          # Go-specific documentation
+```
+
+### Go Development Commands
+
+```bash
+# Prerequisites (from MediaButler-Go directory)
+# Install Go 1.21+, SQLC
+brew install go sqlc
+
+# Generate type-safe database code from SQL
+make generate  # or: sqlc generate
+
+# Download dependencies
+make deps      # or: go mod download
+
+# Build API server
+make build                    # Output: bin/mediabutler-api
+make build-arm32              # Cross-compile for ARM32
+
+# Run tests (Week 2+)
+make test                     # or: go test ./...
+make test-coverage            # with coverage report
+
+# Run Go API (development)
+go run cmd/api/main.go -config configs/config.json
+# API available at http://localhost:5001
+
+# Run both APIs concurrently for testing
+# Terminal 1: .NET API (includes Hangfire worker)
+dotnet run --project src/MediaButler.API
+# Terminal 2: Go API
+cd src/MediaButler-Go && go run cmd/api/main.go -config configs/config.json
+```
+
+### Week-by-Week Implementation Status
+
+**✅ Week 1 Complete (Foundation):**
+- Go module and project structure
+- Database schema export from EF Core
+- Configuration management with Viper (mirrors appsettings.json)
+- Domain entities (TrackedFile, FileStatus, BaseEntity)
+- Result<T> pattern for error handling
+- SQLC query definitions (40+ queries)
+- Repository pattern implementation
+- UnitOfWork pattern for transactions
+
+**🔄 Week 2 In Progress (Service Layer):**
+- FileService implementation
+- ML HTTP client (calls .NET internal endpoint)
+- StatsService implementation
+- Unit tests for services
+
+**📅 Week 3 Planned (HTTP API):**
+- Chi router with middleware
+- Health endpoints
+- File CRUD handlers
+- Processing and stats handlers
+- Integration tests
+
+**📅 Week 4 Planned (Deployment):**
+- Application bootstrap (main.go)
+- Docker ARM32 build
+- Performance benchmarks vs .NET baseline
+- E2E testing
+- Go/No-Go decision based on PoC results
+
+### ML Integration Approach
+
+**Decision: .NET Internal API Bridge (Not Python)**
+
+Original plan to wrap ML.NET model in Python was abandoned due to:
+- ML.NET model is native .NET artifact (`.zip` format incompatible with Python)
+- Complex feature engineering logic in C# (TokenizerService) would require full rewrite
+- Significant increase in PoC scope and risk
+
+**Current Implementation:**
+1. .NET API exposes internal classification endpoint: `POST /internal/classify`
+2. Go API calls this endpoint via HTTP when classification needed
+3. Zero ML migration effort, 100% fidelity to existing logic
+4. No new Python dependency or model retraining required
+
+**Future Consideration:** Python microservice remains viable for advanced ML features post-PoC.
+
+### SignalR/Real-time Updates
+
+**Strategy: HTTP Bridge to Existing SignalR Hubs**
+
+Go API sends notifications by making HTTP POST requests to .NET API's `/api/notifications/batch` endpoint, which broadcasts to SignalR hubs. Frontend remains completely untouched.
+
+### Go Migration Documentation
+
+Detailed migration documentation available at:
+- `src/MediaButler-Go/README.md` - Go project setup and development
+- `src/MediaButler-Go/WEEK1-SUMMARY.md` - Week 1 completion summary
+- `docs/eager-purring-puzzle.md` - Complete migration plan
+- `docs/migration-review.md` - Migration review and improvements
+- `docs/API-Endpoints.md` - Complete API endpoint reference
 
 ## Client Applications
 
@@ -987,3 +1264,70 @@ dotnet test --collect:"XPlat Code Coverage" --logger:trx
 - **Web UI Testing**: Component rendering and user interaction validation
 
 This testing strategy ensures MediaButler maintains high quality while following "Simple Made Easy" principles - tests serve as reasoning tools about system behavior rather than complex safety nets that mask underlying complexity.
+
+## Common Development Tasks
+
+### Running Specific Tests
+```bash
+# Run a single test by name pattern
+dotnet test --filter "DisplayName~ClassifyFile"
+
+# Run all tests in a specific test class
+dotnet test --filter "FullyQualifiedName~TokenizerServiceTests"
+
+# Run tests by category (if categorized)
+dotnet test --filter "Category=Performance"
+
+# Run tests with detailed output
+dotnet test --logger "console;verbosity=detailed"
+```
+
+### Debugging Tips
+```bash
+# Check application logs
+cat /data/logs/mediabutler-*.log | tail -n 100
+
+# Check error logs only
+cat /data/logs/mediabutler-errors-*.log
+
+# Monitor Hangfire job status (development)
+# Navigate to http://localhost:5000/hangfire
+
+# Check ML model status
+curl http://localhost:5000/api/health/ml
+
+# View current system statistics
+curl http://localhost:5000/api/stats
+```
+
+### Common Issues and Solutions
+
+#### Issue: "Database is locked" error
+**Solution**: SQLite is configured with WAL mode. Ensure only one process is accessing the database. Check for orphaned connections.
+
+#### Issue: Hangfire jobs not running
+**Solution**:
+1. Check Hangfire dashboard at `/hangfire`
+2. Verify `appsettings.json` has correct `RecurringJobs` configuration
+3. Ensure background service is registered in `Program.cs`
+
+#### Issue: ML classification returning low confidence
+**Solution**:
+1. Check training data quality in database
+2. Verify model file exists in `models/` directory
+3. Retrain model via `/api/training/trainModel` endpoint
+4. Review tokenization patterns for your content type
+
+#### Issue: File discovery not detecting new files
+**Solution**:
+1. Verify watch folder path in `appsettings.json`
+2. Check file permissions on watch folder
+3. Ensure file meets minimum size requirement (default: 1MB)
+4. Check `ExcludePatterns` aren't filtering your files
+
+#### Issue: Memory usage exceeding 300MB on ARM32
+**Solution**:
+1. Check `MaxBatchSize` in ML configuration (reduce if needed)
+2. Verify `WorkerCount` in Hangfire settings (should be 2 for ARM32)
+3. Monitor GC behavior in logs
+4. Consider reducing `RetainedFileCountLimit` for logs

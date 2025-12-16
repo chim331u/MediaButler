@@ -1,0 +1,60 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 5001,
+    "read_timeout": "10s",
+    "write_timeout": "10s",
+    "shutdown_timeout": "30s",
+    "cors_allowed_origins": ["*"]
+  },
+  "paths": {
+    "media_library": "/library",
+    "watch_folder": "/watch",
+    "pending_review": "/tmp/mediabutler/pending"
+  },
+  "file_discovery": {
+    "watch_folders": ["/watch"],
+    "enable_file_system_watcher": true,
+    "scan_interval_minutes": 10,
+    "file_extensions": [".mkv", ".mp4", ".avi", ".m4v", ".wmv"],
+    "exclude_patterns": [".*tmp", ".*part", ".*incomplete"],
+    "min_file_size_mb": 1,
+    "debounce_delay_seconds": 8,
+    "max_concurrent_scans": 1
+  },
+  "ml": {
+    "service_url": "http://localhost:5002",
+    "timeout": "5s",
+    "auto_classify_threshold": 0.85,
+    "suggestion_threshold": 0.50,
+    "max_classification_time_ms": 500,
+    "max_alternative_predictions": 3,
+    "enable_prediction_caching": true,
+    "max_retries": 3
+  },
+  "database": {
+    "path": "../../temp/mediabutler.db",
+    "max_open_conns": 1,
+    "max_idle_conns": 2,
+    "conn_max_lifetime": "0",
+    "wal_mode": true
+  },
+  "logging": {
+    "level": "info",
+    "format": "json",
+    "output_path": "/data/logs/mediabutler.log",
+    "max_size_mb": 50,
+    "max_backups": 7,
+    "max_age_days": 30,
+    "enable_caller": false,
+    "enable_stacktrace": false
+  },
+  "arm32": {
+    "memory_threshold_mb": 200,
+    "auto_gc_trigger_mb": 150,
+    "performance_threshold_ms": 1000,
+    "max_log_file_size_mb": 50,
+    "worker_count": 2,
+    "max_batch_size": 50
+  }
+}

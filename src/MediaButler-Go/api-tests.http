@@ -1,0 +1,172 @@
+### MediaButler Go API - Test Endpoints
+### Use with VS Code REST Client extension or curl
+### Base URL: http://localhost:5001
+
+### Variables
+@baseUrl = http://localhost:5001
+@apiUrl = {{baseUrl}}/api
+
+################################################################################
+### Health Endpoints
+################################################################################
+
+### 1. Basic Health Check
+GET {{baseUrl}}/health
+
+### 2. Readiness Check
+GET {{baseUrl}}/health/ready
+
+### 3. Detailed Health Check (with metrics)
+GET {{baseUrl}}/health/detailed
+
+
+################################################################################
+### File Management Endpoints
+################################################################################
+
+### 4. Get All Files (default status: New)
+GET {{apiUrl}}/files?skip=0&take=20
+
+### 5. Get Files by Status (Classified)
+GET {{apiUrl}}/files?status=Classified&skip=0&take=20
+
+### 6. Get Files by Multiple Statuses
+GET {{apiUrl}}/files/by-statuses?statuses=New&statuses=Classified&skip=0&take=50
+
+### 7. Get Pending Files (awaiting confirmation)
+GET {{apiUrl}}/files/pending
+
+### 8. Get All Categories
+GET {{apiUrl}}/files/categories
+
+### 9. Get File by Hash (replace with actual hash)
+GET {{apiUrl}}/files/abc123def456789012345678901234567890123456789012345678901234
+
+### 10. Register New File
+POST {{apiUrl}}/files
+Content-Type: application/json
+
+{
+  "filePath": "/watch/Breaking.Bad.S01E01.1080p.mkv",
+  "hash": "abc123def456789012345678901234567890123456789012345678901234",
+  "fileSize": 1024000000
+}
+
+### 11. Register File (with hash calculation)
+POST {{apiUrl}}/files
+Content-Type: application/json
+
+{
+  "filePath": "/watch/The.Office.S01E01.720p.mkv"
+}
+
+### 12. Confirm File Category (replace hash)
+POST {{apiUrl}}/files/abc123def456789012345678901234567890123456789012345678901234/confirm
+Content-Type: application/json
+
+{
+  "category": "BREAKING BAD"
+}
+
+### 13. Mark File as Moved (replace hash)
+POST {{apiUrl}}/files/abc123def456789012345678901234567890123456789012345678901234/moved
+Content-Type: application/json
+
+{
+  "movedToPath": "/library/BREAKING BAD/Breaking.Bad.S01E01.1080p.mkv"
+}
+
+### 14. Delete File (soft delete - replace hash)
+DELETE {{apiUrl}}/files/abc123def456789012345678901234567890123456789012345678901234
+
+
+################################################################################
+### Processing & Stats Endpoints
+################################################################################
+
+### 15. Get Processing Statistics
+GET {{apiUrl}}/stats/processing
+
+### 16. Get Queue Status
+GET {{apiUrl}}/processing/queue/status
+
+### 17. Ignore File (replace hash)
+POST {{apiUrl}}/v1/file-actions/ignore/abc123def456789012345678901234567890123456789012345678901234
+Content-Type: application/json
+
+{
+  "reason": "Duplicate file"
+}
+
+### 18. Ignore File (without reason)
+POST {{apiUrl}}/v1/file-actions/ignore/abc123def456789012345678901234567890123456789012345678901234
+
+
+################################################################################
+### Test Scenarios
+################################################################################
+
+### Scenario 1: Complete File Processing Workflow
+# Step 1: Register file
+POST {{apiUrl}}/files
+Content-Type: application/json
+
+{
+  "filePath": "/watch/The.Walking.Dead.S11E24.1080p.mkv"
+}
+
+###
+# Step 2: Get pending files
+GET {{apiUrl}}/files/pending
+
+###
+# Step 3: Confirm category (use hash from step 1 response)
+POST {{apiUrl}}/files/{HASH_FROM_STEP_1}/confirm
+Content-Type: application/json
+
+{
+  "category": "THE WALKING DEAD"
+}
+
+###
+# Step 4: Mark as moved
+POST {{apiUrl}}/files/{HASH_FROM_STEP_1}/moved
+Content-Type: application/json
+
+{
+  "movedToPath": "/library/THE WALKING DEAD/The.Walking.Dead.S11E24.1080p.mkv"
+}
+
+###
+# Step 5: Verify file status
+GET {{apiUrl}}/files/{HASH_FROM_STEP_1}
+
+
+### Scenario 2: Query and Filter Files
+# Get files ready for classification
+GET {{apiUrl}}/files?status=New&skip=0&take=10
+
+###
+# Get classified files
+GET {{apiUrl}}/files?status=Classified&skip=0&take=10
+
+###
+# Get moved files
+GET {{apiUrl}}/files?status=Moved&skip=0&take=20
+
+###
+# Get files with errors
+GET {{apiUrl}}/files?status=Error&skip=0&take=10
+
+
+### Scenario 3: Statistics and Monitoring
+# Get overall processing stats
+GET {{apiUrl}}/stats/processing
+
+###
+# Get queue status
+GET {{apiUrl}}/processing/queue/status
+
+###
+# Get detailed health
+GET {{baseUrl}}/health/detailed

@@ -1,0 +1,65 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Go: Run API",
+            "type": "shell",
+            "command": "go run cmd/api/main.go",
+            "options": {
+                "cwd": "${workspaceFolder}/src/MediaButler-Go"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Go: Build API",
+            "type": "shell",
+            "command": "go build -o bin/mediabutler-api cmd/api/main.go",
+            "options": {
+                "cwd": "${workspaceFolder}/src/MediaButler-Go"
+            },
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "Go: Run Tests",
+            "type": "shell",
+            "command": "go test ./... -v",
+            "options": {
+                "cwd": "${workspaceFolder}/src/MediaButler-Go"
+            },
+            "group": "test",
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Go: Test Coverage",
+            "type": "shell",
+            "command": "go test ./... -coverprofile=coverage.out && go tool cover -html=coverage.out",
+            "options": {
+                "cwd": "${workspaceFolder}/src/MediaButler-Go"
+            },
+            "group": "test",
+            "problemMatcher": []
+        },
+        {
+            "label": "Go: Tidy",
+            "type": "shell",
+            "command": "go mod tidy",
+            "options": {
+                "cwd": "${workspaceFolder}/src/MediaButler-Go"
+            },
+            "problemMatcher": []
+        }
+    ]
+}
