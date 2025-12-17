@@ -16,7 +16,7 @@ type RouterConfig struct {
 	HealthHandler     *handlers.HealthHandler
 	FilesHandler      *handlers.FilesHandler
 	ProcessingHandler *handlers.ProcessingHandler
-	SignalRProxy      *handlers.SignalRProxy
+	SSEHandler        *handlers.SSEHandler
 	AllowedOrigins    []string
 	AllowCredentials  bool
 }
@@ -43,9 +43,10 @@ func NewRouter(cfg RouterConfig) *chi.Mux {
 	r.Get("/health/ready", cfg.HealthHandler.Ready)
 	r.Get("/health/detailed", cfg.HealthHandler.Detailed)
 
-	// SignalR Notification Proxy
-	if cfg.SignalRProxy != nil {
-		r.Mount("/notifications", cfg.SignalRProxy)
+	// SSE Endpoint (Server-Sent Events for real-time notifications)
+	if cfg.SSEHandler != nil {
+		r.Get("/events", cfg.SSEHandler.HandleSSE)
+		r.Get("/events/stats", cfg.SSEHandler.GetStats)
 	}
 
 	// API routes under /api prefix
@@ -56,6 +57,12 @@ func NewRouter(cfg RouterConfig) *chi.Mux {
 			r.Get("/ready", cfg.HealthHandler.Ready)
 			r.Get("/detailed", cfg.HealthHandler.Detailed)
 		})
+
+		// SSE Endpoint (also available under /api for consistency)
+		if cfg.SSEHandler != nil {
+			r.Get("/events", cfg.SSEHandler.HandleSSE)
+			r.Get("/events/stats", cfg.SSEHandler.GetStats)
+		}
 
 		// File management endpoints
 		r.Route("/files", func(r chi.Router) {

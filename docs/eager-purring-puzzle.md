@@ -14,16 +14,17 @@ Migrate MediaButler API from .NET 8 to Go using a **Proof of Concept** approach,
 
 ---
 
-## 📊 Current Implementation Status (Updated 2025-12-16)
+## 📊 Current Implementation Status (Updated 2025-12-17)
 
-**Overall Progress: 85% Complete** | **Estimated Completion: 1-1.5 weeks remaining**
+**Overall Progress: 95% Complete** | **Estimated Completion: 3-5 days remaining**
 
 | Phase | Status | Completion | Notes |
 |-------|--------|------------|-------|
 | **Week 1: Foundation** | ✅ Complete | 100% | Go module, domain, SQLC, repository pattern |
 | **Week 2: Services** | ✅ Complete | 100% | FileService, MLClient, StatsService + comprehensive unit tests |
 | **Week 3: HTTP API** | ✅ Complete | 100% | All 15 Tier 1 endpoints, middleware, router, full DI setup |
-| **Week 4: Deployment** | ⏳ In Progress | 40% | Build tools ready; Docker/benchmarks pending |
+| **Week 3.5: Real-time** | ✅ Complete | 100% | SSE implementation replacing SignalR, full event system |
+| **Week 4: Deployment** | ⏳ In Progress | 60% | Build tools ready, ML endpoint ready; Docker/benchmarks pending |
 
 **Key Achievements:**
 - ✅ 40,000+ lines of Go code written (including SQLC generated)
@@ -33,11 +34,13 @@ Migrate MediaButler API from .NET 8 to Go using a **Proof of Concept** approach,
 - ✅ **All 15 Tier 1 HTTP endpoints implemented and functional**
 - ✅ **Complete middleware stack (CORS, logging, recovery, request ID)**
 - ✅ **Full dependency injection with graceful shutdown**
+- ✅ **Server-Sent Events (SSE) implementation for real-time updates**
+- ✅ **.NET Internal ML endpoint at `/internal/ml/classify`**
+- ✅ **Web UI migrated from SignalR to SSE client**
 - ✅ Result<T> pattern for functional error handling
 - ✅ Configuration management mirroring .NET appsettings.json
 
 **Remaining Critical Path:**
-- ❌ .NET internal ML classification endpoint at `/internal/ml/classify`
 - ❌ Integration tests with live database
 - ❌ Performance benchmarks on ARM32 hardware
 - ❌ Docker deployment configuration (Dockerfile.arm32)
@@ -46,16 +49,17 @@ Migrate MediaButler API from .NET 8 to Go using a **Proof of Concept** approach,
 - **Web Framework**: Chi Router v5.2.3
 - **Database**: SQLC (type-safe SQL code generation)
 - **Config**: Viper v1.18.2
-- **ML Integration**: HTTP bridge to .NET API (not Python)
-- **Real-time**: HTTP bridge to existing SignalR hubs
+- **ML Integration**: HTTP bridge to .NET API internal endpoint
+- **Real-time**: Server-Sent Events (SSE) replacing SignalR
 
 **Next Immediate Actions:**
 1. ✅ ~~Complete service layer unit tests~~ - **DONE** (1,100+ lines of tests)
 2. ✅ ~~Implement HTTP API handlers with Chi router~~ - **DONE** (All 15 endpoints functional)
-3. Create .NET internal ML endpoint at `/internal/ml/classify` (1 day)
-4. Run integration tests with live database (1 day)
-5. Performance benchmarks on ARM32 hardware (1-2 days)
-6. Docker deployment configuration (1 day)
+3. ✅ ~~Create .NET internal ML endpoint at `/internal/ml/classify`~~ - **DONE**
+4. ✅ ~~Implement SSE for real-time events~~ - **DONE** (Full broker + Web client)
+5. Run integration tests with live database (1 day)
+6. Performance benchmarks on ARM32 hardware (1-2 days)
+7. Docker deployment configuration (1 day)
 
 ---
 
@@ -110,7 +114,7 @@ POST /api/v1/file-actions/ignore/{hash}  # File ignore action
 | **Web Framework** | Chi Router | Lightweight (10KB), idiomatic Go, excellent middleware |
 | **Database** | SQLC | Compile-time SQL generation, zero reflection, ARM32-friendly |
 | **Background Jobs** | Asynq (or goroutines) | Redis-backed queue matching Hangfire architecture |
-| **Real-time** | HTTP -> .NET Bridge | Use existing SignalR Hubs via .NET API Bridge (Zero Frontend Change) |
+| **Real-time** | Server-Sent Events (SSE) | Native HTTP streaming, simpler than WebSockets, browser-native EventSource API |
 | **ML Integration** | HTTP -> .NET Internal | Keep existing ML.NET service, expose via internal API (Temporary POC solution) |
 | **Config** | Viper | Multi-source config (JSON/ENV), live reload |
 | **Logging** | Zerolog | Zero-allocation, 10x faster than stdlib |
@@ -148,9 +152,13 @@ MediaButler/src/MediaButler-Go/
 │   │   │   ├── files.go               # FilesController → 600 LOC
 │   │   │   ├── health.go              # HealthController → 200 LOC
 │   │   │   ├── processing.go          # ProcessingController → 200 LOC
-│   │   │   └── stats.go               # StatsController → 300 LOC
+│   │   │   ├── stats.go               # StatsController → 300 LOC
+│   │   │   └── sse_handler.go         # SSE handler → 150 LOC
 │   │   ├── middleware/                # CORS, logging, recovery
 │   │   └── router.go                  # Chi router setup
+│   ├── sse/
+│   │   ├── broker.go                  # SSE broker managing clients → 160 LOC
+│   │   └── events.go                  # Event type definitions → 130 LOC
 │   ├── db/
 │   │   ├── queries/                   # SQLC SQL definitions
 │   │   │   ├── schema.sql             # Exported from EF Core
@@ -475,10 +483,13 @@ diff dotnet-results.json go-results.json  # Validate identical responses
 **Day 11-14: ML Integration (Internal Bridge)**
 
 - [x] ✅ Implement `MLClient` in Go using HTTP requests to .NET
-  - Client calls `POST /internal/classify` endpoint
+  - Client calls `POST /internal/ml/classify` endpoint
   - Result<T> pattern for error handling
   - Configurable timeout and base URL
-- [ ] ⏳ Create `POST /internal/classify` endpoint in .NET (pending)
+- [x] ✅ Create `POST /internal/ml/classify` endpoint in .NET
+  - `InternalMLController.cs` with Classify endpoint
+  - Direct integration with ML.NET ClassificationService
+  - Error handling and Result<T> pattern
 - [ ] ⏳ Integration tests with live .NET ML service (pending)
 
 **Week 2 Progress:**
@@ -541,6 +552,40 @@ diff dotnet-results.json go-results.json  # Validate identical responses
 - **Lines of Code**: 850+ lines across handlers, middleware, router, main
 - **Testing Files**: api-tests.http (200+ lines), QUICK-START.md, Go-API-Testing-Guide.md
 - **Ready**: API can be run with `go run cmd/api/main.go` and tested immediately
+
+**Week 3.5: Real-time Communication (SSE) ✅ COMPLETE (100%)**
+
+**Day 22-23: SSE Implementation**
+
+- [x] ✅ `internal/sse/broker.go` - SSE broker with client management (160 LOC)
+  - Client subscription/unsubscription with context handling
+  - Event broadcasting to all connected clients
+  - Slow client detection and event dropping
+  - Thread-safe client map with RWMutex
+- [x] ✅ `internal/sse/events.go` - Event type definitions (130 LOC)
+  - All 11 event types matching SignalR events
+  - Strongly-typed event structs (Scan, Move, Training, Batch, Error)
+  - JSON serialization support
+- [x] ✅ `internal/api/handlers/sse_handler.go` - SSE HTTP handler (150 LOC)
+  - EventSource-compatible SSE streaming
+  - Connection management with heartbeat (30s intervals)
+  - Client ID generation and tracking
+  - Graceful disconnect handling
+- [x] ✅ Web UI SSE client migration
+  - `Services/SseNotificationService.cs` - C# SSE client (460 LOC)
+  - `Services/ISseNotificationService.cs` - Interface definition
+  - `Models/SseEvents.cs` - Event models
+  - `wwwroot/js/sse-client.js` - JavaScript EventSource client
+  - Removed SignalR dependencies
+- [x] ✅ SSE endpoint routing
+  - `GET /events` - SSE connection endpoint
+  - `GET /events/stats` - Connection statistics
+
+**Week 3.5 Progress:**
+- **Status**: ✅ 100% Complete (full SSE infrastructure operational)
+- **Lines of Code**: 900+ lines (Go: 440 LOC, C#: 460 LOC)
+- **Events Supported**: 11 event types (scan, move, training, batch, error, connection)
+- **Benefits**: Simpler than WebSockets, browser-native EventSource API, automatic reconnection
 
 ### Week 4: Deployment & Validation 🔄 IN PROGRESS (40%)
 
@@ -612,13 +657,24 @@ diff dotnet-results.json go-results.json  # Validate identical responses
 23. ✅ `internal/api/handlers/files.go` - File endpoints - **338 lines, 9 endpoints**
 24. ✅ `internal/api/handlers/processing.go` - Processing endpoints - **114 lines, 3 endpoints**
 
-### ❌ Deployment (NOT STARTED)
+### ✅ Real-time (SSE) (COMPLETE)
 
-26. ✅ `Makefile` - Build automation - **Complete with 20+ targets**
-27. ✅ `go.mod` - Go module dependencies - **Complete**
-28. ✅ `sqlc.yaml` - SQLC configuration - **Complete**
-29. ❌ `Dockerfile.arm32` - Container build - **Not created**
-30. ❌ `docker-compose.yml` - Dev environment - **Not created**
+25. ✅ `internal/sse/broker.go` - SSE broker - **160 lines, client management & broadcasting**
+26. ✅ `internal/sse/events.go` - Event definitions - **130 lines, 11 event types**
+27. ✅ `internal/api/handlers/sse_handler.go` - SSE handler - **150 lines, EventSource streaming**
+28. ✅ `MediaButler.Web/Services/SseNotificationService.cs` - C# SSE client - **460 lines**
+29. ✅ `MediaButler.Web/Services/ISseNotificationService.cs` - Interface
+30. ✅ `MediaButler.Web/Models/SseEvents.cs` - Event models
+31. ✅ `MediaButler.Web/wwwroot/js/sse-client.js` - JavaScript EventSource client
+32. ✅ `MediaButler.API/Controllers/InternalMLController.cs` - Internal ML endpoint - **64 lines**
+
+### 🔄 Deployment (IN PROGRESS)
+
+33. ✅ `Makefile` - Build automation - **Complete with 20+ targets**
+34. ✅ `go.mod` - Go module dependencies - **Complete**
+35. ✅ `sqlc.yaml` - SQLC configuration - **Complete**
+36. ❌ `Dockerfile.arm32` - Container build - **Not created**
+37. ❌ `docker-compose.yml` - Dev environment - **Not created**
 
 ### 📊 Overall Progress
 
@@ -628,8 +684,10 @@ diff dotnet-results.json go-results.json  # Validate identical responses
 | **Data Layer** | ✅ Complete | 100% |
 | **Services** | ✅ Complete | 100% |
 | **HTTP API** | ✅ Complete | 100% |
-| **Deployment** | 🔄 In Progress | 40% (build tools + DI setup) |
-| **Overall** | 🔄 In Progress | **85% Complete** |
+| **Real-time (SSE)** | ✅ Complete | 100% |
+| **ML Integration** | ✅ Complete | 100% |
+| **Deployment** | 🔄 In Progress | 60% (build tools + DI setup) |
+| **Overall** | 🔄 In Progress | **95% Complete** |
 
 ---
 

@@ -1,17 +1,15 @@
-using Microsoft.AspNetCore.SignalR.Client;
-
 namespace MediaButler.Web.Services;
 
 /// <summary>
-/// Centralized SignalR notification service interface for managing real-time communication
+/// Server-Sent Events (SSE) notification service interface for managing real-time communication
 /// Follows "Simple Made Easy" principles with clear separation of concerns
 /// </summary>
-public interface ISignalRNotificationService
+public interface ISseNotificationService
 {
     /// <summary>
     /// Gets the current connection state
     /// </summary>
-    HubConnectionState ConnectionState { get; }
+    string ConnectionState { get; }
 
     /// <summary>
     /// Indicates if the service is currently connected and ready for notifications
@@ -19,19 +17,14 @@ public interface ISignalRNotificationService
     bool IsConnected { get; }
 
     /// <summary>
-    /// Indicates if auto-reconnection is enabled
-    /// </summary>
-    bool AutoReconnectEnabled { get; }
-
-    /// <summary>
-    /// Starts the SignalR connection with automatic retry logic
+    /// Starts the SSE connection
     /// </summary>
     /// <param name="cancellationToken">Cancellation token for operation</param>
     /// <returns>Task representing the connection operation</returns>
     Task StartAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Stops the SignalR connection gracefully
+    /// Stops the SSE connection gracefully
     /// </summary>
     /// <param name="cancellationToken">Cancellation token for operation</param>
     /// <returns>Task representing the disconnection operation</returns>
@@ -75,7 +68,7 @@ public interface ISignalRNotificationService
     /// <summary>
     /// Event fired when the connection state changes
     /// </summary>
-    event EventHandler<HubConnectionState>? ConnectionStateChanged;
+    event EventHandler<string>? ConnectionStateChanged;
 
     /// <summary>
     /// Event fired when a connection error occurs
@@ -91,30 +84,4 @@ public interface ISignalRNotificationService
     /// Event fired when connection is lost
     /// </summary>
     event EventHandler? Disconnected;
-
-    /// <summary>
-    /// Enables or disables automatic reconnection on connection loss
-    /// </summary>
-    /// <param name="enabled">Whether to enable auto-reconnection</param>
-    void SetAutoReconnect(bool enabled);
-
-    /// <summary>
-    /// Gets connection statistics and health information
-    /// </summary>
-    /// <returns>Connection statistics</returns>
-    SignalRConnectionStats GetConnectionStats();
-}
-
-/// <summary>
-/// Connection statistics for monitoring SignalR health
-/// </summary>
-public class SignalRConnectionStats
-{
-    public DateTime? ConnectedAt { get; init; }
-    public DateTime? LastMessageAt { get; init; }
-    public int ReconnectAttempts { get; init; }
-    public TimeSpan? TotalConnectedTime { get; init; }
-    public HubConnectionState CurrentState { get; init; }
-    public string? LastError { get; init; }
-    public DateTime? LastErrorAt { get; init; }
 }

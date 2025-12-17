@@ -51,7 +51,7 @@ public class FileManagementDto
 }
 
 /// <summary>
-/// Enum for move file results used in SignalR notifications
+/// Enum for move file results used in SSE notifications
 /// </summary>
 public enum MoveFilesResults
 {

@@ -2,11 +2,10 @@
 @using MediaButler.Web.Models
 @using MediaButler.Web.Services
 @using MediaButler.Core.Enums
-@using Microsoft.AspNetCore.SignalR.Client
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @inject IFilesApiService FilesApiService
-@inject ISignalRNotificationService SignalRService
+@inject ISseNotificationService SseService
 @inject TooltipService TooltipService
 @inject NotificationService NotificationService
 @implements IAsyncDisposable
@@ -489,7 +488,7 @@
     protected override async Task OnInitializedAsync()
     {
         await LoadData();
-        SetupSignalRSubscriptions();
+        SetupSseSubscriptions();
     }
 
     private async Task LoadData()
@@ -797,10 +796,10 @@
         }
     }
 
-    private void SetupSignalRSubscriptions()
+    private void SetupSseSubscriptions()
     {
         // Subscribe to file move notifications to refresh the view
-        _notificationSubscriptions.Add(SignalRService.SubscribeToJobProgress((jobType, message, progress) =>
+        _notificationSubscriptions.Add(SseService.SubscribeToJobProgress((jobType, message, progress) =>
         {
             if (jobType.Contains("move") && progress >= 100)
             {

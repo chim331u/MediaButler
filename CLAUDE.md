@@ -29,6 +29,8 @@ dotnet run --project src/MediaButler.Web
 - Web UI: http://localhost:5001 (if running)
 - Hangfire Dashboard: http://localhost:5000/hangfire (development only)
 - Health Check: http://localhost:5000/api/health
+- Go API: http://localhost:5002 (when running Go API)
+- SSE Events: http://localhost:5002/events (Go API real-time events)
 
 ## Project Overview
 
@@ -491,16 +493,23 @@ Designed for ARM32 NAS with 1GB RAM:
 
 ## Real-time Features
 
-The system provides real-time updates via SignalR for:
+The system provides real-time updates via two mechanisms:
+
+**SignalR (Legacy .NET API):**
+- `/notifications` - General system notifications
+- `/file-processing` - File processing and batch operation updates
+
+**Server-Sent Events / SSE (Go API - Preferred):**
+- `/events` - Real-time event stream using SSE (EventSource API)
+- `/events/stats` - Connection statistics
+
+**Event Types (Both SignalR and SSE):**
 - File scan progress (`scan.started`, `scan.found`, `scan.completed`)
 - Move operations (`move.started`, `move.progress`, `move.completed`)
 - ML training status (`training.started`, `training.completed`)
 - Batch processing updates (`batch.started`, `batch.progress`, `batch.completed`, `batch.failed`)
 - Error notifications (`error.move_failed`, `error.classification_failed`)
-
-**SignalR Hubs:**
-- `/notifications` - General system notifications
-- `/file-processing` - File processing and batch operation updates
+- Connection events (`connected` - SSE only)
 
 ## Test Strategy
 
@@ -573,7 +582,7 @@ Unit Tests (250+ tests, fast, low-level)
 
 ## Go API Migration Project (Active)
 
-**Status**: Proof of Concept (PoC) - Week 1 Complete, Week 2 In Progress
+**Status**: Proof of Concept (PoC) - 95% Complete, Integration Testing Phase
 
 MediaButler is undergoing a parallel Go API implementation to achieve significant performance improvements for ARM32 NAS deployment.
 
@@ -595,7 +604,7 @@ MediaButler is undergoing a parallel Go API implementation to achieve significan
 | **Web Framework** | Chi Router | Lightweight (10KB), idiomatic Go |
 | **Database** | SQLC | Compile-time SQL generation, ARM32-friendly |
 | **Background Jobs** | Asynq | Redis-backed queue matching Hangfire |
-| **Real-time** | HTTP → .NET Bridge | Use existing SignalR Hubs |
+| **Real-time** | Server-Sent Events (SSE) | Native HTTP streaming, browser EventSource API |
 | **ML Integration** | HTTP → .NET Internal | Keep existing ML.NET service |
 | **Config** | Viper | Multi-source config (JSON/ENV) |
 | **Logging** | Zerolog | Zero-allocation, 10x faster |
@@ -618,13 +627,20 @@ make build-arm32              # Cross-compile for ARM32
 
 # Run Go API (development)
 go run cmd/api/main.go -config configs/config.json
-# API available at http://localhost:5001
+# API available at http://localhost:5002
+# SSE available at http://localhost:5002/events
+
+# Test SSE connection
+curl -N http://localhost:5002/events
+# Or using a browser: open http://localhost:5002/events
 
 # Run both APIs concurrently for testing
 # Terminal 1: .NET API
 dotnet run --project src/MediaButler.API
 # Terminal 2: Go API
 cd src/MediaButler-Go && go run cmd/api/main.go -config configs/config.json
+# Terminal 3: Web UI (connects to Go API via SSE)
+dotnet run --project src/MediaButler.Web
 ```
 
 ### Implementation Status
@@ -639,17 +655,29 @@ cd src/MediaButler-Go && go run cmd/api/main.go -config configs/config.json
 - Repository pattern implementation
 - UnitOfWork pattern for transactions
 
-**🔄 Week 2 In Progress (Service Layer):**
-- FileService implementation
-- ML HTTP client (calls .NET internal endpoint)
+**✅ Week 2 Complete (Service Layer):**
+- FileService implementation with full business logic
+- ML HTTP client (calls .NET internal endpoint `/internal/ml/classify`)
 - StatsService implementation
-- Unit tests for services
+- 1,100+ lines of comprehensive unit tests
 
-**📅 Week 3-4 Planned:**
-- HTTP API layer with Chi router
-- Integration tests
-- Docker ARM32 build
-- Performance benchmarks
+**✅ Week 3 Complete (HTTP API Layer):**
+- All 15 Tier 1 endpoints implemented (files, health, processing)
+- Complete middleware stack (CORS, logging, recovery, request ID)
+- Chi router with full dependency injection
+- Graceful shutdown and signal handling
+
+**✅ Week 3.5 Complete (Real-time Communication):**
+- Server-Sent Events (SSE) broker implementation
+- 11 event types matching SignalR events
+- Web UI migrated from SignalR to SSE client
+- EventSource-compatible streaming
+- Internal ML endpoint in .NET API
+
+**🔄 Week 4 In Progress (Deployment & Validation):**
+- Integration tests with live database
+- Docker ARM32 build configuration
+- Performance benchmarks on ARM32 hardware
 - Go/No-Go decision
 
 For detailed Go migration documentation, see:

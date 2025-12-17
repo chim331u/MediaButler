@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -20,6 +19,7 @@ import (
 	"github.com/lucapaganotti/mediabutler-go/internal/config"
 	"github.com/lucapaganotti/mediabutler-go/internal/repository"
 	"github.com/lucapaganotti/mediabutler-go/internal/service"
+	"github.com/lucapaganotti/mediabutler-go/internal/sse"
 )
 
 const version = "1.0.0"
@@ -65,24 +65,21 @@ func main() {
 
 	logger.Info().Msg("Services initialized")
 
+	// Initialize SSE Broker
+	sseBroker := sse.NewBroker(logger)
+	logger.Info().Msg("SSE broker initialized")
+
+	// Inject SSE broker into services (via type assertion to concrete type method)
+	if setter, ok := fileService.(interface{ SetSSEBroker(*sse.Broker) }); ok {
+		setter.SetSSEBroker(sseBroker)
+		logger.Info().Msg("SSE broker injected into FileService")
+	}
+
 	// Initialize Handlers
 	healthHandler := handlers.NewHealthHandler(version)
 	filesHandler := handlers.NewFilesHandler(fileService, scannerService, cfg.FileDiscovery.WatchFolders)
 	processingHandler := handlers.NewProcessingHandler(fileService, statsService)
-
-	// Initialize SignalR Proxy
-	// Assuming .NET API runs on localhost:5000 (standard for local dev) or configured URL
-	mlServiceURL := cfg.ML.ServiceURL // Reusing ML service URL as it points to the .NET API
-	if mlServiceURL == "" {
-		mlServiceURL = "http://localhost:5000"
-	}
-	// Need to strip /api if it exists in the config, as main API root is expected
-	mlServiceURL = strings.Replace(mlServiceURL, "/api", "", 1)
-
-	signalRProxy, err := handlers.NewSignalRProxy(mlServiceURL, logger)
-	if err != nil {
-		logger.Fatal().Err(err).Msg("Failed to initialize SignalR proxy")
-	}
+	sseHandler := handlers.NewSSEHandler(sseBroker, logger)
 
 	// Configure Router
 	routerConfig := api.RouterConfig{
@@ -90,7 +87,7 @@ func main() {
 		HealthHandler:     healthHandler,
 		FilesHandler:      filesHandler,
 		ProcessingHandler: processingHandler,
-		SignalRProxy:      signalRProxy,
+		SSEHandler:        sseHandler,
 		AllowedOrigins:    cfg.Server.CORSAllowedOrigins,
 		AllowCredentials:  true,
 	}

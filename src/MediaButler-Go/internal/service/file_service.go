@@ -7,9 +7,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/lucapaganotti/mediabutler-go/internal/domain"
 	"github.com/lucapaganotti/mediabutler-go/internal/repository"
+	"github.com/lucapaganotti/mediabutler-go/internal/sse"
 	"github.com/lucapaganotti/mediabutler-go/pkg/pagination"
 	"github.com/lucapaganotti/mediabutler-go/pkg/result"
 )
@@ -45,16 +47,23 @@ type FileService interface {
 
 // fileService implements FileService
 type fileService struct {
-	repo repository.FileRepository
-	uow  repository.UnitOfWork
+	repo      repository.FileRepository
+	uow       repository.UnitOfWork
+	sseBroker *sse.Broker
 }
 
 // NewFileService creates a new FileService instance
 func NewFileService(repo repository.FileRepository, uow repository.UnitOfWork) FileService {
 	return &fileService{
-		repo: repo,
-		uow:  uow,
+		repo:      repo,
+		uow:       uow,
+		sseBroker: nil, // Will be set via SetSSEBroker
 	}
+}
+
+// SetSSEBroker sets the SSE broker for the file service (optional dependency)
+func (s *fileService) SetSSEBroker(broker *sse.Broker) {
+	s.sseBroker = broker
 }
 
 // RegisterFile registers a new file by calculating its hash
@@ -242,6 +251,13 @@ func (s *fileService) ConfirmCategory(ctx context.Context, hash string, category
 
 // MarkAsMoved marks a file as successfully moved
 func (s *fileService) MarkAsMoved(ctx context.Context, hash string, movedToPath string) result.Result[bool] {
+	// Get file first for event data
+	fileResult := s.repo.GetByHash(ctx, hash)
+	if fileResult.IsFailure() {
+		return result.Failure[bool](fileResult.Error())
+	}
+	file := fileResult.Value()
+
 	err := repository.WithTransaction(ctx, s.uow, func(tx *repository.Transaction) error {
 		fileResult := tx.Files().GetByHash(ctx, hash)
 		if fileResult.IsFailure() {
@@ -259,8 +275,22 @@ func (s *fileService) MarkAsMoved(ctx context.Context, hash string, movedToPath 
 	})
 
 	if err != nil {
+		// Broadcast error event
+		s.broadcastEvent(sse.EventErrorMoveFailed, sse.ErrorEvent{
+			EventType: "move_failed",
+			Message:   err.Error(),
+			FileID:    &hash,
+			Timestamp: time.Now(),
+		})
 		return result.Failure[bool](err)
 	}
+
+	// Broadcast move completed event
+	s.broadcastEvent(sse.EventMoveCompleted, sse.MoveCompletedEvent{
+		FileID:   int(file.ID),
+		FileName: file.FileName,
+		Success:  true,
+	})
 
 	return result.Success(true)
 }
@@ -341,4 +371,12 @@ func calculateFileHash(filePath string) (string, error) {
 	}
 
 	return fmt.Sprintf("%x", hash.Sum(nil)), nil
+}
+
+// broadcastEvent is a helper to broadcast SSE events if broker is available
+func (s *fileService) broadcastEvent(eventType string, data interface{}) {
+	if s.sseBroker != nil {
+		// Non-blocking broadcast - ignore errors to avoid affecting business logic
+		_ = s.sseBroker.Broadcast(eventType, data)
+	}
 }

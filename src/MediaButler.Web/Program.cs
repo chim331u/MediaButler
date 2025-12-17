@@ -51,8 +51,9 @@ builder.Services.AddScoped<IHealthApiService, HealthApiService>();
 builder.Services.AddScoped<IFilesApiService, FilesApiService>();
 builder.Services.AddScoped<ITrainingApiService, TrainingApiService>();
 
-// SignalR notification service - centralized real-time communication
-builder.Services.AddSingleton<ISignalRNotificationService, SignalRNotificationService>();
+// Real-time notification service - Server-Sent Events (SSE) for Go API
+builder.Services.AddSingleton<ISseNotificationService, SseNotificationService>();
+Console.WriteLine("Using SSE notification service for real-time updates");
 
 // Radzen services
 builder.Services.AddScoped<DialogService>();
