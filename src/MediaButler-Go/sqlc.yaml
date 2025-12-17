@@ -22,7 +22,28 @@ sql:
         emit_enum_valid_method: true
         emit_all_enum_values: true
         json_tags_case_style: "camel"
+        emit_sql_as_comment: true
         output_db_file_name: "db.go"
+        rename:
+          hash: "Hash"
+          filename: "FileName"
+          originalpath: "OriginalPath"
+          filesize: "FileSize"
+          status: "Status"
+          suggestedcategory: "SuggestedCategory"
+          confidence: "Confidence"
+          category: "Category"
+          targetpath: "TargetPath"
+          movedtopath: "MovedToPath"
+          classifiedat: "ClassifiedAt"
+          movedat: "MovedAt"
+          lasterror: "LastError"
+          lasterrorat: "LastErrorAt"
+          retrycount: "RetryCount"
+          createddate: "CreatedDate"
+          lastupdatedate: "LastUpdateDate"
+          note: "Note"
+          isactive: "IsActive"
         output_models_file_name: "models.go"
         output_querier_file_name: "querier.go"
         output_files_suffix: ".sql"

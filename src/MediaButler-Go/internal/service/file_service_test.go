@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/lucapaganotti/mediabutler-go/internal/domain"
@@ -15,16 +16,32 @@ import (
 
 // mockFileRepository is a mock implementation of FileRepository for testing
 type mockFileRepository struct {
-	getByHashFunc                    func(ctx context.Context, hash string) result.Result[*domain.TrackedFile]
-	getFilesByStatusFunc             func(ctx context.Context, status domain.FileStatus, limit, offset int) result.Result[[]domain.TrackedFile]
-	getFilesAwaitingConfirmationFunc func(ctx context.Context) result.Result[[]domain.TrackedFile]
+	getByHashFunc                      func(ctx context.Context, hash string) result.Result[*domain.TrackedFile]
+	getFilesByStatusFunc               func(ctx context.Context, status domain.FileStatus, limit, offset int) result.Result[[]domain.TrackedFile]
+	getFilesAwaitingConfirmationFunc   func(ctx context.Context) result.Result[[]domain.TrackedFile]
 	getFilesReadyForClassificationFunc func(ctx context.Context, limit int) result.Result[[]domain.TrackedFile]
-	getFilesReadyForMovingFunc       func(ctx context.Context, limit int) result.Result[[]domain.TrackedFile]
-	createFunc                       func(ctx context.Context, file *domain.TrackedFile) result.Result[bool]
-	updateFunc                       func(ctx context.Context, file *domain.TrackedFile) result.Result[bool]
-	existsByHashFunc                 func(ctx context.Context, hash string) result.Result[bool]
-	existsByOriginalPathFunc         func(ctx context.Context, path string) result.Result[bool]
-	getDistinctCategoriesFunc        func(ctx context.Context) result.Result[[]string]
+	getFilesReadyForMovingFunc         func(ctx context.Context, limit int) result.Result[[]domain.TrackedFile]
+	createFunc                         func(ctx context.Context, file *domain.TrackedFile) result.Result[bool]
+	updateFunc                         func(ctx context.Context, file *domain.TrackedFile) result.Result[bool]
+	existsByHashFunc                   func(ctx context.Context, hash string) result.Result[bool]
+	existsByOriginalPathFunc           func(ctx context.Context, path string) result.Result[bool]
+	getByHashIncludeDeletedFunc        func(ctx context.Context, hash string) result.Result[*domain.TrackedFile]
+	getFilesByStatusesFunc             func(ctx context.Context, statuses []domain.FileStatus, limit, offset int) result.Result[[]domain.TrackedFile]
+	getDistinctCategoriesFunc          func(ctx context.Context) result.Result[[]string]
+}
+
+func (m *mockFileRepository) GetByHashIncludeDeleted(ctx context.Context, hash string) result.Result[*domain.TrackedFile] {
+	if m.getByHashIncludeDeletedFunc != nil {
+		return m.getByHashIncludeDeletedFunc(ctx, hash)
+	}
+	return result.Failure[*domain.TrackedFile](errors.New("not implemented"))
+}
+
+func (m *mockFileRepository) GetFilesByStatuses(ctx context.Context, statuses []domain.FileStatus, limit, offset int) result.Result[[]domain.TrackedFile] {
+	if m.getFilesByStatusesFunc != nil {
+		return m.getFilesByStatusesFunc(ctx, statuses, limit, offset)
+	}
+	return result.Success([]domain.TrackedFile{})
 }
 
 func (m *mockFileRepository) GetByHash(ctx context.Context, hash string) result.Result[*domain.TrackedFile] {
@@ -97,6 +114,26 @@ func (m *mockFileRepository) GetDistinctCategories(ctx context.Context) result.R
 	return result.Success([]string{"SERIES1", "SERIES2"})
 }
 
+func (m *mockFileRepository) GetFilesWithErrors(ctx context.Context) result.Result[[]domain.TrackedFile] {
+	return result.Success([]domain.TrackedFile{})
+}
+
+func (m *mockFileRepository) GetFilesReadyForRetry(ctx context.Context, limit int) result.Result[[]domain.TrackedFile] {
+	return result.Success([]domain.TrackedFile{})
+}
+
+func (m *mockFileRepository) SoftDelete(ctx context.Context, hash string, reason *string) result.Result[bool] {
+	return result.Success(true)
+}
+
+func (m *mockFileRepository) Restore(ctx context.Context, hash string, reason *string) result.Result[bool] {
+	return result.Success(true)
+}
+
+func (m *mockFileRepository) GetProcessingStats(ctx context.Context) result.Result[map[domain.FileStatus]int64] {
+	return result.Success(map[domain.FileStatus]int64{})
+}
+
 // mockTransaction is a mock implementation of Transaction for testing
 type mockTransaction struct {
 	filesRepo *mockFileRepository
@@ -151,7 +188,7 @@ func TestFileService_RegisterFileWithHash_Success(t *testing.T) {
 	mockUow := newMockUnitOfWork(mockRepo)
 	svc := NewFileService(mockRepo, mockUow)
 
-	res := svc.RegisterFileWithHash(context.Background(), "/path/to/file.mkv", "abc123def456"+"0123456789"*5, 1024000)
+	res := svc.RegisterFileWithHash(context.Background(), "/path/to/file.mkv", strings.Repeat("a", 64), 1024000)
 
 	if res.IsFailure() {
 		t.Errorf("expected success, got failure: %v", res.Error())
@@ -173,7 +210,7 @@ func TestFileService_RegisterFileWithHash_AlreadyExists(t *testing.T) {
 	mockUow := newMockUnitOfWork(mockRepo)
 	svc := NewFileService(mockRepo, mockUow)
 
-	res := svc.RegisterFileWithHash(context.Background(), "/path/to/file.mkv", "abc123def456"+"0123456789"*5, 1024000)
+	res := svc.RegisterFileWithHash(context.Background(), "/path/to/file.mkv", strings.Repeat("a", 64), 1024000)
 
 	if res.IsSuccess() {
 		t.Error("expected failure for duplicate file, got success")
@@ -182,7 +219,7 @@ func TestFileService_RegisterFileWithHash_AlreadyExists(t *testing.T) {
 
 // Test GetFileByHash
 func TestFileService_GetFileByHash_Success(t *testing.T) {
-	expectedFile := domain.NewTrackedFile("abc123def456"+"0123456789"*5, "test.mkv", "/path/test.mkv", 1024)
+	expectedFile := domain.NewTrackedFile(strings.Repeat("a", 64), "test.mkv", "/path/test.mkv", 1024)
 
 	mockRepo := &mockFileRepository{
 		getByHashFunc: func(ctx context.Context, hash string) result.Result[*domain.TrackedFile] {
@@ -193,7 +230,7 @@ func TestFileService_GetFileByHash_Success(t *testing.T) {
 	mockUow := newMockUnitOfWork(mockRepo)
 	svc := NewFileService(mockRepo, mockUow)
 
-	res := svc.GetFileByHash(context.Background(), "abc123def456"+"0123456789"*5)
+	res := svc.GetFileByHash(context.Background(), strings.Repeat("a", 64))
 
 	if res.IsFailure() {
 		t.Errorf("expected success, got failure: %v", res.Error())
@@ -219,8 +256,8 @@ func TestFileService_GetFileByHash_InvalidHashLength(t *testing.T) {
 
 // Test GetFilesByStatus
 func TestFileService_GetFilesByStatus_Success(t *testing.T) {
-	file1 := domain.NewTrackedFile("hash1"+"0123456789"*6, "file1.mkv", "/path/file1.mkv", 1024)
-	file2 := domain.NewTrackedFile("hash2"+"0123456789"*6, "file2.mkv", "/path/file2.mkv", 2048)
+	file1 := domain.NewTrackedFile(strings.Repeat("a", 64), "file1.mkv", "/path/file1.mkv", 1024)
+	file2 := domain.NewTrackedFile(strings.Repeat("b", 64), "file2.mkv", "/path/file2.mkv", 2048)
 
 	mockRepo := &mockFileRepository{
 		getFilesByStatusFunc: func(ctx context.Context, status domain.FileStatus, limit, offset int) result.Result[[]domain.TrackedFile] {
@@ -239,8 +276,8 @@ func TestFileService_GetFilesByStatus_Success(t *testing.T) {
 	}
 
 	response := res.Value()
-	if len(response.Data) != 2 {
-		t.Errorf("expected 2 files, got %d", len(response.Data))
+	if len(response.Items) != 2 {
+		t.Errorf("expected 2 files, got %d", len(response.Items))
 	}
 }
 

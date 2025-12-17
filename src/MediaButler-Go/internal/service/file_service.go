@@ -23,6 +23,7 @@ type FileService interface {
 	// File Retrieval
 	GetFileByHash(ctx context.Context, hash string) result.Result[*domain.TrackedFile]
 	GetFilesByStatus(ctx context.Context, status domain.FileStatus, page *pagination.Request) result.Result[*pagination.Response[domain.TrackedFile]]
+	GetFilesByStatuses(ctx context.Context, statuses []domain.FileStatus, page *pagination.Request) result.Result[*pagination.Response[domain.TrackedFile]]
 	GetPendingFiles(ctx context.Context) result.Result[[]domain.TrackedFile]
 	GetReadyForClassification(ctx context.Context, limit int) result.Result[[]domain.TrackedFile]
 	GetReadyForMoving(ctx context.Context, limit int) result.Result[[]domain.TrackedFile]
@@ -128,6 +129,26 @@ func (s *fileService) GetFilesByStatus(ctx context.Context, status domain.FileSt
 
 	// Get total count (would need a separate query in real implementation)
 	// For now, we'll use a simplified approach
+	files := filesResult.Value()
+	total := len(files) // Simplified - in production, need actual count query
+
+	response := pagination.NewResponse(files, total, page.Skip, page.Take)
+	return result.Success(response)
+}
+
+// GetFilesByStatuses retrieves files by multiple statuses with pagination
+func (s *fileService) GetFilesByStatuses(ctx context.Context, statuses []domain.FileStatus, page *pagination.Request) result.Result[*pagination.Response[domain.TrackedFile]] {
+	if page == nil {
+		page = pagination.DefaultRequest()
+	}
+
+	// Get files
+	filesResult := s.repo.GetFilesByStatuses(ctx, statuses, page.Take, page.Skip)
+	if filesResult.IsFailure() {
+		return result.Failure[*pagination.Response[domain.TrackedFile]](filesResult.Error())
+	}
+
+	// Get total count (simplified)
 	files := filesResult.Value()
 	total := len(files) // Simplified - in production, need actual count query
 

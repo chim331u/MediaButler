@@ -23,6 +23,7 @@ type FileRepository interface {
 
 	// Workflow queries
 	GetFilesByStatus(ctx context.Context, status domain.FileStatus, limit, offset int) result.Result[[]domain.TrackedFile]
+	GetFilesByStatuses(ctx context.Context, statuses []domain.FileStatus, limit, offset int) result.Result[[]domain.TrackedFile]
 	GetFilesReadyForClassification(ctx context.Context, limit int) result.Result[[]domain.TrackedFile]
 	GetFilesAwaitingConfirmation(ctx context.Context) result.Result[[]domain.TrackedFile]
 	GetFilesReadyForMoving(ctx context.Context, limit int) result.Result[[]domain.TrackedFile]
@@ -99,7 +100,7 @@ func (r *fileRepository) Create(ctx context.Context, file *domain.TrackedFile) r
 		Status:         int64(file.Status),
 		Createddate:    file.CreatedDate,
 		Lastupdatedate: file.LastUpdateDate,
-		Isactive:       boolToInt(file.IsActive),
+		Isactive:       file.IsActive,
 	})
 
 	if err != nil {
@@ -189,6 +190,27 @@ func (r *fileRepository) GetFilesByStatus(ctx context.Context, status domain.Fil
 	}
 
 	return result.Success(files)
+}
+
+// GetFilesByStatuses retrieves files by multiple statuses with pagination
+func (r *fileRepository) GetFilesByStatuses(ctx context.Context, statuses []domain.FileStatus, limit, offset int) result.Result[[]domain.TrackedFile] {
+	// Convert domain statuses to int64 slice
+	statusInts := make([]int64, len(statuses))
+	for i, s := range statuses {
+		statusInts[i] = int64(s)
+	}
+
+	dbFiles, err := r.queries.GetFilesByStatuses(ctx, db.GetFilesByStatusesParams{
+		Statuses: statusInts,
+		Limit:    int64(limit),
+		Offset:   int64(offset),
+	})
+
+	if err != nil {
+		return result.Failure[[]domain.TrackedFile](fmt.Errorf("get files by statuses: %w", err))
+	}
+
+	return result.Success(r.toDomainSlice(dbFiles))
 }
 
 // GetFilesReadyForClassification retrieves files ready for ML classification
@@ -302,7 +324,7 @@ func (r *fileRepository) toDomain(dbFile *db.Trackedfile) *domain.TrackedFile {
 			ID:             0, // SQLite doesn't have ID for TrackedFiles (Hash is PK)
 			CreatedDate:    dbFile.Createddate,
 			LastUpdateDate: dbFile.Lastupdatedate,
-			IsActive:       dbFile.Isactive == 1,
+			IsActive:       dbFile.Isactive,
 			Note:           dbFile.Note,
 		},
 		Hash:              dbFile.Hash,

@@ -2,9 +2,12 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/lucapaganotti/mediabutler-go/internal/domain"
@@ -15,13 +18,17 @@ import (
 
 // FilesHandler handles file-related endpoints
 type FilesHandler struct {
-	fileService service.FileService
+	fileService    service.FileService
+	scannerService service.ScannerService
+	watchFolders   []string
 }
 
 // NewFilesHandler creates a new FilesHandler
-func NewFilesHandler(fileService service.FileService) *FilesHandler {
+func NewFilesHandler(fileService service.FileService, scannerService service.ScannerService, watchFolders []string) *FilesHandler {
 	return &FilesHandler{
-		fileService: fileService,
+		fileService:    fileService,
+		scannerService: scannerService,
+		watchFolders:   watchFolders,
 	}
 }
 
@@ -29,6 +36,21 @@ func NewFilesHandler(fileService service.FileService) *FilesHandler {
 type ErrorResponse struct {
 	Error     string `json:"error"`
 	RequestID string `json:"requestId,omitempty"`
+}
+
+// TrackedFileResponse mimics api.TrackedFileResponse in .NET
+type TrackedFileResponse struct {
+	*domain.TrackedFile
+	StatusDescription string    `json:"statusDescription"`
+	CreatedAt         time.Time `json:"createdAt"`
+}
+
+func toFileResponse(f *domain.TrackedFile) *TrackedFileResponse {
+	return &TrackedFileResponse{
+		TrackedFile:       f,
+		StatusDescription: f.Status.String(),
+		CreatedAt:         f.CreatedDate,
+	}
 }
 
 // GetFiles handles GET /api/files
@@ -66,7 +88,13 @@ func (h *FilesHandler) GetFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusOK, result.Value())
+	mappedItems := make([]*TrackedFileResponse, len(result.Value().Items))
+	for i := range result.Value().Items {
+		mappedItems[i] = toFileResponse(&result.Value().Items[i])
+	}
+
+	response := pagination.NewResponse(mappedItems, result.Value().Total, result.Value().Skip, result.Value().Take)
+	respondJSON(w, http.StatusOK, response)
 }
 
 // GetFilesByStatuses handles GET /api/files/by-statuses
@@ -83,17 +111,40 @@ func (h *FilesHandler) GetFilesByStatuses(w http.ResponseWriter, r *http.Request
 	take := parseInt(r.URL.Query().Get("take"), 20)
 
 	// Parse multiple statuses
-	statusStrings := strings.Split(statusesParam, ",")
-	if len(statusStrings) == 0 {
+	// The frontend sends statuses=Status1&statuses=Status2...
+	// We need to parse all values from the query
+	statusStrings := r.URL.Query()["statuses"]
+	// If standard binding was used (status=A,B), split it. But here we expect multiple keys or comma handling.
+	// If only one entry found, try splitting by comma just in case
+	var finalStatusStrings []string
+	if len(statusStrings) == 1 && strings.Contains(statusStrings[0], ",") {
+		finalStatusStrings = strings.Split(statusStrings[0], ",")
+	} else {
+		finalStatusStrings = statusStrings
+	}
+
+	if len(finalStatusStrings) == 0 {
 		respondError(w, http.StatusBadRequest, "At least one status is required")
 		return
 	}
 
-	// For now, we'll use the first status (full multi-status support requires repository enhancement)
-	// TODO: Enhance repository to support multiple status filtering
-	status, err := domain.ParseFileStatus(strings.TrimSpace(statusStrings[0]))
-	if err != nil {
-		respondError(w, http.StatusBadRequest, "Invalid status parameter")
+	var statuses []domain.FileStatus
+	for _, s := range finalStatusStrings {
+		// Clean up string
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		status, err := domain.ParseFileStatus(s)
+		if err != nil {
+			log.Warn().Err(err).Str("status", s).Msg("Skipping invalid status parameter")
+			continue
+		}
+		statuses = append(statuses, status)
+	}
+
+	if len(statuses) == 0 {
+		respondError(w, http.StatusBadRequest, "No valid statuses provided")
 		return
 	}
 
@@ -104,14 +155,20 @@ func (h *FilesHandler) GetFilesByStatuses(w http.ResponseWriter, r *http.Request
 	}
 
 	// Get files
-	result := h.fileService.GetFilesByStatus(r.Context(), status, pageReq)
+	result := h.fileService.GetFilesByStatuses(r.Context(), statuses, pageReq)
 	if result.IsFailure() {
 		log.Error().Err(result.Error()).Msg("Failed to get files by statuses")
 		respondError(w, http.StatusInternalServerError, "Failed to retrieve files")
 		return
 	}
 
-	respondJSON(w, http.StatusOK, result.Value())
+	mappedItems := make([]*TrackedFileResponse, len(result.Value().Items))
+	for i := range result.Value().Items {
+		mappedItems[i] = toFileResponse(&result.Value().Items[i])
+	}
+
+	response := pagination.NewResponse(mappedItems, result.Value().Total, result.Value().Skip, result.Value().Take)
+	respondJSON(w, http.StatusOK, response)
 }
 
 // GetFileByHash handles GET /api/files/{hash}
@@ -130,7 +187,7 @@ func (h *FilesHandler) GetFileByHash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusOK, result.Value())
+	respondJSON(w, http.StatusOK, toFileResponse(result.Value()))
 }
 
 // RegisterFile handles POST /api/files
@@ -179,7 +236,7 @@ func (h *FilesHandler) RegisterFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusCreated, fileResult)
+	respondJSON(w, http.StatusCreated, toFileResponse(fileResult))
 }
 
 // GetPendingFiles handles GET /api/files/pending
@@ -192,7 +249,32 @@ func (h *FilesHandler) GetPendingFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusOK, result.Value())
+	mappedFiles := make([]*TrackedFileResponse, len(result.Value()))
+	for i, f := range result.Value() {
+		mappedFiles[i] = toFileResponse(&f)
+	}
+
+	respondJSON(w, http.StatusOK, mappedFiles)
+}
+
+// GetReadyForClassification handles GET /api/files/ready-for-classification
+// Returns files ready for ML classification
+func (h *FilesHandler) GetReadyForClassification(w http.ResponseWriter, r *http.Request) {
+	limit := parseInt(r.URL.Query().Get("limit"), 50)
+
+	result := h.fileService.GetReadyForClassification(r.Context(), limit)
+	if result.IsFailure() {
+		log.Error().Err(result.Error()).Msg("Failed to get files ready for classification")
+		respondError(w, http.StatusInternalServerError, "Failed to retrieve files")
+		return
+	}
+
+	mappedFiles := make([]*TrackedFileResponse, len(result.Value()))
+	for i, f := range result.Value() {
+		mappedFiles[i] = toFileResponse(&f)
+	}
+
+	respondJSON(w, http.StatusOK, mappedFiles)
 }
 
 // ConfirmFile handles POST /api/files/{hash}/confirm
@@ -225,10 +307,15 @@ func (h *FilesHandler) ConfirmFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"success": true,
-		"message": "File category confirmed",
-	})
+	// Fetch updated file
+	fileResult := h.fileService.GetFileByHash(r.Context(), hash)
+	if fileResult.IsFailure() {
+		log.Error().Err(fileResult.Error()).Str("hash", hash).Msg("Failed to retrieve file after confirmation")
+		respondError(w, http.StatusInternalServerError, "Failed to retrieve updated file")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, toFileResponse(fileResult.Value()))
 }
 
 // MarkFileAsMoved handles POST /api/files/{hash}/moved
@@ -261,10 +348,15 @@ func (h *FilesHandler) MarkFileAsMoved(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"success": true,
-		"message": "File marked as moved",
-	})
+	// Fetch updated file
+	fileResult := h.fileService.GetFileByHash(r.Context(), hash)
+	if fileResult.IsFailure() {
+		log.Error().Err(fileResult.Error()).Str("hash", hash).Msg("Failed to retrieve file after move")
+		respondError(w, http.StatusInternalServerError, "Failed to retrieve updated file")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, toFileResponse(fileResult.Value()))
 }
 
 // DeleteFile handles DELETE /api/files/{hash}
@@ -301,12 +393,95 @@ func (h *FilesHandler) GetCategories(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, result.Value())
 }
 
-// ScanFolder handles POST /api/files/scan
-// Triggers a scan of configured watch folders
-func (h *FilesHandler) ScanFolder(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement folder scanning via background job
-	// For now, return not implemented
-	respondError(w, http.StatusNotImplemented, "Folder scanning not yet implemented")
+// ScanFolders handles POST /api/files/scan
+// Triggers a scan of configured watch folders and returns detailed results
+func (h *FilesHandler) ScanFolders(w http.ResponseWriter, r *http.Request) {
+	// Optional request body parsing (for future timeout support)
+	var req ScanFoldersRequest
+	if r.Body != nil && r.ContentLength > 0 {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			// Ignore parse errors for optional body
+			log.Debug().Err(err).Msg("Failed to parse scan request body")
+		}
+	}
+
+	// Trigger scan
+	result := h.scannerService.ScanNow(r.Context())
+	if result.IsFailure() {
+		log.Warn().Err(result.Error()).Msg("Scan trigger failed")
+
+		// Check if scan already in progress (409 Conflict)
+		if strings.Contains(result.Error().Error(), "already in progress") {
+			respondError(w, http.StatusConflict, result.Error().Error())
+			return
+		}
+
+		respondError(w, http.StatusInternalServerError,
+			fmt.Sprintf("Folder scan failed: %s", result.Error().Error()))
+		return
+	}
+
+	// Convert to response model
+	scanResult := result.Value()
+	response := toScanResultResponse(
+		scanResult,
+		h.scannerService.IsMonitoring(),
+		h.watchFolders,
+		nil, // scannedPath is nil for full scan
+	)
+
+	respondJSON(w, http.StatusOK, response)
+}
+
+// ScanSpecificFolder handles POST /api/files/scan/folder
+// Triggers a scan of a specific folder path and returns detailed results
+func (h *FilesHandler) ScanSpecificFolder(w http.ResponseWriter, r *http.Request) {
+	var req ScanSpecificFolderRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	// Validate folder path
+	if strings.TrimSpace(req.FolderPath) == "" {
+		respondError(w, http.StatusBadRequest, "Folder path cannot be empty")
+		return
+	}
+
+	// Check if folder exists
+	if _, err := os.Stat(req.FolderPath); os.IsNotExist(err) {
+		respondError(w, http.StatusNotFound,
+			fmt.Sprintf("Folder not found: %s", req.FolderPath))
+		return
+	}
+
+	// Trigger scan
+	result := h.scannerService.ScanFolder(r.Context(), req.FolderPath)
+	if result.IsFailure() {
+		log.Warn().Err(result.Error()).Str("path", req.FolderPath).
+			Msg("Specific folder scan failed")
+
+		if strings.Contains(result.Error().Error(), "already in progress") {
+			respondError(w, http.StatusConflict, result.Error().Error())
+			return
+		}
+
+		respondError(w, http.StatusInternalServerError,
+			fmt.Sprintf("Folder scan failed: %s", result.Error().Error()))
+		return
+	}
+
+	// Convert to response model
+	scanResult := result.Value()
+	scannedPath := req.FolderPath
+	response := toScanResultResponse(
+		scanResult,
+		h.scannerService.IsMonitoring(),
+		[]string{req.FolderPath}, // Only this path was scanned
+		&scannedPath,
+	)
+
+	respondJSON(w, http.StatusOK, response)
 }
 
 // Helper functions

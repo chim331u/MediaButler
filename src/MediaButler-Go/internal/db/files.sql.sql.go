@@ -78,14 +78,14 @@ INSERT INTO TrackedFiles (
 `
 
 type CreateFileParams struct {
-	Hash           string    `db:"hash" json:"hash"`
-	Filename       string    `db:"filename" json:"filename"`
-	Originalpath   string    `db:"originalpath" json:"originalpath"`
-	Filesize       int64     `db:"filesize" json:"filesize"`
-	Status         int64     `db:"status" json:"status"`
-	Createddate    time.Time `db:"createddate" json:"createddate"`
-	Lastupdatedate time.Time `db:"lastupdatedate" json:"lastupdatedate"`
-	Isactive       int64     `db:"isactive" json:"isactive"`
+	Hash           string    `db:"Hash" json:"hash"`
+	Filename       string    `db:"FileName" json:"fileName"`
+	Originalpath   string    `db:"OriginalPath" json:"originalPath"`
+	Filesize       int64     `db:"FileSize" json:"fileSize"`
+	Status         int64     `db:"Status" json:"status"`
+	Createddate    time.Time `db:"CreatedDate" json:"createdDate"`
+	Lastupdatedate time.Time `db:"LastUpdateDate" json:"lastUpdateDate"`
+	Isactive       bool      `db:"IsActive" json:"isActive"`
 }
 
 func (q *Queries) CreateFile(ctx context.Context, arg CreateFileParams) error {
@@ -469,20 +469,46 @@ type GetFilesByStatusesParams struct {
 }
 
 func (q *Queries) GetFilesByStatuses(ctx context.Context, arg GetFilesByStatusesParams) ([]Trackedfile, error) {
-	query := getFilesByStatuses
+	// Manual fix for sqlc.narg/ORDER BY issue
+	// We use standard ? placeholders and bind arguments explicitly in order
+
+	// Base query with placeholders
+	query := `SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
+WHERE Status IN (/*SLICE:statuses*/?)
+  AND IsActive = 1
+  AND (? IS NULL OR Category = ?)
+  AND (? IS NULL
+       OR FileName LIKE '%' || ? || '%'
+       OR Category LIKE '%' || ? || '%')
+ORDER BY LastUpdateDate DESC
+LIMIT ? OFFSET ?`
+
 	var queryParams []interface{}
+
+	// Handle Status slice expansion
 	if len(arg.Statuses) > 0 {
 		for _, v := range arg.Statuses {
 			queryParams = append(queryParams, v)
 		}
 		query = strings.Replace(query, "/*SLICE:statuses*/?", strings.Repeat(",?", len(arg.Statuses))[1:], 1)
 	} else {
+		// Fallback for empty slice (should be handled by caller, but safe logic here)
 		query = strings.Replace(query, "/*SLICE:statuses*/?", "NULL", 1)
 	}
+
+	// Bind Category (used twice: check for null, and comparison)
 	queryParams = append(queryParams, arg.Category)
+	queryParams = append(queryParams, arg.Category)
+
+	// Bind SearchTerm (used 3 times: check for null, pattern match filename, pattern match category)
 	queryParams = append(queryParams, arg.SearchTerm)
+	queryParams = append(queryParams, arg.SearchTerm)
+	queryParams = append(queryParams, arg.SearchTerm)
+
+	// Bind Limit and Offset
 	queryParams = append(queryParams, arg.Limit)
 	queryParams = append(queryParams, arg.Offset)
+
 	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err

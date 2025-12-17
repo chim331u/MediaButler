@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -60,13 +61,28 @@ func main() {
 	fileService := service.NewFileService(fileRepo, uow)
 	mlClient := service.NewMLClient(cfg.ML)
 	statsService := service.NewStatsService(fileRepo)
+	scannerService := service.NewScannerService(fileService, cfg.FileDiscovery, logger)
 
 	logger.Info().Msg("Services initialized")
 
 	// Initialize Handlers
 	healthHandler := handlers.NewHealthHandler(version)
-	filesHandler := handlers.NewFilesHandler(fileService)
+	filesHandler := handlers.NewFilesHandler(fileService, scannerService, cfg.FileDiscovery.WatchFolders)
 	processingHandler := handlers.NewProcessingHandler(fileService, statsService)
+
+	// Initialize SignalR Proxy
+	// Assuming .NET API runs on localhost:5000 (standard for local dev) or configured URL
+	mlServiceURL := cfg.ML.ServiceURL // Reusing ML service URL as it points to the .NET API
+	if mlServiceURL == "" {
+		mlServiceURL = "http://localhost:5000"
+	}
+	// Need to strip /api if it exists in the config, as main API root is expected
+	mlServiceURL = strings.Replace(mlServiceURL, "/api", "", 1)
+
+	signalRProxy, err := handlers.NewSignalRProxy(mlServiceURL, logger)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("Failed to initialize SignalR proxy")
+	}
 
 	// Configure Router
 	routerConfig := api.RouterConfig{
@@ -74,6 +90,7 @@ func main() {
 		HealthHandler:     healthHandler,
 		FilesHandler:      filesHandler,
 		ProcessingHandler: processingHandler,
+		SignalRProxy:      signalRProxy,
 		AllowedOrigins:    cfg.Server.CORSAllowedOrigins,
 		AllowCredentials:  true,
 	}

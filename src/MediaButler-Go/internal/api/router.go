@@ -16,6 +16,7 @@ type RouterConfig struct {
 	HealthHandler     *handlers.HealthHandler
 	FilesHandler      *handlers.FilesHandler
 	ProcessingHandler *handlers.ProcessingHandler
+	SignalRProxy      *handlers.SignalRProxy
 	AllowedOrigins    []string
 	AllowCredentials  bool
 }
@@ -25,7 +26,7 @@ func NewRouter(cfg RouterConfig) *chi.Mux {
 	r := chi.NewRouter()
 
 	// Global middleware
-	r.Use(middleware.RequestID)                  // Add request ID to context
+	r.Use(middleware.RequestID)                 // Add request ID to context
 	r.Use(apimiddleware.Recovery())             // Recover from panics
 	r.Use(apimiddleware.DefaultLogger())        // Log requests with zerolog
 	r.Use(middleware.Timeout(60 * time.Second)) // Request timeout
@@ -42,6 +43,11 @@ func NewRouter(cfg RouterConfig) *chi.Mux {
 	r.Get("/health/ready", cfg.HealthHandler.Ready)
 	r.Get("/health/detailed", cfg.HealthHandler.Detailed)
 
+	// SignalR Notification Proxy
+	if cfg.SignalRProxy != nil {
+		r.Mount("/notifications", cfg.SignalRProxy)
+	}
+
 	// API routes under /api prefix
 	r.Route("/api", func(r chi.Router) {
 		// Health endpoints (also available under /api for consistency)
@@ -53,18 +59,22 @@ func NewRouter(cfg RouterConfig) *chi.Mux {
 
 		// File management endpoints
 		r.Route("/files", func(r chi.Router) {
-			r.Get("/", cfg.FilesHandler.GetFiles)                      // GET /api/files
-			r.Get("/by-statuses", cfg.FilesHandler.GetFilesByStatuses) // GET /api/files/by-statuses
-			r.Get("/pending", cfg.FilesHandler.GetPendingFiles)        // GET /api/files/pending
-			r.Get("/categories", cfg.FilesHandler.GetCategories)       // GET /api/files/categories
-			r.Post("/", cfg.FilesHandler.RegisterFile)                 // POST /api/files
-			r.Post("/scan", cfg.FilesHandler.ScanFolder)               // POST /api/files/scan
+			r.Get("/", cfg.FilesHandler.GetFiles)                                          // GET /api/files
+			r.Get("/by-statuses", cfg.FilesHandler.GetFilesByStatuses)                     // GET /api/files/by-statuses
+			r.Get("/pending", cfg.FilesHandler.GetPendingFiles)                            // GET /api/files/pending
+			r.Get("/ready-for-classification", cfg.FilesHandler.GetReadyForClassification) // GET /api/files/ready-for-classification
+			r.Get("/categories", cfg.FilesHandler.GetCategories)                           // GET /api/files/categories
+			r.Post("/", cfg.FilesHandler.RegisterFile)                                     // POST /api/files
+
+			// Scan endpoints (specific route before generic)
+			r.Post("/scan/folder", cfg.FilesHandler.ScanSpecificFolder) // POST /api/files/scan/folder
+			r.Post("/scan", cfg.FilesHandler.ScanFolders)               // POST /api/files/scan
 
 			// File-specific operations (by hash)
 			r.Route("/{hash}", func(r chi.Router) {
-				r.Get("/", cfg.FilesHandler.GetFileByHash)        // GET /api/files/{hash}
-				r.Delete("/", cfg.FilesHandler.DeleteFile)        // DELETE /api/files/{hash}
-				r.Post("/confirm", cfg.FilesHandler.ConfirmFile)  // POST /api/files/{hash}/confirm
+				r.Get("/", cfg.FilesHandler.GetFileByHash)         // GET /api/files/{hash}
+				r.Delete("/", cfg.FilesHandler.DeleteFile)         // DELETE /api/files/{hash}
+				r.Post("/confirm", cfg.FilesHandler.ConfirmFile)   // POST /api/files/{hash}/confirm
 				r.Post("/moved", cfg.FilesHandler.MarkFileAsMoved) // POST /api/files/{hash}/moved
 			})
 		})

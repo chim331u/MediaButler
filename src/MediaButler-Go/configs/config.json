@@ -5,20 +5,20 @@
     "read_timeout": "10s",
     "write_timeout": "10s",
     "shutdown_timeout": "30s",
-    "cors_allowed_origins": ["*"]
+    "cors_allowed_origins": ["http://localhost:5109", "http://127.0.0.1:5109"]
   },
   "paths": {
-    "media_library": "/library",
-    "watch_folder": "/watch",
-    "pending_review": "/tmp/mediabutler/pending"
+    "media_library": "../../temp/library",
+    "watch_folder": "../../temp/watch",
+    "pending_review": "../../temp/pending"
   },
   "file_discovery": {
-    "watch_folders": ["/watch"],
+    "watch_folders": ["../../temp/watch"],
     "enable_file_system_watcher": true,
     "scan_interval_minutes": 10,
-    "file_extensions": [".mkv", ".mp4", ".avi", ".m4v", ".wmv"],
+    "file_extensions": [".mkv", ".mp4", ".avi", ".m4v", ".wmv", ".pdf"],
     "exclude_patterns": [".*tmp", ".*part", ".*incomplete"],
-    "min_file_size_mb": 1,
+    "min_file_size_mb": 0.1,
     "debounce_delay_seconds": 8,
     "max_concurrent_scans": 1
   },

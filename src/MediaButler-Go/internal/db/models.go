@@ -9,23 +9,23 @@ import (
 )
 
 type Trackedfile struct {
-	Hash              string     `db:"hash" json:"hash"`
-	Filename          string     `db:"filename" json:"filename"`
-	Originalpath      string     `db:"originalpath" json:"originalpath"`
-	Filesize          int64      `db:"filesize" json:"filesize"`
-	Status            int64      `db:"status" json:"status"`
-	Suggestedcategory *string    `db:"suggestedcategory" json:"suggestedcategory"`
-	Confidence        float64    `db:"confidence" json:"confidence"`
-	Category          *string    `db:"category" json:"category"`
-	Targetpath        *string    `db:"targetpath" json:"targetpath"`
-	Movedtopath       *string    `db:"movedtopath" json:"movedtopath"`
-	Classifiedat      *time.Time `db:"classifiedat" json:"classifiedat"`
-	Movedat           *time.Time `db:"movedat" json:"movedat"`
-	Lasterror         *string    `db:"lasterror" json:"lasterror"`
-	Lasterrorat       *time.Time `db:"lasterrorat" json:"lasterrorat"`
-	Retrycount        int64      `db:"retrycount" json:"retrycount"`
-	Createddate       time.Time  `db:"createddate" json:"createddate"`
-	Lastupdatedate    time.Time  `db:"lastupdatedate" json:"lastupdatedate"`
-	Note              *string    `db:"note" json:"note"`
-	Isactive          int64      `db:"isactive" json:"isactive"`
+	Hash              string     `db:"Hash" json:"hash"`
+	Filename          string     `db:"FileName" json:"fileName"`
+	Originalpath      string     `db:"OriginalPath" json:"originalPath"`
+	Filesize          int64      `db:"FileSize" json:"fileSize"`
+	Status            int64      `db:"Status" json:"status"`
+	Suggestedcategory *string    `db:"SuggestedCategory" json:"suggestedCategory"`
+	Confidence        float64    `db:"Confidence" json:"confidence"`
+	Category          *string    `db:"Category" json:"category"`
+	Targetpath        *string    `db:"TargetPath" json:"targetPath"`
+	Movedtopath       *string    `db:"MovedToPath" json:"movedToPath"`
+	Classifiedat      *time.Time `db:"ClassifiedAt" json:"classifiedAt"`
+	Movedat           *time.Time `db:"MovedAt" json:"movedAt"`
+	Lasterror         *string    `db:"LastError" json:"lastError"`
+	Lasterrorat       *time.Time `db:"LastErrorAt" json:"lastErrorAt"`
+	Retrycount        int64      `db:"RetryCount" json:"retryCount"`
+	Createddate       time.Time  `db:"CreatedDate" json:"createdDate"`
+	Lastupdatedate    time.Time  `db:"LastUpdateDate" json:"lastUpdateDate"`
+	Note              *string    `db:"Note" json:"note"`
+	Isactive          bool       `db:"IsActive" json:"isActive"`
 }

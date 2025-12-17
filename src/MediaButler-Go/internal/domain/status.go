@@ -116,28 +116,6 @@ func (s *FileStatus) Scan(value interface{}) error {
 	}
 }
 
-// MarshalJSON implements json.Marshaler
-func (s FileStatus) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf(`"%s"`, s.String())), nil
-}
-
-// UnmarshalJSON implements json.Unmarshaler
-func (s *FileStatus) UnmarshalJSON(data []byte) error {
-	// Remove quotes
-	str := string(data)
-	if len(str) >= 2 && str[0] == '"' && str[len(str)-1] == '"' {
-		str = str[1 : len(str)-1]
-	}
-
-	parsed, err := ParseFileStatus(str)
-	if err != nil {
-		return err
-	}
-
-	*s = parsed
-	return nil
-}
-
 // IsTerminal returns true if the status is a terminal state (Moved, Ignored)
 func (s FileStatus) IsTerminal() bool {
 	return s == FileStatusMoved || s == FileStatusIgnored
