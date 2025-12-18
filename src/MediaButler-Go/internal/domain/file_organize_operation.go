@@ -166,10 +166,14 @@ func ToFileOrganizeOperations(items []*BatchJobItem, fileMap map[string]*Tracked
 		}
 
 		// Create operation
+		targetPath := ""
+		if item.TargetPath != nil && *item.TargetPath != "" {
+			targetPath = *item.TargetPath
+		}
 		op := NewFileOrganizeOperation(
 			file,
 			item.ConfirmedCategory,
-			item.TargetPath != nil && *item.TargetPath != "" ? *item.TargetPath : "",
+			targetPath,
 		)
 
 		// Set custom target path if provided

@@ -3,12 +3,10 @@ package repository
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/lucapaganotti/mediabutler-go/internal/domain"
-	"github.com/lucapaganotti/mediabutler-go/pkg/result"
 )
 
 // BatchJobRepository handles database operations for batch jobs
@@ -120,7 +118,7 @@ func (r *batchJobRepository) GetByID(ctx context.Context, jobID string) (*domain
 	)
 
 	if err == sql.ErrNoRows {
-		return nil, result.ErrNotFound
+		return nil, fmt.Errorf("batch job not found: %s", jobID)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("get batch job: %w", err)

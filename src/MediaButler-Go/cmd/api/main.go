@@ -17,6 +17,8 @@ import (
 	"github.com/lucapaganotti/mediabutler-go/internal/api"
 	"github.com/lucapaganotti/mediabutler-go/internal/api/handlers"
 	"github.com/lucapaganotti/mediabutler-go/internal/config"
+	"github.com/lucapaganotti/mediabutler-go/internal/jobs/batch"
+	"github.com/lucapaganotti/mediabutler-go/internal/jobs/progress"
 	"github.com/lucapaganotti/mediabutler-go/internal/repository"
 	"github.com/lucapaganotti/mediabutler-go/internal/service"
 	"github.com/lucapaganotti/mediabutler-go/internal/sse"
@@ -55,6 +57,7 @@ func main() {
 
 	// Initialize Repositories
 	fileRepo := repository.NewFileRepository(db)
+	batchRepo := repository.NewBatchJobRepository(db)
 	uow := repository.NewUnitOfWork(db)
 
 	// Initialize Services
@@ -65,9 +68,37 @@ func main() {
 
 	logger.Info().Msg("Services initialized")
 
-	// Initialize SSE Broker
+	// Initialize SSE Broker (moved up for batch system)
 	sseBroker := sse.NewBroker(logger)
 	logger.Info().Msg("SSE broker initialized")
+
+	// Initialize Batch Processing Components
+	fileOrgService := service.NewFileOrganizationService(fileService, cfg.Paths.MediaLibrary, logger)
+
+	// Progress reporter for SSE updates
+	progressReporter := progress.NewProgressReporter(sseBroker, logger)
+
+	// Throttler for ARM32 resource management
+	throttlerConfig := progress.DefaultThrottlerConfig()
+	throttler := progress.NewBatchThrottler(throttlerConfig, logger)
+
+	// Batch executor
+	executor := batch.NewExecutor(batchRepo, fileRepo, fileOrgService, progressReporter, throttler, logger)
+
+	// Batch scheduler
+	schedulerConfig := batch.DefaultSchedulerConfig()
+	scheduler := batch.NewScheduler(schedulerConfig, batchRepo, executor, logger)
+
+	// Start scheduler
+	if err := scheduler.Start(); err != nil {
+		logger.Fatal().Err(err).Msg("Failed to start batch scheduler")
+	}
+	logger.Info().Msg("Batch scheduler started")
+
+	// Initialize FileActionsService
+	fileActionsService := service.NewFileActionsService(batchRepo, fileRepo, fileOrgService, scheduler, uow, logger)
+
+	logger.Info().Msg("Batch processing system initialized")
 
 	// Inject SSE broker into services (via type assertion to concrete type method)
 	if setter, ok := fileService.(interface{ SetSSEBroker(*sse.Broker) }); ok {
@@ -79,17 +110,19 @@ func main() {
 	healthHandler := handlers.NewHealthHandler(version)
 	filesHandler := handlers.NewFilesHandler(fileService, scannerService, cfg.FileDiscovery.WatchFolders)
 	processingHandler := handlers.NewProcessingHandler(fileService, statsService)
+	fileActionsHandler := handlers.NewFileActionsHandler(fileActionsService)
 	sseHandler := handlers.NewSSEHandler(sseBroker, logger)
 
 	// Configure Router
 	routerConfig := api.RouterConfig{
-		Logger:            logger,
-		HealthHandler:     healthHandler,
-		FilesHandler:      filesHandler,
-		ProcessingHandler: processingHandler,
-		SSEHandler:        sseHandler,
-		AllowedOrigins:    cfg.Server.CORSAllowedOrigins,
-		AllowCredentials:  true,
+		Logger:             logger,
+		HealthHandler:      healthHandler,
+		FilesHandler:       filesHandler,
+		ProcessingHandler:  processingHandler,
+		FileActionsHandler: fileActionsHandler,
+		SSEHandler:         sseHandler,
+		AllowedOrigins:     cfg.Server.CORSAllowedOrigins,
+		AllowCredentials:   true,
 	}
 
 	router := api.NewRouter(routerConfig)
@@ -127,6 +160,12 @@ func main() {
 		logger.Info().
 			Str("signal", sig.String()).
 			Msg("Shutdown signal received, starting graceful shutdown")
+
+		// Stop batch scheduler first
+		logger.Info().Msg("Stopping batch scheduler")
+		if err := scheduler.Stop(); err != nil {
+			logger.Error().Err(err).Msg("Failed to stop batch scheduler")
+		}
 
 		// Create context with timeout for shutdown
 		ctx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)

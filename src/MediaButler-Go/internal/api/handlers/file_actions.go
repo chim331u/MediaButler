@@ -243,7 +243,7 @@ func toBatchStatusResponse(job *domain.BatchJob) *BatchStatusResponse {
 	response := &BatchStatusResponse{
 		JobID:           job.ID,
 		BatchName:       job.BatchName,
-		Status:          job.Status.String(),
+		Status:          string(job.Status),
 		QueuedAt:        job.QueuedAt,
 		TotalFiles:      job.TotalFiles,
 		ProcessedFiles:  job.ProcessedFiles,
@@ -256,20 +256,20 @@ func toBatchStatusResponse(job *domain.BatchJob) *BatchStatusResponse {
 		MaxRetries:      job.MaxRetries,
 	}
 
-	if !job.StartedAt.IsZero() {
-		response.StartedAt = &job.StartedAt
+	if job.StartedAt != nil && !job.StartedAt.IsZero() {
+		response.StartedAt = job.StartedAt
 	}
 
-	if !job.CompletedAt.IsZero() {
-		response.CompletedAt = &job.CompletedAt
+	if job.CompletedAt != nil && !job.CompletedAt.IsZero() {
+		response.CompletedAt = job.CompletedAt
 	}
 
 	if job.ErrorMessage != nil {
 		response.ErrorMessage = job.ErrorMessage
 	}
 
-	if metadata := job.GetMetadata(); metadata != nil {
-		response.Metadata = metadata
+	if job.Metadata != nil {
+		response.Metadata = job.Metadata
 	}
 
 	return response

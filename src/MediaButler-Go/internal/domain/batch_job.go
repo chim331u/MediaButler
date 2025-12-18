@@ -2,6 +2,7 @@ package domain
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 )
 
@@ -276,4 +277,38 @@ func (i *BatchJobItem) MarkAsFailed(errorMsg string, processingTimeMs int64) {
 	i.ErrorMessage = &errorMsg
 	i.ProcessingTimeMs = &processingTimeMs
 	i.ProcessedAt = &now
+}
+
+// ParseJobStatus converts a string to JobStatus
+func ParseJobStatus(s string) (JobStatus, error) {
+	switch s {
+	case "Queued":
+		return JobStatusQueued, nil
+	case "Processing":
+		return JobStatusProcessing, nil
+	case "Completed":
+		return JobStatusCompleted, nil
+	case "Failed":
+		return JobStatusFailed, nil
+	case "Cancelled":
+		return JobStatusCancelled, nil
+	default:
+		return "", fmt.Errorf("invalid job status: %s", s)
+	}
+}
+
+// ParseItemStatus converts a string to ItemStatus
+func ParseItemStatus(s string) (ItemStatus, error) {
+	switch s {
+	case "Pending":
+		return ItemStatusPending, nil
+	case "Processing":
+		return ItemStatusProcessing, nil
+	case "Completed":
+		return ItemStatusCompleted, nil
+	case "Failed":
+		return ItemStatusFailed, nil
+	default:
+		return "", fmt.Errorf("invalid item status: %s", s)
+	}
 }

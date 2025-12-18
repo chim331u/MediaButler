@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/lucapaganotti/mediabutler-go/internal/domain"
 	"github.com/lucapaganotti/mediabutler-go/internal/jobs/batch"
 	"github.com/lucapaganotti/mediabutler-go/pkg/result"
 	"github.com/rs/zerolog"
@@ -56,13 +57,13 @@ func (s *fileOrganizationService) OrganizeFile(
 	file := fileResult.Value()
 
 	// Validate file can be organized
-	if file.Status == "Moved" {
+	if file.Status == domain.FileStatusMoved {
 		return result.Failure[batch.OrganizedFileResult](
 			fmt.Errorf("file already moved: %s", fileHash),
 		)
 	}
 
-	if file.Status == "Ignored" {
+	if file.Status == domain.FileStatusIgnored {
 		return result.Failure[batch.OrganizedFileResult](
 			fmt.Errorf("file is ignored: %s", fileHash),
 		)

@@ -5,7 +5,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lucapaganotti/mediabutler-go/internal/domain"
 	"github.com/lucapaganotti/mediabutler-go/internal/repository"
 	"github.com/rs/zerolog"
 )

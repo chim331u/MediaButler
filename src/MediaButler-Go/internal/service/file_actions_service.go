@@ -129,77 +129,68 @@ func (s *fileActionsService) OrganizeBatch(ctx context.Context, request BatchOrg
 		return result.Failure[string](fmt.Errorf("batch validation failed: %d invalid operations", len(validation.InvalidOps)))
 	}
 
-	// Create batch job and items in transaction
+	// Create batch job and items
 	jobID := uuid.New().String()
 
-	err := repository.WithTransaction(ctx, s.uow, func(tx *repository.Transaction) error {
-		// Create batch job
-		job := &domain.BatchJob{
-			ID:              jobID,
-			BatchName:       request.BatchName,
-			Status:          domain.JobStatusQueued,
-			QueuedAt:        time.Now(),
-			TotalFiles:      len(request.Operations),
-			ProcessedFiles:  0,
-			SuccessfulFiles: 0,
-			FailedFiles:     0,
-			ContinueOnError: request.ContinueOnError,
-			DryRun:          request.DryRun,
-			MaxConcurrency:  request.MaxConcurrency,
-			RetryCount:      0,
-			MaxRetries:      3,
-			CreatedDate:     time.Now(),
-			LastUpdateDate:  time.Now(),
-		}
+	// Create batch job
+	job := &domain.BatchJob{
+		ID:              jobID,
+		BatchName:       request.BatchName,
+		Status:          domain.JobStatusQueued,
+		QueuedAt:        time.Now(),
+		TotalFiles:      len(request.Operations),
+		ProcessedFiles:  0,
+		SuccessfulFiles: 0,
+		FailedFiles:     0,
+		ContinueOnError: request.ContinueOnError,
+		DryRun:          request.DryRun,
+		MaxConcurrency:  request.MaxConcurrency,
+		RetryCount:      0,
+		MaxRetries:      3,
+		CreatedDate:     time.Now(),
+		LastUpdateDate:  time.Now(),
+	}
 
-		// Set metadata if provided
-		if request.Metadata != nil {
-			job.SetMetadata(request.Metadata)
-		}
+	// Set metadata if provided
+	if request.Metadata != nil {
+		job.Metadata = request.Metadata
+	}
 
-		// Create job in database
-		if err := tx.BatchJobs().Create(ctx, job); err != nil {
-			return fmt.Errorf("create batch job: %w", err)
-		}
-
-		// Create batch job items
-		items := make([]*domain.BatchJobItem, len(request.Operations))
-		for i, op := range request.Operations {
-			items[i] = &domain.BatchJobItem{
-				BatchJobID:        jobID,
-				FileHash:          op.TrackedFile.Hash,
-				ConfirmedCategory: op.ConfirmedCategory,
-				TargetPath:        op.TargetPath,
-				Status:            domain.ItemStatusPending,
-				CreatedDate:       time.Now(),
-			}
-
-			if op.CustomTargetPath != nil {
-				items[i].ActualPath = op.CustomTargetPath
-			}
-		}
-
-		// Batch insert items
-		if err := tx.BatchJobs().CreateItems(ctx, items); err != nil {
-			return fmt.Errorf("create batch job items: %w", err)
-		}
-
-		s.logger.Info().
-			Str("job_id", jobID).
-			Int("item_count", len(items)).
-			Msg("Created batch job and items")
-
-		return nil
-	})
-
-	if err != nil {
+	// Create job in database
+	if err := s.batchRepo.Create(ctx, job); err != nil {
 		s.logger.Error().Err(err).Str("job_id", jobID).Msg("Failed to create batch job")
-		return result.Failure[string](err)
+		return result.Failure[string](fmt.Errorf("create batch job: %w", err))
+	}
+
+	// Create batch job items
+	items := make([]*domain.BatchJobItem, len(request.Operations))
+	for i, op := range request.Operations {
+		targetPath := op.TargetPath
+		items[i] = &domain.BatchJobItem{
+			BatchJobID:        jobID,
+			FileHash:          op.TrackedFile.Hash,
+			ConfirmedCategory: op.ConfirmedCategory,
+			TargetPath:        &targetPath,
+			Status:            domain.ItemStatusPending,
+			CreatedDate:       time.Now(),
+		}
+
+		if op.CustomTargetPath != nil {
+			items[i].ActualPath = op.CustomTargetPath
+		}
+	}
+
+	// Batch insert items
+	err := s.batchRepo.CreateItems(ctx, items)
+	if err != nil {
+		s.logger.Error().Err(err).Str("job_id", jobID).Msg("Failed to create batch job items")
+		return result.Failure[string](fmt.Errorf("create batch job items: %w", err))
 	}
 
 	s.logger.Info().
 		Str("job_id", jobID).
 		Str("batch_name", request.BatchName).
+		Int("item_count", len(items)).
 		Msg("Batch job created successfully")
 
 	return result.Success(jobID)
@@ -259,32 +250,8 @@ func (s *fileActionsService) ListBatchJobs(ctx context.Context, filter BatchJobF
 		filter.Limit = 100
 	}
 
-	// Query repository based on filter
-	var jobs []*domain.BatchJob
-	var err error
-
-	if filter.Status != nil {
-		// Filter by status
-		jobs, err = s.batchRepo.ListByStatus(ctx, *filter.Status, filter.Limit, filter.Offset)
-	} else if filter.FromDate != nil || filter.ToDate != nil {
-		// Filter by date range
-		from := filter.FromDate
-		to := filter.ToDate
-		if from == nil {
-			// Default to 30 days ago
-			t := time.Now().AddDate(0, 0, -30)
-			from = &t
-		}
-		if to == nil {
-			// Default to now
-			t := time.Now()
-			to = &t
-		}
-		jobs, err = s.batchRepo.ListByDateRange(ctx, *from, *to, filter.Limit, filter.Offset)
-	} else {
-		// List all recent jobs
-		jobs, err = s.batchRepo.ListRecent(ctx, filter.Limit, filter.Offset)
-	}
+	// Query repository using List method
+	jobs, err := s.batchRepo.List(ctx, filter.Status, filter.Limit, filter.Offset)
 
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed to list batch jobs")
@@ -352,7 +319,7 @@ func (s *fileActionsService) ValidateBatch(ctx context.Context, request BatchVal
 		}
 
 		// Check if confirmed category is set
-		if file.ConfirmedCategory == nil || *file.ConfirmedCategory == "" {
+		if file.Category == nil || *file.Category == "" {
 			result.Valid = false
 			result.InvalidOps = append(result.InvalidOps, InvalidOperationError{
 				FileHash: hash,
