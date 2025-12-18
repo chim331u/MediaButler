@@ -62,5 +62,23 @@
     "max_log_file_size_mb": 50,
     "worker_count": 2,
     "max_batch_size": 50
+  },
+  "batch": {
+    "scheduler": {
+      "worker_count": 2,
+      "poll_interval": "5s",
+      "job_timeout": "30m",
+      "queue_buffer_size": 100,
+      "shutdown_timeout": "30s"
+    },
+    "throttler": {
+      "enable_throttling": true,
+      "delay_small": "100ms",
+      "delay_medium": "200ms",
+      "delay_large": "500ms",
+      "memory_threshold_mb": 250,
+      "memory_check_interval": 5,
+      "aggressive_gc_threshold": 280
+    }
   }
 }

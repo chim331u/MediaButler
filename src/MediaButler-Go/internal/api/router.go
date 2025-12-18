@@ -16,6 +16,7 @@ type RouterConfig struct {
 	HealthHandler     *handlers.HealthHandler
 	FilesHandler      *handlers.FilesHandler
 	ProcessingHandler *handlers.ProcessingHandler
+	FileActionsHandler *handlers.FileActionsHandler
 	SSEHandler        *handlers.SSEHandler
 	AllowedOrigins    []string
 	AllowCredentials  bool
@@ -100,6 +101,15 @@ func NewRouter(cfg RouterConfig) *chi.Mux {
 		// File actions (v1 API)
 		r.Route("/v1/file-actions", func(r chi.Router) {
 			r.Post("/ignore/{hash}", cfg.ProcessingHandler.IgnoreFile) // POST /api/v1/file-actions/ignore/{hash}
+
+			// Batch operations
+			if cfg.FileActionsHandler != nil {
+				r.Post("/organize-batch", cfg.FileActionsHandler.OrganizeBatch)               // POST /api/v1/file-actions/organize-batch
+				r.Get("/batch-status/{jobId}", cfg.FileActionsHandler.GetBatchStatus)         // GET /api/v1/file-actions/batch-status/{jobId}
+				r.Post("/batch-cancel/{jobId}", cfg.FileActionsHandler.CancelBatchJob)        // POST /api/v1/file-actions/batch-cancel/{jobId}
+				r.Get("/batch-jobs", cfg.FileActionsHandler.ListBatchJobs)                    // GET /api/v1/file-actions/batch-jobs
+				r.Post("/validate-batch", cfg.FileActionsHandler.ValidateBatch)               // POST /api/v1/file-actions/validate-batch
+			}
 		})
 	})
 
