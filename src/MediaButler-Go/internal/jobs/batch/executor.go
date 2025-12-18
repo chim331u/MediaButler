@@ -8,11 +8,23 @@ import (
 	"github.com/lucapaganotti/mediabutler-go/internal/domain"
 	"github.com/lucapaganotti/mediabutler-go/internal/jobs/progress"
 	"github.com/lucapaganotti/mediabutler-go/internal/repository"
-	"github.com/lucapaganotti/mediabutler-go/internal/service"
+	"github.com/lucapaganotti/mediabutler-go/pkg/result"
 	"github.com/rs/zerolog"
 )
 
 const JobTypeBatchFileProcessing = "batch.file.processing"
+
+// OrganizedFileResult represents the result of organizing a file
+type OrganizedFileResult struct {
+	TargetPath string
+	ActualPath string
+}
+
+// FileOrganizer defines the interface for organizing files
+// This interface breaks the import cycle by not depending on the service package
+type FileOrganizer interface {
+	OrganizeFile(ctx context.Context, fileHash string, confirmedCategory string) result.Result[OrganizedFileResult]
+}
 
 // Executor handles batch job execution
 type Executor interface {
@@ -21,30 +33,30 @@ type Executor interface {
 
 // executor implements Executor
 type executor struct {
-	batchRepo             repository.BatchJobRepository
-	fileRepo              repository.FileRepository
-	fileOrganizationService service.FileOrganizationService
-	progressReporter      progress.ProgressReporter
-	throttler             progress.BatchThrottler
-	logger                zerolog.Logger
+	batchRepo        repository.BatchJobRepository
+	fileRepo         repository.FileRepository
+	fileOrganizer    FileOrganizer
+	progressReporter progress.ProgressReporter
+	throttler        progress.BatchThrottler
+	logger           zerolog.Logger
 }
 
 // NewExecutor creates a new batch job executor
 func NewExecutor(
 	batchRepo repository.BatchJobRepository,
 	fileRepo repository.FileRepository,
-	fileOrgService service.FileOrganizationService,
+	fileOrganizer FileOrganizer,
 	progressReporter progress.ProgressReporter,
 	throttler progress.BatchThrottler,
 	logger zerolog.Logger,
 ) Executor {
 	return &executor{
-		batchRepo:             batchRepo,
-		fileRepo:              fileRepo,
-		fileOrganizationService: fileOrgService,
-		progressReporter:      progressReporter,
-		throttler:             throttler,
-		logger:                logger.With().Str("component", "batch-executor").Logger(),
+		batchRepo:        batchRepo,
+		fileRepo:         fileRepo,
+		fileOrganizer:    fileOrganizer,
+		progressReporter: progressReporter,
+		throttler:        throttler,
+		logger:           logger.With().Str("component", "batch-executor").Logger(),
 	}
 }
 
@@ -195,8 +207,8 @@ func (e *executor) processItem(ctx context.Context, item *domain.BatchJobItem) e
 		return fmt.Errorf("file not found in database")
 	}
 
-	// Call file organization service
-	result := e.fileOrganizationService.OrganizeFile(ctx, item.FileHash, item.ConfirmedCategory)
+	// Call file organizer
+	result := e.fileOrganizer.OrganizeFile(ctx, item.FileHash, item.ConfirmedCategory)
 
 	if result.IsFailure() {
 		return fmt.Errorf("organize file failed: %s", result.Error())
