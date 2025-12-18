@@ -13,14 +13,23 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// BatchOrganizeRequest represents a batch organization request
+// FileActionDto represents a single file action (matches .NET API)
+type FileActionDto struct {
+	Hash              string                 `json:"hash"`
+	ConfirmedCategory string                 `json:"confirmedCategory"`
+	CustomTargetPath  *string                `json:"customTargetPath,omitempty"`
+	Metadata          map[string]interface{} `json:"metadata,omitempty"`
+}
+
+// BatchOrganizeRequest represents a batch organization request (matches .NET API)
 type BatchOrganizeRequest struct {
-	BatchName       string                            `json:"batchName"`
-	Operations      []domain.FileOrganizeOperation    `json:"operations"`
-	ContinueOnError bool                              `json:"continueOnError"`
-	DryRun          bool                              `json:"dryRun"`
-	MaxConcurrency  int                               `json:"maxConcurrency"`
-	Metadata        map[string]interface{}            `json:"metadata,omitempty"`
+	Files                []FileActionDto `json:"files"`
+	ContinueOnError      bool            `json:"continueOnError"`
+	ValidateTargetPaths  bool            `json:"validateTargetPaths"`
+	CreateDirectories    bool            `json:"createDirectories"`
+	DryRun               bool            `json:"dryRun"`
+	BatchName            *string         `json:"batchName,omitempty"`
+	MaxConcurrency       *int            `json:"maxConcurrency,omitempty"`
 }
 
 // BatchValidationRequest represents a pre-flight validation request
@@ -100,9 +109,14 @@ func NewFileActionsService(
 
 // OrganizeBatch creates a new batch organization job
 func (s *fileActionsService) OrganizeBatch(ctx context.Context, request BatchOrganizeRequest) result.Result[string] {
+	batchName := "Batch Operation"
+	if request.BatchName != nil {
+		batchName = *request.BatchName
+	}
+
 	s.logger.Info().
-		Str("batch_name", request.BatchName).
-		Int("operation_count", len(request.Operations)).
+		Str("batch_name", batchName).
+		Int("file_count", len(request.Files)).
 		Bool("dry_run", request.DryRun).
 		Msg("Creating batch organization job")
 
@@ -112,10 +126,10 @@ func (s *fileActionsService) OrganizeBatch(ctx context.Context, request BatchOrg
 		return result.Failure[string](err)
 	}
 
-	// Extract file hashes from operations
-	fileHashes := make([]string, len(request.Operations))
-	for i, op := range request.Operations {
-		fileHashes[i] = op.TrackedFile.Hash
+	// Extract file hashes
+	fileHashes := make([]string, len(request.Files))
+	for i, file := range request.Files {
+		fileHashes[i] = file.Hash
 	}
 
 	// Validate all files exist and are in valid states
@@ -132,28 +146,29 @@ func (s *fileActionsService) OrganizeBatch(ctx context.Context, request BatchOrg
 	// Create batch job and items
 	jobID := uuid.New().String()
 
+	// Handle optional MaxConcurrency
+	maxConcurrency := 1
+	if request.MaxConcurrency != nil {
+		maxConcurrency = *request.MaxConcurrency
+	}
+
 	// Create batch job
 	job := &domain.BatchJob{
 		ID:              jobID,
-		BatchName:       request.BatchName,
+		BatchName:       batchName,
 		Status:          domain.JobStatusQueued,
 		QueuedAt:        time.Now(),
-		TotalFiles:      len(request.Operations),
+		TotalFiles:      len(request.Files),
 		ProcessedFiles:  0,
 		SuccessfulFiles: 0,
 		FailedFiles:     0,
 		ContinueOnError: request.ContinueOnError,
 		DryRun:          request.DryRun,
-		MaxConcurrency:  request.MaxConcurrency,
+		MaxConcurrency:  maxConcurrency,
 		RetryCount:      0,
 		MaxRetries:      3,
 		CreatedDate:     time.Now(),
 		LastUpdateDate:  time.Now(),
-	}
-
-	// Set metadata if provided
-	if request.Metadata != nil {
-		job.Metadata = request.Metadata
 	}
 
 	// Create job in database
@@ -163,20 +178,18 @@ func (s *fileActionsService) OrganizeBatch(ctx context.Context, request BatchOrg
 	}
 
 	// Create batch job items
-	items := make([]*domain.BatchJobItem, len(request.Operations))
-	for i, op := range request.Operations {
-		targetPath := op.TargetPath
+	items := make([]*domain.BatchJobItem, len(request.Files))
+	for i, file := range request.Files {
 		items[i] = &domain.BatchJobItem{
 			BatchJobID:        jobID,
-			FileHash:          op.TrackedFile.Hash,
-			ConfirmedCategory: op.ConfirmedCategory,
-			TargetPath:        &targetPath,
+			FileHash:          file.Hash,
+			ConfirmedCategory: file.ConfirmedCategory,
 			Status:            domain.ItemStatusPending,
 			CreatedDate:       time.Now(),
 		}
 
-		if op.CustomTargetPath != nil {
-			items[i].ActualPath = op.CustomTargetPath
+		if file.CustomTargetPath != nil {
+			items[i].CustomTargetPath = file.CustomTargetPath
 		}
 	}
 
@@ -343,35 +356,24 @@ func (s *fileActionsService) ValidateBatch(ctx context.Context, request BatchVal
 
 // validateBatchRequest validates the batch organization request
 func (s *fileActionsService) validateBatchRequest(request BatchOrganizeRequest) error {
-	if request.BatchName == "" {
-		return fmt.Errorf("batch name is required")
-	}
-
-	if len(request.Operations) == 0 {
+	if len(request.Files) == 0 {
 		return fmt.Errorf("no operations provided")
 	}
 
-	if len(request.Operations) > 1000 {
-		return fmt.Errorf("batch size exceeds maximum of 1000 operations")
+	if len(request.Files) > 1000 {
+		return fmt.Errorf("batch size exceeds maximum of 1000 files")
 	}
 
-	if request.MaxConcurrency <= 0 {
-		request.MaxConcurrency = 1
-	}
-
-	// Validate each operation
-	for i, op := range request.Operations {
-		if op.TrackedFile == nil {
-			return fmt.Errorf("operation %d: tracked file is required", i)
+	// Validate each file
+	for i, file := range request.Files {
+		if file.Hash == "" {
+			return fmt.Errorf("file %d: hash is required", i)
 		}
-		if op.TrackedFile.Hash == "" {
-			return fmt.Errorf("operation %d: file hash is required", i)
+		if len(file.Hash) != 64 {
+			return fmt.Errorf("file %d: invalid hash length (expected 64, got %d)", i, len(file.Hash))
 		}
-		if op.ConfirmedCategory == "" {
-			return fmt.Errorf("operation %d: confirmed category is required", i)
-		}
-		if op.TargetPath == "" {
-			return fmt.Errorf("operation %d: target path is required", i)
+		if file.ConfirmedCategory == "" {
+			return fmt.Errorf("file %d: confirmed category is required", i)
 		}
 	}
 

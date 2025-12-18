@@ -68,6 +68,18 @@ func (h *FileActionsHandler) OrganizeBatch(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Debug logging
+	batchName := "Batch Operation"
+	if request.BatchName != nil {
+		batchName = *request.BatchName
+	}
+	log.Info().
+		Str("batch_name", batchName).
+		Int("file_count", len(request.Files)).
+		Bool("continue_on_error", request.ContinueOnError).
+		Bool("dry_run", request.DryRun).
+		Msg("Received batch organize request")
+
 	// Call service
 	result := h.fileActionsService.OrganizeBatch(r.Context(), request)
 	if result.IsFailure() {
