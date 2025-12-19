@@ -39,7 +39,7 @@
     "max_retries": 3
   },
   "database": {
-    "path": "../../temp/mediabutler.db",
+    "path": "../../temp/mediabutler.dev.db",
     "max_open_conns": 1,
     "max_idle_conns": 2,
     "conn_max_lifetime": "0",

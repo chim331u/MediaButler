@@ -140,7 +140,16 @@ func (s *fileActionsService) OrganizeBatch(ctx context.Context, request BatchOrg
 
 	validation := validationResult.Value()
 	if !validation.Valid {
-		return result.Failure[string](fmt.Errorf("batch validation failed: %d invalid operations", len(validation.InvalidOps)))
+		// Build detailed error message with all validation failures
+		errMsg := fmt.Sprintf("batch validation failed: %d invalid operations", len(validation.InvalidOps))
+		for i, invalidOp := range validation.InvalidOps {
+			errMsg += fmt.Sprintf("\n  %d. File %s: %s", i+1, invalidOp.FileHash[:12], invalidOp.Reason)
+		}
+		s.logger.Warn().
+			Int("invalid_count", len(validation.InvalidOps)).
+			Interface("invalid_operations", validation.InvalidOps).
+			Msg("Batch validation failed with details")
+		return result.Failure[string](fmt.Errorf("%s", errMsg))
 	}
 
 	// Create batch job and items
@@ -202,7 +211,7 @@ func (s *fileActionsService) OrganizeBatch(ctx context.Context, request BatchOrg
 
 	s.logger.Info().
 		Str("job_id", jobID).
-		Str("batch_name", request.BatchName).
+		Str("batch_name", batchName).
 		Int("item_count", len(items)).
 		Msg("Batch job created successfully")
 
