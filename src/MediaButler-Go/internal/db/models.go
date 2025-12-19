@@ -8,24 +8,63 @@ import (
 	"time"
 )
 
+type BatchJob struct {
+	ID              string     `db:"id" json:"id"`
+	BatchName       string     `db:"batch_name" json:"batchName"`
+	Status          string     `db:"status" json:"status"`
+	QueuedAt        time.Time  `db:"queued_at" json:"queuedAt"`
+	StartedAt       *time.Time `db:"started_at" json:"startedAt"`
+	CompletedAt     *time.Time `db:"completed_at" json:"completedAt"`
+	TotalFiles      int64      `db:"total_files" json:"totalFiles"`
+	ProcessedFiles  *int64     `db:"processed_files" json:"processedFiles"`
+	SuccessfulFiles *int64     `db:"successful_files" json:"successfulFiles"`
+	FailedFiles     *int64     `db:"failed_files" json:"failedFiles"`
+	ContinueOnError *bool      `db:"continue_on_error" json:"continueOnError"`
+	DryRun          *bool      `db:"dry_run" json:"dryRun"`
+	MaxConcurrency  *int64     `db:"max_concurrency" json:"maxConcurrency"`
+	RetryCount      *int64     `db:"retry_count" json:"retryCount"`
+	MaxRetries      *int64     `db:"max_retries" json:"maxRetries"`
+	NextRetryAt     *time.Time `db:"next_retry_at" json:"nextRetryAt"`
+	Metadata        *string    `db:"metadata" json:"metadata"`
+	ErrorMessage    *string    `db:"error_message" json:"errorMessage"`
+	CreatedDate     time.Time  `db:"created_date" json:"createdDate"`
+	LastUpdateDate  time.Time  `db:"last_update_date" json:"lastUpdateDate"`
+}
+
+type BatchJobItem struct {
+	ID                int64      `db:"id" json:"id"`
+	BatchJobID        string     `db:"batch_job_id" json:"batchJobId"`
+	FileHash          string     `db:"file_hash" json:"fileHash"`
+	ConfirmedCategory string     `db:"confirmed_category" json:"confirmedCategory"`
+	CustomTargetPath  *string    `db:"custom_target_path" json:"customTargetPath"`
+	Status            string     `db:"status" json:"status"`
+	TargetPath        *string    `db:"target_path" json:"targetPath"`
+	ActualPath        *string    `db:"actual_path" json:"actualPath"`
+	ErrorMessage      *string    `db:"error_message" json:"errorMessage"`
+	ProcessingTimeMs  *int64     `db:"processing_time_ms" json:"processingTimeMs"`
+	ProcessedAt       *time.Time `db:"processed_at" json:"processedAt"`
+	Metadata          *string    `db:"metadata" json:"metadata"`
+	CreatedDate       time.Time  `db:"created_date" json:"createdDate"`
+}
+
 type Trackedfile struct {
-	Hash              string     `db:"Hash" json:"hash"`
-	Filename          string     `db:"FileName" json:"fileName"`
-	Originalpath      string     `db:"OriginalPath" json:"originalPath"`
-	Filesize          int64      `db:"FileSize" json:"fileSize"`
-	Status            int64      `db:"Status" json:"status"`
-	Suggestedcategory *string    `db:"SuggestedCategory" json:"suggestedCategory"`
-	Confidence        float64    `db:"Confidence" json:"confidence"`
-	Category          *string    `db:"Category" json:"category"`
-	Targetpath        *string    `db:"TargetPath" json:"targetPath"`
-	Movedtopath       *string    `db:"MovedToPath" json:"movedToPath"`
-	Classifiedat      *time.Time `db:"ClassifiedAt" json:"classifiedAt"`
-	Movedat           *time.Time `db:"MovedAt" json:"movedAt"`
-	Lasterror         *string    `db:"LastError" json:"lastError"`
-	Lasterrorat       *time.Time `db:"LastErrorAt" json:"lastErrorAt"`
-	Retrycount        int64      `db:"RetryCount" json:"retryCount"`
-	Createddate       time.Time  `db:"CreatedDate" json:"createdDate"`
-	Lastupdatedate    time.Time  `db:"LastUpdateDate" json:"lastUpdateDate"`
-	Note              *string    `db:"Note" json:"note"`
-	Isactive          bool       `db:"IsActive" json:"isActive"`
+	Hash              string     `db:"hash" json:"hash"`
+	FileName          string     `db:"filename" json:"filename"`
+	OriginalPath      string     `db:"originalpath" json:"originalpath"`
+	FileSize          int64      `db:"filesize" json:"filesize"`
+	Status            int64      `db:"status" json:"status"`
+	SuggestedCategory *string    `db:"suggestedcategory" json:"suggestedcategory"`
+	Confidence        float64    `db:"confidence" json:"confidence"`
+	Category          *string    `db:"category" json:"category"`
+	TargetPath        *string    `db:"targetpath" json:"targetpath"`
+	MovedToPath       *string    `db:"movedtopath" json:"movedtopath"`
+	ClassifiedAt      *time.Time `db:"classifiedat" json:"classifiedat"`
+	MovedAt           *time.Time `db:"movedat" json:"movedat"`
+	LastError         *string    `db:"lasterror" json:"lasterror"`
+	LastErrorAt       *time.Time `db:"lasterrorat" json:"lasterrorat"`
+	RetryCount        int64      `db:"retrycount" json:"retrycount"`
+	CreatedDate       time.Time  `db:"createddate" json:"createddate"`
+	LastUpdateDate    time.Time  `db:"lastupdatedate" json:"lastupdatedate"`
+	Note              *string    `db:"note" json:"note"`
+	IsActive          int64      `db:"isactive" json:"isactive"`
 }

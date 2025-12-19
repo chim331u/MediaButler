@@ -16,6 +16,10 @@ SELECT COUNT(*) FROM TrackedFiles
 WHERE IsActive = 1
 `
 
+// CountAllFiles
+//
+//	SELECT COUNT(*) FROM TrackedFiles
+//	WHERE IsActive = 1
 func (q *Queries) CountAllFiles(ctx context.Context) (int64, error) {
 	row := q.db.QueryRowContext(ctx, countAllFiles)
 	var count int64
@@ -28,6 +32,10 @@ SELECT COUNT(*) FROM TrackedFiles
 WHERE Status = ? AND IsActive = 1
 `
 
+// CountFilesByStatus
+//
+//	SELECT COUNT(*) FROM TrackedFiles
+//	WHERE Status = ? AND IsActive = 1
 func (q *Queries) CountFilesByStatus(ctx context.Context, status int64) (int64, error) {
 	row := q.db.QueryRowContext(ctx, countFilesByStatus, status)
 	var count int64
@@ -51,6 +59,15 @@ type CountFilesByStatusesParams struct {
 	SearchTerm interface{} `db:"search_term" json:"searchTerm"`
 }
 
+// CountFilesByStatuses
+//
+//	SELECT COUNT(*) FROM TrackedFiles
+//	WHERE Status IN (/*SLICE:statuses*/?)
+//	  AND IsActive = 1
+//	  AND (?2 IS NULL OR Category = ?2)
+//	  AND (?3 IS NULL
+//	       OR FileName LIKE '%' || ?3 || '%'
+//	       OR Category LIKE '%' || ?3 || '%')
 func (q *Queries) CountFilesByStatuses(ctx context.Context, arg CountFilesByStatusesParams) (int64, error) {
 	query := countFilesByStatuses
 	var queryParams []interface{}
@@ -78,26 +95,32 @@ INSERT INTO TrackedFiles (
 `
 
 type CreateFileParams struct {
-	Hash           string    `db:"Hash" json:"hash"`
-	Filename       string    `db:"FileName" json:"fileName"`
-	Originalpath   string    `db:"OriginalPath" json:"originalPath"`
-	Filesize       int64     `db:"FileSize" json:"fileSize"`
-	Status         int64     `db:"Status" json:"status"`
-	Createddate    time.Time `db:"CreatedDate" json:"createdDate"`
-	Lastupdatedate time.Time `db:"LastUpdateDate" json:"lastUpdateDate"`
-	Isactive       bool      `db:"IsActive" json:"isActive"`
+	Hash           string    `db:"hash" json:"hash"`
+	FileName       string    `db:"filename" json:"filename"`
+	OriginalPath   string    `db:"originalpath" json:"originalpath"`
+	FileSize       int64     `db:"filesize" json:"filesize"`
+	Status         int64     `db:"status" json:"status"`
+	CreatedDate    time.Time `db:"createddate" json:"createddate"`
+	LastUpdateDate time.Time `db:"lastupdatedate" json:"lastupdatedate"`
+	IsActive       int64     `db:"isactive" json:"isactive"`
 }
 
+// CreateFile
+//
+//	INSERT INTO TrackedFiles (
+//	    Hash, FileName, OriginalPath, FileSize, Status,
+//	    CreatedDate, LastUpdateDate, IsActive
+//	) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 func (q *Queries) CreateFile(ctx context.Context, arg CreateFileParams) error {
 	_, err := q.db.ExecContext(ctx, createFile,
 		arg.Hash,
-		arg.Filename,
-		arg.Originalpath,
-		arg.Filesize,
+		arg.FileName,
+		arg.OriginalPath,
+		arg.FileSize,
 		arg.Status,
-		arg.Createddate,
-		arg.Lastupdatedate,
-		arg.Isactive,
+		arg.CreatedDate,
+		arg.LastUpdateDate,
+		arg.IsActive,
 	)
 	return err
 }
@@ -109,6 +132,12 @@ WHERE Hash = ?
   AND IsActive = 1
 `
 
+// ExistsByHash
+//
+//	SELECT COUNT(*) > 0
+//	FROM TrackedFiles
+//	WHERE Hash = ?
+//	  AND IsActive = 1
 func (q *Queries) ExistsByHash(ctx context.Context, hash string) (bool, error) {
 	row := q.db.QueryRowContext(ctx, existsByHash, hash)
 	var column_1 bool
@@ -123,6 +152,12 @@ WHERE OriginalPath = ?
   AND IsActive = 1
 `
 
+// ExistsByOriginalPath
+//
+//	SELECT COUNT(*) > 0
+//	FROM TrackedFiles
+//	WHERE OriginalPath = ?
+//	  AND IsActive = 1
 func (q *Queries) ExistsByOriginalPath(ctx context.Context, originalpath string) (bool, error) {
 	row := q.db.QueryRowContext(ctx, existsByOriginalPath, originalpath)
 	var column_1 bool
@@ -144,6 +179,11 @@ type GetAllFilesParams struct {
 }
 
 // Batch Operations
+//
+//	SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
+//	WHERE IsActive = 1
+//	ORDER BY CreatedDate DESC
+//	LIMIT ? OFFSET ?
 func (q *Queries) GetAllFiles(ctx context.Context, arg GetAllFilesParams) ([]Trackedfile, error) {
 	rows, err := q.db.QueryContext(ctx, getAllFiles, arg.Limit, arg.Offset)
 	if err != nil {
@@ -155,24 +195,24 @@ func (q *Queries) GetAllFiles(ctx context.Context, arg GetAllFilesParams) ([]Tra
 		var i Trackedfile
 		if err := rows.Scan(
 			&i.Hash,
-			&i.Filename,
-			&i.Originalpath,
-			&i.Filesize,
+			&i.FileName,
+			&i.OriginalPath,
+			&i.FileSize,
 			&i.Status,
-			&i.Suggestedcategory,
+			&i.SuggestedCategory,
 			&i.Confidence,
 			&i.Category,
-			&i.Targetpath,
-			&i.Movedtopath,
-			&i.Classifiedat,
-			&i.Movedat,
-			&i.Lasterror,
-			&i.Lasterrorat,
-			&i.Retrycount,
-			&i.Createddate,
-			&i.Lastupdatedate,
+			&i.TargetPath,
+			&i.MovedToPath,
+			&i.ClassifiedAt,
+			&i.MovedAt,
+			&i.LastError,
+			&i.LastErrorAt,
+			&i.RetryCount,
+			&i.CreatedDate,
+			&i.LastUpdateDate,
 			&i.Note,
-			&i.Isactive,
+			&i.IsActive,
 		); err != nil {
 			return nil, err
 		}
@@ -195,6 +235,13 @@ WHERE Category IS NOT NULL
 ORDER BY Category ASC
 `
 
+// GetDistinctCategories
+//
+//	SELECT DISTINCT Category
+//	FROM TrackedFiles
+//	WHERE Category IS NOT NULL
+//	  AND IsActive = 1
+//	ORDER BY Category ASC
 func (q *Queries) GetDistinctCategories(ctx context.Context) ([]*string, error) {
 	rows, err := q.db.QueryContext(ctx, getDistinctCategories)
 	if err != nil {
@@ -226,29 +273,33 @@ LIMIT 1
 `
 
 // TrackedFile CRUD Operations
+//
+//	SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
+//	WHERE Hash = ? AND IsActive = 1
+//	LIMIT 1
 func (q *Queries) GetFileByHash(ctx context.Context, hash string) (Trackedfile, error) {
 	row := q.db.QueryRowContext(ctx, getFileByHash, hash)
 	var i Trackedfile
 	err := row.Scan(
 		&i.Hash,
-		&i.Filename,
-		&i.Originalpath,
-		&i.Filesize,
+		&i.FileName,
+		&i.OriginalPath,
+		&i.FileSize,
 		&i.Status,
-		&i.Suggestedcategory,
+		&i.SuggestedCategory,
 		&i.Confidence,
 		&i.Category,
-		&i.Targetpath,
-		&i.Movedtopath,
-		&i.Classifiedat,
-		&i.Movedat,
-		&i.Lasterror,
-		&i.Lasterrorat,
-		&i.Retrycount,
-		&i.Createddate,
-		&i.Lastupdatedate,
+		&i.TargetPath,
+		&i.MovedToPath,
+		&i.ClassifiedAt,
+		&i.MovedAt,
+		&i.LastError,
+		&i.LastErrorAt,
+		&i.RetryCount,
+		&i.CreatedDate,
+		&i.LastUpdateDate,
 		&i.Note,
-		&i.Isactive,
+		&i.IsActive,
 	)
 	return i, err
 }
@@ -259,29 +310,34 @@ WHERE Hash = ?
 LIMIT 1
 `
 
+// GetFileByHashIncludeDeleted
+//
+//	SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
+//	WHERE Hash = ?
+//	LIMIT 1
 func (q *Queries) GetFileByHashIncludeDeleted(ctx context.Context, hash string) (Trackedfile, error) {
 	row := q.db.QueryRowContext(ctx, getFileByHashIncludeDeleted, hash)
 	var i Trackedfile
 	err := row.Scan(
 		&i.Hash,
-		&i.Filename,
-		&i.Originalpath,
-		&i.Filesize,
+		&i.FileName,
+		&i.OriginalPath,
+		&i.FileSize,
 		&i.Status,
-		&i.Suggestedcategory,
+		&i.SuggestedCategory,
 		&i.Confidence,
 		&i.Category,
-		&i.Targetpath,
-		&i.Movedtopath,
-		&i.Classifiedat,
-		&i.Movedat,
-		&i.Lasterror,
-		&i.Lasterrorat,
-		&i.Retrycount,
-		&i.Createddate,
-		&i.Lastupdatedate,
+		&i.TargetPath,
+		&i.MovedToPath,
+		&i.ClassifiedAt,
+		&i.MovedAt,
+		&i.LastError,
+		&i.LastErrorAt,
+		&i.RetryCount,
+		&i.CreatedDate,
+		&i.LastUpdateDate,
 		&i.Note,
-		&i.Isactive,
+		&i.IsActive,
 	)
 	return i, err
 }
@@ -293,6 +349,12 @@ WHERE Status = 2  -- FileStatus.Classified
 ORDER BY ClassifiedAt DESC
 `
 
+// GetFilesAwaitingConfirmation
+//
+//	SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
+//	WHERE Status = 2  -- FileStatus.Classified
+//	  AND IsActive = 1
+//	ORDER BY ClassifiedAt DESC
 func (q *Queries) GetFilesAwaitingConfirmation(ctx context.Context) ([]Trackedfile, error) {
 	rows, err := q.db.QueryContext(ctx, getFilesAwaitingConfirmation)
 	if err != nil {
@@ -304,24 +366,24 @@ func (q *Queries) GetFilesAwaitingConfirmation(ctx context.Context) ([]Trackedfi
 		var i Trackedfile
 		if err := rows.Scan(
 			&i.Hash,
-			&i.Filename,
-			&i.Originalpath,
-			&i.Filesize,
+			&i.FileName,
+			&i.OriginalPath,
+			&i.FileSize,
 			&i.Status,
-			&i.Suggestedcategory,
+			&i.SuggestedCategory,
 			&i.Confidence,
 			&i.Category,
-			&i.Targetpath,
-			&i.Movedtopath,
-			&i.Classifiedat,
-			&i.Movedat,
-			&i.Lasterror,
-			&i.Lasterrorat,
-			&i.Retrycount,
-			&i.Createddate,
-			&i.Lastupdatedate,
+			&i.TargetPath,
+			&i.MovedToPath,
+			&i.ClassifiedAt,
+			&i.MovedAt,
+			&i.LastError,
+			&i.LastErrorAt,
+			&i.RetryCount,
+			&i.CreatedDate,
+			&i.LastUpdateDate,
 			&i.Note,
-			&i.Isactive,
+			&i.IsActive,
 		); err != nil {
 			return nil, err
 		}
@@ -343,6 +405,12 @@ WHERE Category = ?
 ORDER BY MovedAt DESC
 `
 
+// GetFilesByCategory
+//
+//	SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
+//	WHERE Category = ?
+//	  AND IsActive = 1
+//	ORDER BY MovedAt DESC
 func (q *Queries) GetFilesByCategory(ctx context.Context, category *string) ([]Trackedfile, error) {
 	rows, err := q.db.QueryContext(ctx, getFilesByCategory, category)
 	if err != nil {
@@ -354,24 +422,24 @@ func (q *Queries) GetFilesByCategory(ctx context.Context, category *string) ([]T
 		var i Trackedfile
 		if err := rows.Scan(
 			&i.Hash,
-			&i.Filename,
-			&i.Originalpath,
-			&i.Filesize,
+			&i.FileName,
+			&i.OriginalPath,
+			&i.FileSize,
 			&i.Status,
-			&i.Suggestedcategory,
+			&i.SuggestedCategory,
 			&i.Confidence,
 			&i.Category,
-			&i.Targetpath,
-			&i.Movedtopath,
-			&i.Classifiedat,
-			&i.Movedat,
-			&i.Lasterror,
-			&i.Lasterrorat,
-			&i.Retrycount,
-			&i.Createddate,
-			&i.Lastupdatedate,
+			&i.TargetPath,
+			&i.MovedToPath,
+			&i.ClassifiedAt,
+			&i.MovedAt,
+			&i.LastError,
+			&i.LastErrorAt,
+			&i.RetryCount,
+			&i.CreatedDate,
+			&i.LastUpdateDate,
 			&i.Note,
-			&i.Isactive,
+			&i.IsActive,
 		); err != nil {
 			return nil, err
 		}
@@ -401,6 +469,11 @@ type GetFilesByStatusParams struct {
 }
 
 // Workflow Queries
+//
+//	SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
+//	WHERE Status = ? AND IsActive = 1
+//	ORDER BY CreatedDate DESC
+//	LIMIT ? OFFSET ?
 func (q *Queries) GetFilesByStatus(ctx context.Context, arg GetFilesByStatusParams) ([]Trackedfile, error) {
 	rows, err := q.db.QueryContext(ctx, getFilesByStatus, arg.Status, arg.Limit, arg.Offset)
 	if err != nil {
@@ -412,24 +485,24 @@ func (q *Queries) GetFilesByStatus(ctx context.Context, arg GetFilesByStatusPara
 		var i Trackedfile
 		if err := rows.Scan(
 			&i.Hash,
-			&i.Filename,
-			&i.Originalpath,
-			&i.Filesize,
+			&i.FileName,
+			&i.OriginalPath,
+			&i.FileSize,
 			&i.Status,
-			&i.Suggestedcategory,
+			&i.SuggestedCategory,
 			&i.Confidence,
 			&i.Category,
-			&i.Targetpath,
-			&i.Movedtopath,
-			&i.Classifiedat,
-			&i.Movedat,
-			&i.Lasterror,
-			&i.Lasterrorat,
-			&i.Retrycount,
-			&i.Createddate,
-			&i.Lastupdatedate,
+			&i.TargetPath,
+			&i.MovedToPath,
+			&i.ClassifiedAt,
+			&i.MovedAt,
+			&i.LastError,
+			&i.LastErrorAt,
+			&i.RetryCount,
+			&i.CreatedDate,
+			&i.LastUpdateDate,
 			&i.Note,
-			&i.Isactive,
+			&i.IsActive,
 		); err != nil {
 			return nil, err
 		}
@@ -468,47 +541,36 @@ type GetFilesByStatusesParams struct {
 	Offset     int64       `db:"offset" json:"offset"`
 }
 
+// GetFilesByStatuses
+//
+//	SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
+//	WHERE Status IN (/*SLICE:statuses*/?)
+//	  AND IsActive = 1
+//	  AND (?4 IS NULL OR Category = ?4)
+//	  AND (?5 IS NULL
+//	       OR FileName LIKE '%' || ?5 || '%'
+//	       OR Category LIKE '%' || ?5 || '%')
+//	ORDER BY
+//	  CASE WHEN sqlc.narg('order_by') = 'CreatedDate' THEN CreatedDate END ASC,
+//	  CASE WHEN sqlc.narg('order_by') = 'LastUpdateDate' THEN LastUpdateDate END DESC,
+//	  CASE WHEN sqlc.narg('order_by') = 'FileName' THEN FileName END ASC,
+//	  LastUpdateDate DESC
+//	LIMIT ? OFFSET ?
 func (q *Queries) GetFilesByStatuses(ctx context.Context, arg GetFilesByStatusesParams) ([]Trackedfile, error) {
-	// Manual fix for sqlc.narg/ORDER BY issue
-	// We use standard ? placeholders and bind arguments explicitly in order
-
-	// Base query with placeholders
-	query := `SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
-WHERE Status IN (/*SLICE:statuses*/?)
-  AND IsActive = 1
-  AND (? IS NULL OR Category = ?)
-  AND (? IS NULL
-       OR FileName LIKE '%' || ? || '%'
-       OR Category LIKE '%' || ? || '%')
-ORDER BY LastUpdateDate DESC
-LIMIT ? OFFSET ?`
-
+	query := getFilesByStatuses
 	var queryParams []interface{}
-
-	// Handle Status slice expansion
 	if len(arg.Statuses) > 0 {
 		for _, v := range arg.Statuses {
 			queryParams = append(queryParams, v)
 		}
 		query = strings.Replace(query, "/*SLICE:statuses*/?", strings.Repeat(",?", len(arg.Statuses))[1:], 1)
 	} else {
-		// Fallback for empty slice (should be handled by caller, but safe logic here)
 		query = strings.Replace(query, "/*SLICE:statuses*/?", "NULL", 1)
 	}
-
-	// Bind Category (used twice: check for null, and comparison)
 	queryParams = append(queryParams, arg.Category)
-	queryParams = append(queryParams, arg.Category)
-
-	// Bind SearchTerm (used 3 times: check for null, pattern match filename, pattern match category)
 	queryParams = append(queryParams, arg.SearchTerm)
-	queryParams = append(queryParams, arg.SearchTerm)
-	queryParams = append(queryParams, arg.SearchTerm)
-
-	// Bind Limit and Offset
 	queryParams = append(queryParams, arg.Limit)
 	queryParams = append(queryParams, arg.Offset)
-
 	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
@@ -519,24 +581,24 @@ LIMIT ? OFFSET ?`
 		var i Trackedfile
 		if err := rows.Scan(
 			&i.Hash,
-			&i.Filename,
-			&i.Originalpath,
-			&i.Filesize,
+			&i.FileName,
+			&i.OriginalPath,
+			&i.FileSize,
 			&i.Status,
-			&i.Suggestedcategory,
+			&i.SuggestedCategory,
 			&i.Confidence,
 			&i.Category,
-			&i.Targetpath,
-			&i.Movedtopath,
-			&i.Classifiedat,
-			&i.Movedat,
-			&i.Lasterror,
-			&i.Lasterrorat,
-			&i.Retrycount,
-			&i.Createddate,
-			&i.Lastupdatedate,
+			&i.TargetPath,
+			&i.MovedToPath,
+			&i.ClassifiedAt,
+			&i.MovedAt,
+			&i.LastError,
+			&i.LastErrorAt,
+			&i.RetryCount,
+			&i.CreatedDate,
+			&i.LastUpdateDate,
 			&i.Note,
-			&i.Isactive,
+			&i.IsActive,
 		); err != nil {
 			return nil, err
 		}
@@ -559,6 +621,13 @@ WHERE Status = 6  -- FileStatus.Error
 ORDER BY RetryCount DESC, LastErrorAt DESC
 `
 
+// GetFilesExceedingRetryLimit
+//
+//	SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
+//	WHERE Status = 6  -- FileStatus.Error
+//	  AND RetryCount >= ?
+//	  AND IsActive = 1
+//	ORDER BY RetryCount DESC, LastErrorAt DESC
 func (q *Queries) GetFilesExceedingRetryLimit(ctx context.Context, retrycount int64) ([]Trackedfile, error) {
 	rows, err := q.db.QueryContext(ctx, getFilesExceedingRetryLimit, retrycount)
 	if err != nil {
@@ -570,24 +639,24 @@ func (q *Queries) GetFilesExceedingRetryLimit(ctx context.Context, retrycount in
 		var i Trackedfile
 		if err := rows.Scan(
 			&i.Hash,
-			&i.Filename,
-			&i.Originalpath,
-			&i.Filesize,
+			&i.FileName,
+			&i.OriginalPath,
+			&i.FileSize,
 			&i.Status,
-			&i.Suggestedcategory,
+			&i.SuggestedCategory,
 			&i.Confidence,
 			&i.Category,
-			&i.Targetpath,
-			&i.Movedtopath,
-			&i.Classifiedat,
-			&i.Movedat,
-			&i.Lasterror,
-			&i.Lasterrorat,
-			&i.Retrycount,
-			&i.Createddate,
-			&i.Lastupdatedate,
+			&i.TargetPath,
+			&i.MovedToPath,
+			&i.ClassifiedAt,
+			&i.MovedAt,
+			&i.LastError,
+			&i.LastErrorAt,
+			&i.RetryCount,
+			&i.CreatedDate,
+			&i.LastUpdateDate,
 			&i.Note,
-			&i.Isactive,
+			&i.IsActive,
 		); err != nil {
 			return nil, err
 		}
@@ -611,13 +680,18 @@ ORDER BY CreatedDate DESC
 `
 
 type GetFilesProcessedInRangeParams struct {
-	Createddate   time.Time `db:"createddate" json:"createddate"`
-	Createddate_2 time.Time `db:"createddate_2" json:"createddate2"`
+	CreatedDate   time.Time `db:"createddate" json:"createddate"`
+	CreatedDate_2 time.Time `db:"createddate_2" json:"createddate2"`
 }
 
 // Temporal Queries
+//
+//	SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
+//	WHERE CreatedDate BETWEEN ? AND ?
+//	  AND IsActive = 1
+//	ORDER BY CreatedDate DESC
 func (q *Queries) GetFilesProcessedInRange(ctx context.Context, arg GetFilesProcessedInRangeParams) ([]Trackedfile, error) {
-	rows, err := q.db.QueryContext(ctx, getFilesProcessedInRange, arg.Createddate, arg.Createddate_2)
+	rows, err := q.db.QueryContext(ctx, getFilesProcessedInRange, arg.CreatedDate, arg.CreatedDate_2)
 	if err != nil {
 		return nil, err
 	}
@@ -627,24 +701,24 @@ func (q *Queries) GetFilesProcessedInRange(ctx context.Context, arg GetFilesProc
 		var i Trackedfile
 		if err := rows.Scan(
 			&i.Hash,
-			&i.Filename,
-			&i.Originalpath,
-			&i.Filesize,
+			&i.FileName,
+			&i.OriginalPath,
+			&i.FileSize,
 			&i.Status,
-			&i.Suggestedcategory,
+			&i.SuggestedCategory,
 			&i.Confidence,
 			&i.Category,
-			&i.Targetpath,
-			&i.Movedtopath,
-			&i.Classifiedat,
-			&i.Movedat,
-			&i.Lasterror,
-			&i.Lasterrorat,
-			&i.Retrycount,
-			&i.Createddate,
-			&i.Lastupdatedate,
+			&i.TargetPath,
+			&i.MovedToPath,
+			&i.ClassifiedAt,
+			&i.MovedAt,
+			&i.LastError,
+			&i.LastErrorAt,
+			&i.RetryCount,
+			&i.CreatedDate,
+			&i.LastUpdateDate,
 			&i.Note,
-			&i.Isactive,
+			&i.IsActive,
 		); err != nil {
 			return nil, err
 		}
@@ -667,6 +741,13 @@ ORDER BY CreatedDate ASC
 LIMIT ?
 `
 
+// GetFilesReadyForClassification
+//
+//	SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
+//	WHERE Status = 0  -- FileStatus.New
+//	  AND IsActive = 1
+//	ORDER BY CreatedDate ASC
+//	LIMIT ?
 func (q *Queries) GetFilesReadyForClassification(ctx context.Context, limit int64) ([]Trackedfile, error) {
 	rows, err := q.db.QueryContext(ctx, getFilesReadyForClassification, limit)
 	if err != nil {
@@ -678,24 +759,24 @@ func (q *Queries) GetFilesReadyForClassification(ctx context.Context, limit int6
 		var i Trackedfile
 		if err := rows.Scan(
 			&i.Hash,
-			&i.Filename,
-			&i.Originalpath,
-			&i.Filesize,
+			&i.FileName,
+			&i.OriginalPath,
+			&i.FileSize,
 			&i.Status,
-			&i.Suggestedcategory,
+			&i.SuggestedCategory,
 			&i.Confidence,
 			&i.Category,
-			&i.Targetpath,
-			&i.Movedtopath,
-			&i.Classifiedat,
-			&i.Movedat,
-			&i.Lasterror,
-			&i.Lasterrorat,
-			&i.Retrycount,
-			&i.Createddate,
-			&i.Lastupdatedate,
+			&i.TargetPath,
+			&i.MovedToPath,
+			&i.ClassifiedAt,
+			&i.MovedAt,
+			&i.LastError,
+			&i.LastErrorAt,
+			&i.RetryCount,
+			&i.CreatedDate,
+			&i.LastUpdateDate,
 			&i.Note,
-			&i.Isactive,
+			&i.IsActive,
 		); err != nil {
 			return nil, err
 		}
@@ -718,6 +799,13 @@ ORDER BY LastUpdateDate ASC
 LIMIT ?
 `
 
+// GetFilesReadyForMoving
+//
+//	SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
+//	WHERE Status = 3  -- FileStatus.ReadyToMove
+//	  AND IsActive = 1
+//	ORDER BY LastUpdateDate ASC
+//	LIMIT ?
 func (q *Queries) GetFilesReadyForMoving(ctx context.Context, limit int64) ([]Trackedfile, error) {
 	rows, err := q.db.QueryContext(ctx, getFilesReadyForMoving, limit)
 	if err != nil {
@@ -729,24 +817,24 @@ func (q *Queries) GetFilesReadyForMoving(ctx context.Context, limit int64) ([]Tr
 		var i Trackedfile
 		if err := rows.Scan(
 			&i.Hash,
-			&i.Filename,
-			&i.Originalpath,
-			&i.Filesize,
+			&i.FileName,
+			&i.OriginalPath,
+			&i.FileSize,
 			&i.Status,
-			&i.Suggestedcategory,
+			&i.SuggestedCategory,
 			&i.Confidence,
 			&i.Category,
-			&i.Targetpath,
-			&i.Movedtopath,
-			&i.Classifiedat,
-			&i.Movedat,
-			&i.Lasterror,
-			&i.Lasterrorat,
-			&i.Retrycount,
-			&i.Createddate,
-			&i.Lastupdatedate,
+			&i.TargetPath,
+			&i.MovedToPath,
+			&i.ClassifiedAt,
+			&i.MovedAt,
+			&i.LastError,
+			&i.LastErrorAt,
+			&i.RetryCount,
+			&i.CreatedDate,
+			&i.LastUpdateDate,
 			&i.Note,
-			&i.Isactive,
+			&i.IsActive,
 		); err != nil {
 			return nil, err
 		}
@@ -769,6 +857,13 @@ ORDER BY LastErrorAt ASC
 LIMIT ?
 `
 
+// GetFilesReadyForRetry
+//
+//	SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
+//	WHERE Status = 7  -- FileStatus.Retry
+//	  AND IsActive = 1
+//	ORDER BY LastErrorAt ASC
+//	LIMIT ?
 func (q *Queries) GetFilesReadyForRetry(ctx context.Context, limit int64) ([]Trackedfile, error) {
 	rows, err := q.db.QueryContext(ctx, getFilesReadyForRetry, limit)
 	if err != nil {
@@ -780,24 +875,24 @@ func (q *Queries) GetFilesReadyForRetry(ctx context.Context, limit int64) ([]Tra
 		var i Trackedfile
 		if err := rows.Scan(
 			&i.Hash,
-			&i.Filename,
-			&i.Originalpath,
-			&i.Filesize,
+			&i.FileName,
+			&i.OriginalPath,
+			&i.FileSize,
 			&i.Status,
-			&i.Suggestedcategory,
+			&i.SuggestedCategory,
 			&i.Confidence,
 			&i.Category,
-			&i.Targetpath,
-			&i.Movedtopath,
-			&i.Classifiedat,
-			&i.Movedat,
-			&i.Lasterror,
-			&i.Lasterrorat,
-			&i.Retrycount,
-			&i.Createddate,
-			&i.Lastupdatedate,
+			&i.TargetPath,
+			&i.MovedToPath,
+			&i.ClassifiedAt,
+			&i.MovedAt,
+			&i.LastError,
+			&i.LastErrorAt,
+			&i.RetryCount,
+			&i.CreatedDate,
+			&i.LastUpdateDate,
 			&i.Note,
-			&i.Isactive,
+			&i.IsActive,
 		); err != nil {
 			return nil, err
 		}
@@ -819,6 +914,12 @@ WHERE Status = 6  -- FileStatus.Error
 ORDER BY LastErrorAt DESC
 `
 
+// GetFilesWithErrors
+//
+//	SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
+//	WHERE Status = 6  -- FileStatus.Error
+//	  AND IsActive = 1
+//	ORDER BY LastErrorAt DESC
 func (q *Queries) GetFilesWithErrors(ctx context.Context) ([]Trackedfile, error) {
 	rows, err := q.db.QueryContext(ctx, getFilesWithErrors)
 	if err != nil {
@@ -830,24 +931,24 @@ func (q *Queries) GetFilesWithErrors(ctx context.Context) ([]Trackedfile, error)
 		var i Trackedfile
 		if err := rows.Scan(
 			&i.Hash,
-			&i.Filename,
-			&i.Originalpath,
-			&i.Filesize,
+			&i.FileName,
+			&i.OriginalPath,
+			&i.FileSize,
 			&i.Status,
-			&i.Suggestedcategory,
+			&i.SuggestedCategory,
 			&i.Confidence,
 			&i.Category,
-			&i.Targetpath,
-			&i.Movedtopath,
-			&i.Classifiedat,
-			&i.Movedat,
-			&i.Lasterror,
-			&i.Lasterrorat,
-			&i.Retrycount,
-			&i.Createddate,
-			&i.Lastupdatedate,
+			&i.TargetPath,
+			&i.MovedToPath,
+			&i.ClassifiedAt,
+			&i.MovedAt,
+			&i.LastError,
+			&i.LastErrorAt,
+			&i.RetryCount,
+			&i.CreatedDate,
+			&i.LastUpdateDate,
 			&i.Note,
-			&i.Isactive,
+			&i.IsActive,
 		); err != nil {
 			return nil, err
 		}
@@ -869,6 +970,12 @@ WHERE Confidence >= ?
 ORDER BY Confidence DESC
 `
 
+// GetHighConfidenceFiles
+//
+//	SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
+//	WHERE Confidence >= ?
+//	  AND IsActive = 1
+//	ORDER BY Confidence DESC
 func (q *Queries) GetHighConfidenceFiles(ctx context.Context, confidence float64) ([]Trackedfile, error) {
 	rows, err := q.db.QueryContext(ctx, getHighConfidenceFiles, confidence)
 	if err != nil {
@@ -880,24 +987,24 @@ func (q *Queries) GetHighConfidenceFiles(ctx context.Context, confidence float64
 		var i Trackedfile
 		if err := rows.Scan(
 			&i.Hash,
-			&i.Filename,
-			&i.Originalpath,
-			&i.Filesize,
+			&i.FileName,
+			&i.OriginalPath,
+			&i.FileSize,
 			&i.Status,
-			&i.Suggestedcategory,
+			&i.SuggestedCategory,
 			&i.Confidence,
 			&i.Category,
-			&i.Targetpath,
-			&i.Movedtopath,
-			&i.Classifiedat,
-			&i.Movedat,
-			&i.Lasterror,
-			&i.Lasterrorat,
-			&i.Retrycount,
-			&i.Createddate,
-			&i.Lastupdatedate,
+			&i.TargetPath,
+			&i.MovedToPath,
+			&i.ClassifiedAt,
+			&i.MovedAt,
+			&i.LastError,
+			&i.LastErrorAt,
+			&i.RetryCount,
+			&i.CreatedDate,
+			&i.LastUpdateDate,
 			&i.Note,
-			&i.Isactive,
+			&i.IsActive,
 		); err != nil {
 			return nil, err
 		}
@@ -920,6 +1027,13 @@ WHERE Confidence < ?
 ORDER BY Confidence ASC
 `
 
+// GetLowConfidenceFiles
+//
+//	SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
+//	WHERE Confidence < ?
+//	  AND Confidence > 0
+//	  AND IsActive = 1
+//	ORDER BY Confidence ASC
 func (q *Queries) GetLowConfidenceFiles(ctx context.Context, confidence float64) ([]Trackedfile, error) {
 	rows, err := q.db.QueryContext(ctx, getLowConfidenceFiles, confidence)
 	if err != nil {
@@ -931,24 +1045,24 @@ func (q *Queries) GetLowConfidenceFiles(ctx context.Context, confidence float64)
 		var i Trackedfile
 		if err := rows.Scan(
 			&i.Hash,
-			&i.Filename,
-			&i.Originalpath,
-			&i.Filesize,
+			&i.FileName,
+			&i.OriginalPath,
+			&i.FileSize,
 			&i.Status,
-			&i.Suggestedcategory,
+			&i.SuggestedCategory,
 			&i.Confidence,
 			&i.Category,
-			&i.Targetpath,
-			&i.Movedtopath,
-			&i.Classifiedat,
-			&i.Movedat,
-			&i.Lasterror,
-			&i.Lasterrorat,
-			&i.Retrycount,
-			&i.Createddate,
-			&i.Lastupdatedate,
+			&i.TargetPath,
+			&i.MovedToPath,
+			&i.ClassifiedAt,
+			&i.MovedAt,
+			&i.LastError,
+			&i.LastErrorAt,
+			&i.RetryCount,
+			&i.CreatedDate,
+			&i.LastUpdateDate,
 			&i.Note,
-			&i.Isactive,
+			&i.IsActive,
 		); err != nil {
 			return nil, err
 		}
@@ -977,6 +1091,11 @@ type GetProcessingStatsRow struct {
 }
 
 // Analytics Queries
+//
+//	SELECT Status, COUNT(*) as Count
+//	FROM TrackedFiles
+//	WHERE IsActive = 1
+//	GROUP BY Status
 func (q *Queries) GetProcessingStats(ctx context.Context) ([]GetProcessingStatsRow, error) {
 	rows, err := q.db.QueryContext(ctx, getProcessingStats)
 	if err != nil {
@@ -1008,6 +1127,13 @@ WHERE Status = 5  -- FileStatus.Moved
 ORDER BY MovedAt DESC
 `
 
+// GetRecentlyMovedFiles
+//
+//	SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
+//	WHERE Status = 5  -- FileStatus.Moved
+//	  AND MovedAt >= datetime('now', ?)  -- e.g., '-24 hours'
+//	  AND IsActive = 1
+//	ORDER BY MovedAt DESC
 func (q *Queries) GetRecentlyMovedFiles(ctx context.Context, datetime interface{}) ([]Trackedfile, error) {
 	rows, err := q.db.QueryContext(ctx, getRecentlyMovedFiles, datetime)
 	if err != nil {
@@ -1019,24 +1145,24 @@ func (q *Queries) GetRecentlyMovedFiles(ctx context.Context, datetime interface{
 		var i Trackedfile
 		if err := rows.Scan(
 			&i.Hash,
-			&i.Filename,
-			&i.Originalpath,
-			&i.Filesize,
+			&i.FileName,
+			&i.OriginalPath,
+			&i.FileSize,
 			&i.Status,
-			&i.Suggestedcategory,
+			&i.SuggestedCategory,
 			&i.Confidence,
 			&i.Category,
-			&i.Targetpath,
-			&i.Movedtopath,
-			&i.Classifiedat,
-			&i.Movedat,
-			&i.Lasterror,
-			&i.Lasterrorat,
-			&i.Retrycount,
-			&i.Createddate,
-			&i.Lastupdatedate,
+			&i.TargetPath,
+			&i.MovedToPath,
+			&i.ClassifiedAt,
+			&i.MovedAt,
+			&i.LastError,
+			&i.LastErrorAt,
+			&i.RetryCount,
+			&i.CreatedDate,
+			&i.LastUpdateDate,
 			&i.Note,
-			&i.Isactive,
+			&i.IsActive,
 		); err != nil {
 			return nil, err
 		}
@@ -1060,13 +1186,20 @@ WHERE Hash = ?
 `
 
 type RestoreFileParams struct {
-	Lastupdatedate time.Time `db:"lastupdatedate" json:"lastupdatedate"`
+	LastUpdateDate time.Time `db:"lastupdatedate" json:"lastupdatedate"`
 	Note           *string   `db:"note" json:"note"`
 	Hash           string    `db:"hash" json:"hash"`
 }
 
+// RestoreFile
+//
+//	UPDATE TrackedFiles
+//	SET IsActive = 1,
+//	    LastUpdateDate = ?,
+//	    Note = ?
+//	WHERE Hash = ?
 func (q *Queries) RestoreFile(ctx context.Context, arg RestoreFileParams) error {
-	_, err := q.db.ExecContext(ctx, restoreFile, arg.Lastupdatedate, arg.Note, arg.Hash)
+	_, err := q.db.ExecContext(ctx, restoreFile, arg.LastUpdateDate, arg.Note, arg.Hash)
 	return err
 }
 
@@ -1086,6 +1219,12 @@ type SearchByFilenameParams struct {
 }
 
 // Lookup Queries
+//
+//	SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
+//	WHERE FileName LIKE '%' || ? || '%'
+//	  AND IsActive = 1
+//	ORDER BY FileName ASC
+//	LIMIT ? OFFSET ?
 func (q *Queries) SearchByFilename(ctx context.Context, arg SearchByFilenameParams) ([]Trackedfile, error) {
 	rows, err := q.db.QueryContext(ctx, searchByFilename, arg.Column1, arg.Limit, arg.Offset)
 	if err != nil {
@@ -1097,24 +1236,24 @@ func (q *Queries) SearchByFilename(ctx context.Context, arg SearchByFilenamePara
 		var i Trackedfile
 		if err := rows.Scan(
 			&i.Hash,
-			&i.Filename,
-			&i.Originalpath,
-			&i.Filesize,
+			&i.FileName,
+			&i.OriginalPath,
+			&i.FileSize,
 			&i.Status,
-			&i.Suggestedcategory,
+			&i.SuggestedCategory,
 			&i.Confidence,
 			&i.Category,
-			&i.Targetpath,
-			&i.Movedtopath,
-			&i.Classifiedat,
-			&i.Movedat,
-			&i.Lasterror,
-			&i.Lasterrorat,
-			&i.Retrycount,
-			&i.Createddate,
-			&i.Lastupdatedate,
+			&i.TargetPath,
+			&i.MovedToPath,
+			&i.ClassifiedAt,
+			&i.MovedAt,
+			&i.LastError,
+			&i.LastErrorAt,
+			&i.RetryCount,
+			&i.CreatedDate,
+			&i.LastUpdateDate,
 			&i.Note,
-			&i.Isactive,
+			&i.IsActive,
 		); err != nil {
 			return nil, err
 		}
@@ -1138,13 +1277,20 @@ WHERE Hash = ?
 `
 
 type SoftDeleteFileParams struct {
-	Lastupdatedate time.Time `db:"lastupdatedate" json:"lastupdatedate"`
+	LastUpdateDate time.Time `db:"lastupdatedate" json:"lastupdatedate"`
 	Note           *string   `db:"note" json:"note"`
 	Hash           string    `db:"hash" json:"hash"`
 }
 
+// SoftDeleteFile
+//
+//	UPDATE TrackedFiles
+//	SET IsActive = 0,
+//	    LastUpdateDate = ?,
+//	    Note = ?
+//	WHERE Hash = ?
 func (q *Queries) SoftDeleteFile(ctx context.Context, arg SoftDeleteFileParams) error {
-	_, err := q.db.ExecContext(ctx, softDeleteFile, arg.Lastupdatedate, arg.Note, arg.Hash)
+	_, err := q.db.ExecContext(ctx, softDeleteFile, arg.LastUpdateDate, arg.Note, arg.Hash)
 	return err
 }
 
@@ -1159,18 +1305,26 @@ WHERE Hash = ? AND IsActive = 1
 
 type UpdateCategoryConfirmationParams struct {
 	Category       *string   `db:"category" json:"category"`
-	Targetpath     *string   `db:"targetpath" json:"targetpath"`
+	TargetPath     *string   `db:"targetpath" json:"targetpath"`
 	Status         int64     `db:"status" json:"status"`
-	Lastupdatedate time.Time `db:"lastupdatedate" json:"lastupdatedate"`
+	LastUpdateDate time.Time `db:"lastupdatedate" json:"lastupdatedate"`
 	Hash           string    `db:"hash" json:"hash"`
 }
 
+// UpdateCategoryConfirmation
+//
+//	UPDATE TrackedFiles
+//	SET Category = ?,
+//	    TargetPath = ?,
+//	    Status = ?,
+//	    LastUpdateDate = ?
+//	WHERE Hash = ? AND IsActive = 1
 func (q *Queries) UpdateCategoryConfirmation(ctx context.Context, arg UpdateCategoryConfirmationParams) error {
 	_, err := q.db.ExecContext(ctx, updateCategoryConfirmation,
 		arg.Category,
-		arg.Targetpath,
+		arg.TargetPath,
 		arg.Status,
-		arg.Lastupdatedate,
+		arg.LastUpdateDate,
 		arg.Hash,
 	)
 	return err
@@ -1187,21 +1341,30 @@ WHERE Hash = ? AND IsActive = 1
 `
 
 type UpdateClassificationParams struct {
-	Suggestedcategory *string    `db:"suggestedcategory" json:"suggestedcategory"`
+	SuggestedCategory *string    `db:"suggestedcategory" json:"suggestedcategory"`
 	Confidence        float64    `db:"confidence" json:"confidence"`
-	Classifiedat      *time.Time `db:"classifiedat" json:"classifiedat"`
+	ClassifiedAt      *time.Time `db:"classifiedat" json:"classifiedat"`
 	Status            int64      `db:"status" json:"status"`
-	Lastupdatedate    time.Time  `db:"lastupdatedate" json:"lastupdatedate"`
+	LastUpdateDate    time.Time  `db:"lastupdatedate" json:"lastupdatedate"`
 	Hash              string     `db:"hash" json:"hash"`
 }
 
+// UpdateClassification
+//
+//	UPDATE TrackedFiles
+//	SET SuggestedCategory = ?,
+//	    Confidence = ?,
+//	    ClassifiedAt = ?,
+//	    Status = ?,
+//	    LastUpdateDate = ?
+//	WHERE Hash = ? AND IsActive = 1
 func (q *Queries) UpdateClassification(ctx context.Context, arg UpdateClassificationParams) error {
 	_, err := q.db.ExecContext(ctx, updateClassification,
-		arg.Suggestedcategory,
+		arg.SuggestedCategory,
 		arg.Confidence,
-		arg.Classifiedat,
+		arg.ClassifiedAt,
 		arg.Status,
-		arg.Lastupdatedate,
+		arg.LastUpdateDate,
 		arg.Hash,
 	)
 	return err
@@ -1228,40 +1391,59 @@ WHERE Hash = ? AND IsActive = 1
 `
 
 type UpdateFileParams struct {
-	Filename          string     `db:"filename" json:"filename"`
-	Originalpath      string     `db:"originalpath" json:"originalpath"`
-	Filesize          int64      `db:"filesize" json:"filesize"`
+	FileName          string     `db:"filename" json:"filename"`
+	OriginalPath      string     `db:"originalpath" json:"originalpath"`
+	FileSize          int64      `db:"filesize" json:"filesize"`
 	Status            int64      `db:"status" json:"status"`
-	Suggestedcategory *string    `db:"suggestedcategory" json:"suggestedcategory"`
+	SuggestedCategory *string    `db:"suggestedcategory" json:"suggestedcategory"`
 	Confidence        float64    `db:"confidence" json:"confidence"`
 	Category          *string    `db:"category" json:"category"`
-	Targetpath        *string    `db:"targetpath" json:"targetpath"`
-	Classifiedat      *time.Time `db:"classifiedat" json:"classifiedat"`
-	Movedat           *time.Time `db:"movedat" json:"movedat"`
-	Lasterror         *string    `db:"lasterror" json:"lasterror"`
-	Lasterrorat       *time.Time `db:"lasterrorat" json:"lasterrorat"`
-	Retrycount        int64      `db:"retrycount" json:"retrycount"`
-	Lastupdatedate    time.Time  `db:"lastupdatedate" json:"lastupdatedate"`
+	TargetPath        *string    `db:"targetpath" json:"targetpath"`
+	ClassifiedAt      *time.Time `db:"classifiedat" json:"classifiedat"`
+	MovedAt           *time.Time `db:"movedat" json:"movedat"`
+	LastError         *string    `db:"lasterror" json:"lasterror"`
+	LastErrorAt       *time.Time `db:"lasterrorat" json:"lasterrorat"`
+	RetryCount        int64      `db:"retrycount" json:"retrycount"`
+	LastUpdateDate    time.Time  `db:"lastupdatedate" json:"lastupdatedate"`
 	Note              *string    `db:"note" json:"note"`
 	Hash              string     `db:"hash" json:"hash"`
 }
 
+// UpdateFile
+//
+//	UPDATE TrackedFiles
+//	SET FileName = ?,
+//	    OriginalPath = ?,
+//	    FileSize = ?,
+//	    Status = ?,
+//	    SuggestedCategory = ?,
+//	    Confidence = ?,
+//	    Category = ?,
+//	    TargetPath = ?,
+//	    ClassifiedAt = ?,
+//	    MovedAt = ?,
+//	    LastError = ?,
+//	    LastErrorAt = ?,
+//	    RetryCount = ?,
+//	    LastUpdateDate = ?,
+//	    Note = ?
+//	WHERE Hash = ? AND IsActive = 1
 func (q *Queries) UpdateFile(ctx context.Context, arg UpdateFileParams) error {
 	_, err := q.db.ExecContext(ctx, updateFile,
-		arg.Filename,
-		arg.Originalpath,
-		arg.Filesize,
+		arg.FileName,
+		arg.OriginalPath,
+		arg.FileSize,
 		arg.Status,
-		arg.Suggestedcategory,
+		arg.SuggestedCategory,
 		arg.Confidence,
 		arg.Category,
-		arg.Targetpath,
-		arg.Classifiedat,
-		arg.Movedat,
-		arg.Lasterror,
-		arg.Lasterrorat,
-		arg.Retrycount,
-		arg.Lastupdatedate,
+		arg.TargetPath,
+		arg.ClassifiedAt,
+		arg.MovedAt,
+		arg.LastError,
+		arg.LastErrorAt,
+		arg.RetryCount,
+		arg.LastUpdateDate,
 		arg.Note,
 		arg.Hash,
 	)
@@ -1278,19 +1460,27 @@ WHERE Hash = ? AND IsActive = 1
 `
 
 type UpdateMoveCompletionParams struct {
-	Movedtopath    *string    `db:"movedtopath" json:"movedtopath"`
-	Movedat        *time.Time `db:"movedat" json:"movedat"`
+	MovedToPath    *string    `db:"movedtopath" json:"movedtopath"`
+	MovedAt        *time.Time `db:"movedat" json:"movedat"`
 	Status         int64      `db:"status" json:"status"`
-	Lastupdatedate time.Time  `db:"lastupdatedate" json:"lastupdatedate"`
+	LastUpdateDate time.Time  `db:"lastupdatedate" json:"lastupdatedate"`
 	Hash           string     `db:"hash" json:"hash"`
 }
 
+// UpdateMoveCompletion
+//
+//	UPDATE TrackedFiles
+//	SET MovedToPath = ?,
+//	    MovedAt = ?,
+//	    Status = ?,
+//	    LastUpdateDate = ?
+//	WHERE Hash = ? AND IsActive = 1
 func (q *Queries) UpdateMoveCompletion(ctx context.Context, arg UpdateMoveCompletionParams) error {
 	_, err := q.db.ExecContext(ctx, updateMoveCompletion,
-		arg.Movedtopath,
-		arg.Movedat,
+		arg.MovedToPath,
+		arg.MovedAt,
 		arg.Status,
-		arg.Lastupdatedate,
+		arg.LastUpdateDate,
 		arg.Hash,
 	)
 	return err

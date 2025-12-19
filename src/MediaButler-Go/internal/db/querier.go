@@ -9,42 +9,481 @@ import (
 )
 
 type Querier interface {
+	//CountAllFiles
+	//
+	//  SELECT COUNT(*) FROM TrackedFiles
+	//  WHERE IsActive = 1
 	CountAllFiles(ctx context.Context) (int64, error)
+	//CountBatchJobItemsByStatus
+	//
+	//  SELECT
+	//      COUNT(*) as total,
+	//      SUM(CASE WHEN status = 'Pending' THEN 1 ELSE 0 END) as pending,
+	//      SUM(CASE WHEN status = 'Processing' THEN 1 ELSE 0 END) as processing,
+	//      SUM(CASE WHEN status = 'Completed' THEN 1 ELSE 0 END) as completed,
+	//      SUM(CASE WHEN status = 'Failed' THEN 1 ELSE 0 END) as failed
+	//  FROM batch_job_items
+	//  WHERE batch_job_id = ?
+	CountBatchJobItemsByStatus(ctx context.Context, batchJobID string) (CountBatchJobItemsByStatusRow, error)
+	//CountBatchJobsByStatus
+	//
+	//  SELECT COUNT(*) FROM batch_jobs
+	//  WHERE status = ?
+	CountBatchJobsByStatus(ctx context.Context, status string) (int64, error)
+	//CountFilesByStatus
+	//
+	//  SELECT COUNT(*) FROM TrackedFiles
+	//  WHERE Status = ? AND IsActive = 1
 	CountFilesByStatus(ctx context.Context, status int64) (int64, error)
+	//CountFilesByStatuses
+	//
+	//  SELECT COUNT(*) FROM TrackedFiles
+	//  WHERE Status IN (/*SLICE:statuses*/?)
+	//    AND IsActive = 1
+	//    AND (?2 IS NULL OR Category = ?2)
+	//    AND (?3 IS NULL
+	//         OR FileName LIKE '%' || ?3 || '%'
+	//         OR Category LIKE '%' || ?3 || '%')
 	CountFilesByStatuses(ctx context.Context, arg CountFilesByStatusesParams) (int64, error)
+	// Batch Jobs SQL Queries
+	// SQLC will generate type-safe Go code from these queries
+	// ============================================================================
+	// BATCH JOB QUERIES
+	// ============================================================================
+	//
+	//
+	//
+	//  INSERT INTO batch_jobs (
+	//      id,
+	//      batch_name,
+	//      status,
+	//      queued_at,
+	//      total_files,
+	//      processed_files,
+	//      successful_files,
+	//      failed_files,
+	//      continue_on_error,
+	//      dry_run,
+	//      max_concurrency,
+	//      retry_count,
+	//      max_retries,
+	//      metadata,
+	//      created_date,
+	//      last_update_date
+	//  ) VALUES (
+	//      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+	//  )
+	CreateBatchJob(ctx context.Context, arg CreateBatchJobParams) error
+	// ============================================================================
+	// BATCH JOB ITEMS QUERIES
+	// ============================================================================
+	//
+	//
+	//  INSERT INTO batch_job_items (
+	//      batch_job_id,
+	//      file_hash,
+	//      confirmed_category,
+	//      custom_target_path,
+	//      status,
+	//      metadata,
+	//      created_date
+	//  ) VALUES (
+	//      ?, ?, ?, ?, ?, ?, ?
+	//  )
+	CreateBatchJobItem(ctx context.Context, arg CreateBatchJobItemParams) error
+	//CreateFile
+	//
+	//  INSERT INTO TrackedFiles (
+	//      Hash, FileName, OriginalPath, FileSize, Status,
+	//      CreatedDate, LastUpdateDate, IsActive
+	//  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	CreateFile(ctx context.Context, arg CreateFileParams) error
+	//DeleteOldBatchJobs
+	//
+	//  DELETE FROM batch_jobs
+	//  WHERE status IN ('Completed', 'Failed', 'Cancelled')
+	//    AND completed_at < datetime('now', '-30 days')
+	DeleteOldBatchJobs(ctx context.Context) error
+	//ExistsByHash
+	//
+	//  SELECT COUNT(*) > 0
+	//  FROM TrackedFiles
+	//  WHERE Hash = ?
+	//    AND IsActive = 1
 	ExistsByHash(ctx context.Context, hash string) (bool, error)
+	//ExistsByOriginalPath
+	//
+	//  SELECT COUNT(*) > 0
+	//  FROM TrackedFiles
+	//  WHERE OriginalPath = ?
+	//    AND IsActive = 1
 	ExistsByOriginalPath(ctx context.Context, originalpath string) (bool, error)
 	// Batch Operations
+	//
+	//
+	//  SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
+	//  WHERE IsActive = 1
+	//  ORDER BY CreatedDate DESC
+	//  LIMIT ? OFFSET ?
 	GetAllFiles(ctx context.Context, arg GetAllFilesParams) ([]Trackedfile, error)
+	//GetBatchJobByID
+	//
+	//  SELECT id, batch_name, status, queued_at, started_at, completed_at, total_files, processed_files, successful_files, failed_files, continue_on_error, dry_run, max_concurrency, retry_count, max_retries, next_retry_at, metadata, error_message, created_date, last_update_date FROM batch_jobs
+	//  WHERE id = ?
+	//  LIMIT 1
+	GetBatchJobByID(ctx context.Context, id string) (BatchJob, error)
+	//GetBatchJobItemByID
+	//
+	//  SELECT id, batch_job_id, file_hash, confirmed_category, custom_target_path, status, target_path, actual_path, error_message, processing_time_ms, processed_at, metadata, created_date FROM batch_job_items
+	//  WHERE id = ?
+	//  LIMIT 1
+	GetBatchJobItemByID(ctx context.Context, id int64) (BatchJobItem, error)
+	//GetBatchJobItems
+	//
+	//  SELECT id, batch_job_id, file_hash, confirmed_category, custom_target_path, status, target_path, actual_path, error_message, processing_time_ms, processed_at, metadata, created_date FROM batch_job_items
+	//  WHERE batch_job_id = ?
+	//  ORDER BY id ASC
+	GetBatchJobItems(ctx context.Context, batchJobID string) ([]BatchJobItem, error)
+	//GetBatchJobItemsByStatus
+	//
+	//  SELECT id, batch_job_id, file_hash, confirmed_category, custom_target_path, status, target_path, actual_path, error_message, processing_time_ms, processed_at, metadata, created_date FROM batch_job_items
+	//  WHERE batch_job_id = ?
+	//    AND status = ?
+	//  ORDER BY id ASC
+	GetBatchJobItemsByStatus(ctx context.Context, arg GetBatchJobItemsByStatusParams) ([]BatchJobItem, error)
+	//GetBatchJobItemsWithFileDetails
+	//
+	//  SELECT
+	//      bji.id, bji.batch_job_id, bji.file_hash, bji.confirmed_category, bji.custom_target_path, bji.status, bji.target_path, bji.actual_path, bji.error_message, bji.processing_time_ms, bji.processed_at, bji.metadata, bji.created_date,
+	//      tf.FileName,
+	//      tf.OriginalPath,
+	//      tf.FileSize
+	//  FROM batch_job_items bji
+	//  INNER JOIN TrackedFiles tf ON bji.file_hash = tf.Hash
+	//  WHERE bji.batch_job_id = ?
+	//    AND tf.IsActive = 1
+	//  ORDER BY bji.id ASC
+	GetBatchJobItemsWithFileDetails(ctx context.Context, batchJobID string) ([]GetBatchJobItemsWithFileDetailsRow, error)
+	//GetBatchJobStatistics
+	//
+	//  SELECT
+	//      COUNT(*) as total_jobs,
+	//      SUM(CASE WHEN status = 'Queued' THEN 1 ELSE 0 END) as queued_jobs,
+	//      SUM(CASE WHEN status = 'Processing' THEN 1 ELSE 0 END) as processing_jobs,
+	//      SUM(CASE WHEN status = 'Completed' THEN 1 ELSE 0 END) as completed_jobs,
+	//      SUM(CASE WHEN status = 'Failed' THEN 1 ELSE 0 END) as failed_jobs,
+	//      SUM(CASE WHEN status = 'Cancelled' THEN 1 ELSE 0 END) as cancelled_jobs
+	//  FROM batch_jobs
+	GetBatchJobStatistics(ctx context.Context) (GetBatchJobStatisticsRow, error)
+	//GetDistinctCategories
+	//
+	//  SELECT DISTINCT Category
+	//  FROM TrackedFiles
+	//  WHERE Category IS NOT NULL
+	//    AND IsActive = 1
+	//  ORDER BY Category ASC
 	GetDistinctCategories(ctx context.Context) ([]*string, error)
 	// TrackedFile CRUD Operations
+	//
+	//
+	//  SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
+	//  WHERE Hash = ? AND IsActive = 1
+	//  LIMIT 1
 	GetFileByHash(ctx context.Context, hash string) (Trackedfile, error)
+	//GetFileByHashIncludeDeleted
+	//
+	//  SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
+	//  WHERE Hash = ?
+	//  LIMIT 1
 	GetFileByHashIncludeDeleted(ctx context.Context, hash string) (Trackedfile, error)
+	//GetFilesAwaitingConfirmation
+	//
+	//  SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
+	//  WHERE Status = 2  -- FileStatus.Classified
+	//    AND IsActive = 1
+	//  ORDER BY ClassifiedAt DESC
 	GetFilesAwaitingConfirmation(ctx context.Context) ([]Trackedfile, error)
+	//GetFilesByCategory
+	//
+	//  SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
+	//  WHERE Category = ?
+	//    AND IsActive = 1
+	//  ORDER BY MovedAt DESC
 	GetFilesByCategory(ctx context.Context, category *string) ([]Trackedfile, error)
 	// Workflow Queries
+	//
+	//
+	//  SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
+	//  WHERE Status = ? AND IsActive = 1
+	//  ORDER BY CreatedDate DESC
+	//  LIMIT ? OFFSET ?
 	GetFilesByStatus(ctx context.Context, arg GetFilesByStatusParams) ([]Trackedfile, error)
+	//GetFilesByStatuses
+	//
+	//  SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
+	//  WHERE Status IN (/*SLICE:statuses*/?)
+	//    AND IsActive = 1
+	//    AND (?4 IS NULL OR Category = ?4)
+	//    AND (?5 IS NULL
+	//         OR FileName LIKE '%' || ?5 || '%'
+	//         OR Category LIKE '%' || ?5 || '%')
+	//  ORDER BY
+	//    CASE WHEN sqlc.narg('order_by') = 'CreatedDate' THEN CreatedDate END ASC,
+	//    CASE WHEN sqlc.narg('order_by') = 'LastUpdateDate' THEN LastUpdateDate END DESC,
+	//    CASE WHEN sqlc.narg('order_by') = 'FileName' THEN FileName END ASC,
+	//    LastUpdateDate DESC
+	//  LIMIT ? OFFSET ?
 	GetFilesByStatuses(ctx context.Context, arg GetFilesByStatusesParams) ([]Trackedfile, error)
+	//GetFilesExceedingRetryLimit
+	//
+	//  SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
+	//  WHERE Status = 6  -- FileStatus.Error
+	//    AND RetryCount >= ?
+	//    AND IsActive = 1
+	//  ORDER BY RetryCount DESC, LastErrorAt DESC
 	GetFilesExceedingRetryLimit(ctx context.Context, retrycount int64) ([]Trackedfile, error)
 	// Temporal Queries
+	//
+	//
+	//  SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
+	//  WHERE CreatedDate BETWEEN ? AND ?
+	//    AND IsActive = 1
+	//  ORDER BY CreatedDate DESC
 	GetFilesProcessedInRange(ctx context.Context, arg GetFilesProcessedInRangeParams) ([]Trackedfile, error)
+	//GetFilesReadyForClassification
+	//
+	//  SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
+	//  WHERE Status = 0  -- FileStatus.New
+	//    AND IsActive = 1
+	//  ORDER BY CreatedDate ASC
+	//  LIMIT ?
 	GetFilesReadyForClassification(ctx context.Context, limit int64) ([]Trackedfile, error)
+	//GetFilesReadyForMoving
+	//
+	//  SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
+	//  WHERE Status = 3  -- FileStatus.ReadyToMove
+	//    AND IsActive = 1
+	//  ORDER BY LastUpdateDate ASC
+	//  LIMIT ?
 	GetFilesReadyForMoving(ctx context.Context, limit int64) ([]Trackedfile, error)
+	//GetFilesReadyForRetry
+	//
+	//  SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
+	//  WHERE Status = 7  -- FileStatus.Retry
+	//    AND IsActive = 1
+	//  ORDER BY LastErrorAt ASC
+	//  LIMIT ?
 	GetFilesReadyForRetry(ctx context.Context, limit int64) ([]Trackedfile, error)
+	//GetFilesWithErrors
+	//
+	//  SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
+	//  WHERE Status = 6  -- FileStatus.Error
+	//    AND IsActive = 1
+	//  ORDER BY LastErrorAt DESC
 	GetFilesWithErrors(ctx context.Context) ([]Trackedfile, error)
+	//GetHighConfidenceFiles
+	//
+	//  SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
+	//  WHERE Confidence >= ?
+	//    AND IsActive = 1
+	//  ORDER BY Confidence DESC
 	GetHighConfidenceFiles(ctx context.Context, confidence float64) ([]Trackedfile, error)
+	//GetLowConfidenceFiles
+	//
+	//  SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
+	//  WHERE Confidence < ?
+	//    AND Confidence > 0
+	//    AND IsActive = 1
+	//  ORDER BY Confidence ASC
 	GetLowConfidenceFiles(ctx context.Context, confidence float64) ([]Trackedfile, error)
 	// Analytics Queries
+	//
+	//
+	//  SELECT Status, COUNT(*) as Count
+	//  FROM TrackedFiles
+	//  WHERE IsActive = 1
+	//  GROUP BY Status
 	GetProcessingStats(ctx context.Context) ([]GetProcessingStatsRow, error)
+	//GetQueuedBatchJobs
+	//
+	//  SELECT id, batch_name, status, queued_at, started_at, completed_at, total_files, processed_files, successful_files, failed_files, continue_on_error, dry_run, max_concurrency, retry_count, max_retries, next_retry_at, metadata, error_message, created_date, last_update_date FROM batch_jobs
+	//  WHERE status = 'Queued'
+	//    AND (next_retry_at IS NULL OR next_retry_at <= datetime('now'))
+	//  ORDER BY queued_at ASC
+	//  LIMIT ?
+	GetQueuedBatchJobs(ctx context.Context, limit int64) ([]BatchJob, error)
+	//GetRecentlyMovedFiles
+	//
+	//  SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
+	//  WHERE Status = 5  -- FileStatus.Moved
+	//    AND MovedAt >= datetime('now', ?)  -- e.g., '-24 hours'
+	//    AND IsActive = 1
+	//  ORDER BY MovedAt DESC
 	GetRecentlyMovedFiles(ctx context.Context, datetime interface{}) ([]Trackedfile, error)
+	//ListBatchJobs
+	//
+	//  SELECT id, batch_name, status, queued_at, started_at, completed_at, total_files, processed_files, successful_files, failed_files, continue_on_error, dry_run, max_concurrency, retry_count, max_retries, next_retry_at, metadata, error_message, created_date, last_update_date FROM batch_jobs
+	//  WHERE (?3 IS NULL OR status = ?3)
+	//  ORDER BY queued_at DESC
+	//  LIMIT ? OFFSET ?
+	ListBatchJobs(ctx context.Context, arg ListBatchJobsParams) ([]BatchJob, error)
+	//RestoreFile
+	//
+	//  UPDATE TrackedFiles
+	//  SET IsActive = 1,
+	//      LastUpdateDate = ?,
+	//      Note = ?
+	//  WHERE Hash = ?
 	RestoreFile(ctx context.Context, arg RestoreFileParams) error
 	// Lookup Queries
+	//
+	//
+	//  SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
+	//  WHERE FileName LIKE '%' || ? || '%'
+	//    AND IsActive = 1
+	//  ORDER BY FileName ASC
+	//  LIMIT ? OFFSET ?
 	SearchByFilename(ctx context.Context, arg SearchByFilenameParams) ([]Trackedfile, error)
+	//SoftDeleteFile
+	//
+	//  UPDATE TrackedFiles
+	//  SET IsActive = 0,
+	//      LastUpdateDate = ?,
+	//      Note = ?
+	//  WHERE Hash = ?
 	SoftDeleteFile(ctx context.Context, arg SoftDeleteFileParams) error
+	//UpdateBatchJobCancelled
+	//
+	//  UPDATE batch_jobs
+	//  SET status = 'Cancelled',
+	//      completed_at = ?,
+	//      last_update_date = ?
+	//  WHERE id = ?
+	UpdateBatchJobCancelled(ctx context.Context, arg UpdateBatchJobCancelledParams) error
+	//UpdateBatchJobCompleted
+	//
+	//  UPDATE batch_jobs
+	//  SET status = ?,
+	//      completed_at = ?,
+	//      processed_files = ?,
+	//      successful_files = ?,
+	//      failed_files = ?,
+	//      last_update_date = ?
+	//  WHERE id = ?
+	UpdateBatchJobCompleted(ctx context.Context, arg UpdateBatchJobCompletedParams) error
+	//UpdateBatchJobFailed
+	//
+	//  UPDATE batch_jobs
+	//  SET status = 'Failed',
+	//      completed_at = ?,
+	//      error_message = ?,
+	//      retry_count = ?,
+	//      next_retry_at = ?,
+	//      last_update_date = ?
+	//  WHERE id = ?
+	UpdateBatchJobFailed(ctx context.Context, arg UpdateBatchJobFailedParams) error
+	//UpdateBatchJobItemCompleted
+	//
+	//  UPDATE batch_job_items
+	//  SET status = 'Completed',
+	//      target_path = ?,
+	//      actual_path = ?,
+	//      processing_time_ms = ?,
+	//      processed_at = ?
+	//  WHERE id = ?
+	UpdateBatchJobItemCompleted(ctx context.Context, arg UpdateBatchJobItemCompletedParams) error
+	//UpdateBatchJobItemFailed
+	//
+	//  UPDATE batch_job_items
+	//  SET status = 'Failed',
+	//      error_message = ?,
+	//      processing_time_ms = ?,
+	//      processed_at = ?
+	//  WHERE id = ?
+	UpdateBatchJobItemFailed(ctx context.Context, arg UpdateBatchJobItemFailedParams) error
+	//UpdateBatchJobItemProcessing
+	//
+	//  UPDATE batch_job_items
+	//  SET status = 'Processing'
+	//  WHERE id = ?
+	UpdateBatchJobItemProcessing(ctx context.Context, id int64) error
+	//UpdateBatchJobItemStatus
+	//
+	//  UPDATE batch_job_items
+	//  SET status = ?
+	//  WHERE id = ?
+	UpdateBatchJobItemStatus(ctx context.Context, arg UpdateBatchJobItemStatusParams) error
+	//UpdateBatchJobProgress
+	//
+	//  UPDATE batch_jobs
+	//  SET processed_files = ?,
+	//      successful_files = ?,
+	//      failed_files = ?,
+	//      last_update_date = ?
+	//  WHERE id = ?
+	UpdateBatchJobProgress(ctx context.Context, arg UpdateBatchJobProgressParams) error
+	//UpdateBatchJobStarted
+	//
+	//  UPDATE batch_jobs
+	//  SET status = 'Processing',
+	//      started_at = ?,
+	//      last_update_date = ?
+	//  WHERE id = ?
+	UpdateBatchJobStarted(ctx context.Context, arg UpdateBatchJobStartedParams) error
+	//UpdateBatchJobStatus
+	//
+	//  UPDATE batch_jobs
+	//  SET status = ?,
+	//      last_update_date = ?
+	//  WHERE id = ?
+	UpdateBatchJobStatus(ctx context.Context, arg UpdateBatchJobStatusParams) error
+	//UpdateCategoryConfirmation
+	//
+	//  UPDATE TrackedFiles
+	//  SET Category = ?,
+	//      TargetPath = ?,
+	//      Status = ?,
+	//      LastUpdateDate = ?
+	//  WHERE Hash = ? AND IsActive = 1
 	UpdateCategoryConfirmation(ctx context.Context, arg UpdateCategoryConfirmationParams) error
+	//UpdateClassification
+	//
+	//  UPDATE TrackedFiles
+	//  SET SuggestedCategory = ?,
+	//      Confidence = ?,
+	//      ClassifiedAt = ?,
+	//      Status = ?,
+	//      LastUpdateDate = ?
+	//  WHERE Hash = ? AND IsActive = 1
 	UpdateClassification(ctx context.Context, arg UpdateClassificationParams) error
+	//UpdateFile
+	//
+	//  UPDATE TrackedFiles
+	//  SET FileName = ?,
+	//      OriginalPath = ?,
+	//      FileSize = ?,
+	//      Status = ?,
+	//      SuggestedCategory = ?,
+	//      Confidence = ?,
+	//      Category = ?,
+	//      TargetPath = ?,
+	//      ClassifiedAt = ?,
+	//      MovedAt = ?,
+	//      LastError = ?,
+	//      LastErrorAt = ?,
+	//      RetryCount = ?,
+	//      LastUpdateDate = ?,
+	//      Note = ?
+	//  WHERE Hash = ? AND IsActive = 1
 	UpdateFile(ctx context.Context, arg UpdateFileParams) error
+	//UpdateMoveCompletion
+	//
+	//  UPDATE TrackedFiles
+	//  SET MovedToPath = ?,
+	//      MovedAt = ?,
+	//      Status = ?,
+	//      LastUpdateDate = ?
+	//  WHERE Hash = ? AND IsActive = 1
 	UpdateMoveCompletion(ctx context.Context, arg UpdateMoveCompletionParams) error
 }
 
