@@ -1,6 +1,6 @@
 using MediaButler.Core.Events;
 using MediaButler.Core.Services;
-using MediatR;
+using MediaButler.Core.Common;
 using Microsoft.Extensions.Logging;
 
 namespace MediaButler.Services.EventHandlers;
@@ -20,11 +20,11 @@ namespace MediaButler.Services.EventHandlers;
 /// No complecting of concerns - pure event-to-metrics translation.
 /// </remarks>
 public class MetricsEventHandler : 
-    INotificationHandler<FileDiscoveredEvent>,
-    INotificationHandler<FileClassifiedEvent>,
-    INotificationHandler<FileCategoryConfirmedEvent>,
-    INotificationHandler<FileMovedEvent>,
-    INotificationHandler<FileProcessingErrorEvent>
+    IEventHandler<FileDiscoveredEvent>,
+    IEventHandler<FileClassifiedEvent>,
+    IEventHandler<FileCategoryConfirmedEvent>,
+    IEventHandler<FileMovedEvent>,
+    IEventHandler<FileProcessingErrorEvent>
 {
     private readonly IMetricsCollectionService _metricsService;
     private readonly ILogger<MetricsEventHandler> _logger;
@@ -37,7 +37,7 @@ public class MetricsEventHandler :
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public async Task Handle(FileDiscoveredEvent notification, CancellationToken cancellationToken)
+    public async Task HandleAsync(FileDiscoveredEvent notification, CancellationToken cancellationToken)
     {
         await _metricsService.RecordProcessingEventAsync(
             ProcessingEventType.FileDiscovered, 
@@ -50,7 +50,7 @@ public class MetricsEventHandler :
         _logger.LogDebug("Recorded file discovery metrics for {FileHash}", notification.FileHash);
     }
 
-    public async Task Handle(FileClassifiedEvent notification, CancellationToken cancellationToken)
+    public async Task HandleAsync(FileClassifiedEvent notification, CancellationToken cancellationToken)
     {
         // Record processing event
         await _metricsService.RecordProcessingEventAsync(
@@ -74,7 +74,7 @@ public class MetricsEventHandler :
             notification.FileHash, notification.SuggestedCategory, notification.Confidence);
     }
 
-    public async Task Handle(FileCategoryConfirmedEvent notification, CancellationToken cancellationToken)
+    public async Task HandleAsync(FileCategoryConfirmedEvent notification, CancellationToken cancellationToken)
     {
         // Update classification result with user decision
         await _metricsService.RecordClassificationResultAsync(
@@ -100,7 +100,7 @@ public class MetricsEventHandler :
     // Note: There's no FileMoveStartedEvent in the current domain events
     // We'll handle move metrics in the FileMovedEvent handler
 
-    public async Task Handle(FileMovedEvent notification, CancellationToken cancellationToken)
+    public async Task HandleAsync(FileMovedEvent notification, CancellationToken cancellationToken)
     {
         await _metricsService.RecordProcessingEventAsync(
             ProcessingEventType.MoveCompleted,
@@ -120,7 +120,7 @@ public class MetricsEventHandler :
         _logger.LogDebug("Recorded file move completion metrics for {FileHash}", notification.FileHash);
     }
 
-    public async Task Handle(FileProcessingErrorEvent notification, CancellationToken cancellationToken)
+    public async Task HandleAsync(FileProcessingErrorEvent notification, CancellationToken cancellationToken)
     {
         // Determine error type from error message (simplified classification)
         var errorType = ClassifyError(notification.ErrorMessage);

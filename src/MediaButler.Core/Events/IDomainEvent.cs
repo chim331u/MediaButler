@@ -1,5 +1,3 @@
-using MediatR;
-
 namespace MediaButler.Core.Events;
 
 /// <summary>
@@ -10,9 +8,9 @@ namespace MediaButler.Core.Events;
 /// <remarks>
 /// Domain events decouple the core business logic from side effects and cross-cutting concerns.
 /// This allows the system to remain simple by avoiding direct dependencies between unrelated components.
-/// Events are processed asynchronously via MediatR to maintain responsiveness.
+/// Events are processed asynchronously via local event dispatcher to maintain responsiveness.
 /// </remarks>
-public interface IDomainEvent : INotification
+public interface IDomainEvent
 {
     /// <summary>
     /// Gets the timestamp when this domain event occurred.

@@ -276,7 +276,7 @@ public class BackgroundJobInfo
     public int SuccessfulFiles => GetMetadataValue<int>("successfulFiles");
     public int FailedFiles => GetMetadataValue<int>("failedFiles");
 
-    private T GetMetadataValue<T>(string key)
+    private T? GetMetadataValue<T>(string key)
     {
         if (Metadata.TryGetValue(key, out var value) && value is T typedValue)
             return typedValue;

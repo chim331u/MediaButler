@@ -61,7 +61,7 @@ DOCKER_IMAGE_TAG="${DOCKER_IMAGE_TAG:-latest}"
 CONTAINER_NAME="${CONTAINER_NAME:-mediabutler_api}"
 
 # Docker Build Configuration
-DOCKERFILE_PATH="${DOCKERFILE_PATH:-Delivery/docker/api-optimized.dockerfile}"
+DOCKERFILE_PATH="${DOCKERFILE_PATH:-Delivery/docker/api-minimal.dockerfile}"
 BUILD_CONTEXT="${BUILD_CONTEXT:-.}"
 
 # Container Runtime Configuration
@@ -91,6 +91,9 @@ LOG_RETENTION_DAYS="${LOG_RETENTION_DAYS:-}"
 MEMORY_THRESHOLD_MB="${MEMORY_THRESHOLD_MB:-}"
 AUTO_GC_TRIGGER_MB="${AUTO_GC_TRIGGER_MB:-}"
 DOCKER_PLATFORM="${DOCKER_PLATFORM:-}"
+
+# Captured docker run command (for display in summary)
+DOCKER_RUN_COMMAND=""
 
 #############################################################################
 # PLATFORM DETECTION AND SELECTION
@@ -666,20 +669,12 @@ clone_repository() {
 
     cd "$LOCAL_REPO_DIR"
 
-    # Search for Dockerfile in multiple possible locations (order matters - most optimized first)
+    # Search for Dockerfile - prioritize api-minimal.dockerfile (only working version)
     POSSIBLE_DOCKERFILES=(
-        "$DOCKERFILE_PATH"
-        "Delivery/docker/Dockerfile.api"
-        "Delivery/docker/api-optimized.dockerfile"
-        "Delivery/docker/api-simple.dockerfile"
         "Delivery/docker/api-minimal.dockerfile"
-        "docker/Dockerfile.api"
-        "api.dockerfile"
-        "api-optimized.dockerfile"
-        "api-simple.dockerfile"
+        "$DOCKERFILE_PATH"
         "api-minimal.dockerfile"
-        "Dockerfile.api"
-        "Dockerfile"
+        "docker/api-minimal.dockerfile"
     )
 
     FOUND_DOCKERFILE=""
@@ -784,39 +779,8 @@ build_docker_image() {
             -t "$image_full_name" \
             "$BUILD_CONTEXT"; then
 
-            error "Docker build failed with both platform and no-platform approaches"
-
-            # Try fallback Dockerfiles in order of preference (optimized → simple → minimal)
-            FALLBACK_DOCKERFILES=(
-                "Delivery/docker/api-optimized.dockerfile"
-                "Delivery/docker/api-simple.dockerfile"
-                "Delivery/docker/api-minimal.dockerfile"
-            )
-
-            FALLBACK_SUCCESS=false
-            for fallback_dockerfile in "${FALLBACK_DOCKERFILES[@]}"; do
-                if [[ -f "$fallback_dockerfile" && "$DOCKERFILE_PATH" != "$fallback_dockerfile" ]]; then
-                    warning "Trying fallback with $fallback_dockerfile"
-
-                    if docker build \
-                        -f "$fallback_dockerfile" \
-                        -t "$image_full_name" \
-                        "$BUILD_CONTEXT"; then
-
-                        DOCKERFILE_PATH="$fallback_dockerfile"
-                        FALLBACK_SUCCESS=true
-                        success "Fallback build successful with $fallback_dockerfile"
-                        break
-                    else
-                        warning "Fallback build failed with $fallback_dockerfile"
-                    fi
-                fi
-            done
-
-            if [[ "$FALLBACK_SUCCESS" != "true" ]]; then
-                error "All Dockerfile builds failed"
-                exit 1
-            fi
+            error "Docker build failed - only api-minimal.dockerfile is supported"
+            exit 1
         fi
     fi
 
@@ -863,6 +827,28 @@ run_docker_container() {
 
     # Create required directories
     create_data_directories
+
+    # Build the docker run command string for display
+    DOCKER_RUN_COMMAND="docker run \\
+    --restart always \\
+    --name \"$CONTAINER_NAME\" \\
+    -d \\
+    -p \"${HOST_PORT}:${CONTAINER_PORT}\" \\
+    -v \"$DATA_VOLUME\" \\
+    -v \"$WATCH_VOLUME\" \\
+    -v \"$LIBRARY_VOLUME\" \\
+    -v \"$LOGS_VOLUME\" \\
+    -e \"ASPNETCORE_ENVIRONMENT=$ASPNETCORE_ENVIRONMENT\" \\
+    -e \"Logging__LogLevel__Default=$LOG_LEVEL\" \\
+    -e \"MediaButler__Paths__WatchFolder=$WATCHFOLDER_PATH\" \\
+    -e \"MediaButler__Paths__MediaLibrary=$LIBRARY_PATH\" \\
+    -e \"ConnectionStrings__DefaultConnection=Data Source=$DATABASE_PATH\" \\
+    -e \"MediaButler__ML__MaxBatchSize=$MAX_BATCH_SIZE\" \\
+    -e \"MediaButler__FileDiscovery__ScanIntervalMinutes=$SCAN_INTERVAL_MINUTES\" \\
+    -e \"MediaButler__ARM32__MemoryThresholdMB=$MEMORY_THRESHOLD_MB\" \\
+    -e \"MediaButler__ARM32__AutoGCTriggerMB=$AUTO_GC_TRIGGER_MB\" \\
+    --platform \"$DOCKER_PLATFORM\" \\
+    \"$image_full_name\""
 
     # Run Docker container with all specified parameters
     docker run \
@@ -995,6 +981,11 @@ print_summary() {
     echo "  docker restart $CONTAINER_NAME           # Restart container"
     echo "  docker stop $CONTAINER_NAME              # Stop container"
     echo "  docker stats $CONTAINER_NAME             # View resource usage"
+    echo ""
+    echo "============================================================================="
+    echo "  DOCKER RUN COMMAND EXECUTED"
+    echo "============================================================================="
+    echo "$DOCKER_RUN_COMMAND"
     echo "============================================================================="
 }
 

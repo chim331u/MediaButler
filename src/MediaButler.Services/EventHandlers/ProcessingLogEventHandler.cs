@@ -2,7 +2,7 @@ using MediaButler.Core.Entities;
 using MediaButler.Core.Events;
 using MediaButler.Core.Enums;
 using MediaButler.Data.Repositories;
-using MediatR;
+using MediaButler.Core.Common;
 using Microsoft.Extensions.Logging;
 
 namespace MediaButler.Services.EventHandlers;
@@ -12,13 +12,13 @@ namespace MediaButler.Services.EventHandlers;
 /// Follows "Simple Made Easy" principles by focusing solely on audit logging without business logic.
 /// </summary>
 public class ProcessingLogEventHandler :
-    INotificationHandler<FileDiscoveredEvent>,
-    INotificationHandler<FileClassifiedEvent>,
-    INotificationHandler<FileCategoryConfirmedEvent>,
-    INotificationHandler<FileMovedEvent>,
-    INotificationHandler<FileProcessingErrorEvent>,
-    INotificationHandler<FileRetryScheduledEvent>,
-    INotificationHandler<FileStatusChangedEvent>
+    IEventHandler<FileDiscoveredEvent>,
+    IEventHandler<FileClassifiedEvent>,
+    IEventHandler<FileCategoryConfirmedEvent>,
+    IEventHandler<FileMovedEvent>,
+    IEventHandler<FileProcessingErrorEvent>,
+    IEventHandler<FileRetryScheduledEvent>,
+    IEventHandler<FileStatusChangedEvent>
 {
     private readonly IProcessingLogRepository _processingLogRepository;
     private readonly ILogger<ProcessingLogEventHandler> _logger;
@@ -41,7 +41,7 @@ public class ProcessingLogEventHandler :
     /// <summary>
     /// Handles file discovery events by creating audit log entries.
     /// </summary>
-    public async Task Handle(FileDiscoveredEvent notification, CancellationToken cancellationToken)
+    public async Task HandleAsync(FileDiscoveredEvent notification, CancellationToken cancellationToken)
     {
         try
         {
@@ -69,7 +69,7 @@ public class ProcessingLogEventHandler :
     /// <summary>
     /// Handles file classification events by creating audit log entries.
     /// </summary>
-    public async Task Handle(FileClassifiedEvent notification, CancellationToken cancellationToken)
+    public async Task HandleAsync(FileClassifiedEvent notification, CancellationToken cancellationToken)
     {
         try
         {
@@ -97,7 +97,7 @@ public class ProcessingLogEventHandler :
     /// <summary>
     /// Handles category confirmation events by creating audit log entries.
     /// </summary>
-    public async Task Handle(FileCategoryConfirmedEvent notification, CancellationToken cancellationToken)
+    public async Task HandleAsync(FileCategoryConfirmedEvent notification, CancellationToken cancellationToken)
     {
         try
         {
@@ -131,7 +131,7 @@ public class ProcessingLogEventHandler :
     /// <summary>
     /// Handles file movement events by creating audit log entries.
     /// </summary>
-    public async Task Handle(FileMovedEvent notification, CancellationToken cancellationToken)
+    public async Task HandleAsync(FileMovedEvent notification, CancellationToken cancellationToken)
     {
         try
         {
@@ -159,7 +159,7 @@ public class ProcessingLogEventHandler :
     /// <summary>
     /// Handles processing error events by creating audit log entries.
     /// </summary>
-    public async Task Handle(FileProcessingErrorEvent notification, CancellationToken cancellationToken)
+    public async Task HandleAsync(FileProcessingErrorEvent notification, CancellationToken cancellationToken)
     {
         try
         {
@@ -190,7 +190,7 @@ public class ProcessingLogEventHandler :
     /// <summary>
     /// Handles retry scheduling events by creating audit log entries.
     /// </summary>
-    public async Task Handle(FileRetryScheduledEvent notification, CancellationToken cancellationToken)
+    public async Task HandleAsync(FileRetryScheduledEvent notification, CancellationToken cancellationToken)
     {
         try
         {
@@ -218,7 +218,7 @@ public class ProcessingLogEventHandler :
     /// <summary>
     /// Handles status change events by creating audit log entries.
     /// </summary>
-    public async Task Handle(FileStatusChangedEvent notification, CancellationToken cancellationToken)
+    public async Task HandleAsync(FileStatusChangedEvent notification, CancellationToken cancellationToken)
     {
         try
         {

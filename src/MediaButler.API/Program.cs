@@ -16,14 +16,11 @@ using MediaButler.Services.Background;
 using MediaButler.Services.FileOperations;
 using MediaButler.Services.Extensions;
 using Serilog;
-using Serilog.Events;
 using FluentValidation;
 using FluentValidation.AspNetCore;
 using MediaButler.API.Configuration;
 using Hangfire;
 using Hangfire.Storage.SQLite;
-using Hangfire.InMemory;
-using Hangfire.Dashboard;
 
 var builder = WebApplication.CreateBuilder(args);
 

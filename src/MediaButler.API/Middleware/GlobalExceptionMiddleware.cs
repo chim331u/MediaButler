@@ -43,7 +43,7 @@ public class GlobalExceptionMiddleware
             var correlationId = context.Items["CorrelationId"]?.ToString() ?? "unknown";
             
             // Structured error logging with full context
-            using var scope = _logger.BeginScope(new Dictionary<string, object>
+            using var scope = _logger.BeginScope(new Dictionary<string, object?>
             {
                 ["CorrelationId"] = correlationId,
                 ["RequestMethod"] = context.Request.Method,

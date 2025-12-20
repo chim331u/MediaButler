@@ -39,7 +39,7 @@ public class SignalRProgressReporter : IProgressReporter
     {
         try
         {
-            await _signalRClient.NotifyBatchJobProgressAsync(jobId, current, total, currentItem);
+            await _signalRClient.NotifyBatchJobProgressAsync(jobId, current, total, currentItem ?? string.Empty);
             _logger.LogDebug("Reported progress: {JobId}, {Current}/{Total}, Item: {CurrentItem}",
                 jobId, current, total, currentItem ?? "N/A");
         }

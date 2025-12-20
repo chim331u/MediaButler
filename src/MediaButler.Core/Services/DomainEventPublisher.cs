@@ -1,21 +1,24 @@
 using MediaButler.Core.Common;
-using MediatR;
+using MediaButler.Core.Events;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using System.Reflection;
 
 namespace MediaButler.Core.Services;
 
 /// <summary>
 /// Service responsible for publishing domain events from entities.
-/// Uses MediatR to decouple event publishers from handlers following "Simple Made Easy" principles.
+/// Uses custom event dispatcher to decouple event publishers from handlers following "Simple Made Easy" principles.
+/// Replaces MediatR with direct DI resolution to remove external dependencies.
 /// </summary>
 public class DomainEventPublisher : IDomainEventPublisher
 {
-    private readonly IMediator _mediator;
+    private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<DomainEventPublisher> _logger;
 
-    public DomainEventPublisher(IMediator mediator, ILogger<DomainEventPublisher> logger)
+    public DomainEventPublisher(IServiceProvider serviceProvider, ILogger<DomainEventPublisher> logger)
     {
-        _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
+        _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -38,7 +41,7 @@ public class DomainEventPublisher : IDomainEventPublisher
         {
             try
             {
-                await _mediator.Publish(domainEvent, cancellationToken);
+                await PublishAsync(domainEvent, cancellationToken);
                 _logger.LogDebug("Published domain event: {EventType} at {OccurredAt}", 
                     domainEvent.GetType().Name, domainEvent.OccurredAt);
             }
@@ -52,6 +55,24 @@ public class DomainEventPublisher : IDomainEventPublisher
 
         // Clear events after publishing
         entity.ClearDomainEvents();
+    }
+
+    private async Task PublishAsync(IDomainEvent domainEvent, CancellationToken cancellationToken)
+    {
+        var eventType = domainEvent.GetType();
+        var handlerType = typeof(IEventHandler<>).MakeGenericType(eventType);
+        var handlers = _serviceProvider.GetServices(handlerType);
+
+        foreach (var handler in handlers)
+        {
+            if (handler == null) continue;
+
+            var method = handlerType.GetMethod("HandleAsync");
+            if (method != null)
+            {
+                await (Task)method.Invoke(handler, new object[] { domainEvent, cancellationToken })!;
+            }
+        }
     }
 
     /// <summary>

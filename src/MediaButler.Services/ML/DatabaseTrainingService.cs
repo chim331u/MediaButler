@@ -150,7 +150,7 @@ public class DatabaseTrainingService : IDatabaseTrainingService
                 .Select(file => new TrainingSample
                 {
                     Filename = file.FileName,
-                    Category = file.Category,
+                    Category = file.Category ?? string.Empty,
                     Confidence = 1.0,
                     Source = TrainingSampleSource.UserFeedback,
                     CreatedAt = file.CreatedDate,

@@ -1,6 +1,6 @@
 using MediaButler.Core.Events;
 using MediaButler.Services.Interfaces;
-using MediatR;
+using MediaButler.Core.Common;
 using Microsoft.Extensions.Logging;
 
 namespace MediaButler.Services.EventHandlers;
@@ -17,7 +17,7 @@ namespace MediaButler.Services.EventHandlers;
 /// - No coupling between business operations and notification delivery
 /// - Easy to extend with additional notification channels (email, SignalR, etc.)
 /// </remarks>
-public class FileDiscoveredNotificationHandler : INotificationHandler<FileDiscoveredEvent>
+public class FileDiscoveredNotificationHandler : IEventHandler<FileDiscoveredEvent>
 {
     private readonly INotificationService _notificationService;
     private readonly ILogger<FileDiscoveredNotificationHandler> _logger;
@@ -33,7 +33,7 @@ public class FileDiscoveredNotificationHandler : INotificationHandler<FileDiscov
     /// <summary>
     /// Handles file discovered events by notifying about the start of file processing.
     /// </summary>
-    public async Task Handle(FileDiscoveredEvent notification, CancellationToken cancellationToken)
+    public async Task HandleAsync(FileDiscoveredEvent notification, CancellationToken cancellationToken)
     {
         try
         {
@@ -59,7 +59,7 @@ public class FileDiscoveredNotificationHandler : INotificationHandler<FileDiscov
     }
 }
 
-public class FileClassifiedNotificationHandler : INotificationHandler<FileClassifiedEvent>
+public class FileClassifiedNotificationHandler : IEventHandler<FileClassifiedEvent>
 {
     private readonly INotificationService _notificationService;
     private readonly ILogger<FileClassifiedNotificationHandler> _logger;
@@ -75,7 +75,7 @@ public class FileClassifiedNotificationHandler : INotificationHandler<FileClassi
     /// <summary>
     /// Handles file classification events by notifying about classification progress.
     /// </summary>
-    public async Task Handle(FileClassifiedEvent notification, CancellationToken cancellationToken)
+    public async Task HandleAsync(FileClassifiedEvent notification, CancellationToken cancellationToken)
     {
         try
         {
@@ -101,7 +101,7 @@ public class FileClassifiedNotificationHandler : INotificationHandler<FileClassi
     }
 }
 
-public class FileCategoryConfirmedNotificationHandler : INotificationHandler<FileCategoryConfirmedEvent>
+public class FileCategoryConfirmedNotificationHandler : IEventHandler<FileCategoryConfirmedEvent>
 {
     private readonly INotificationService _notificationService;
     private readonly ILogger<FileCategoryConfirmedNotificationHandler> _logger;
@@ -117,7 +117,7 @@ public class FileCategoryConfirmedNotificationHandler : INotificationHandler<Fil
     /// <summary>
     /// Handles category confirmation events by notifying about confirmed categorization.
     /// </summary>
-    public async Task Handle(FileCategoryConfirmedEvent notification, CancellationToken cancellationToken)
+    public async Task HandleAsync(FileCategoryConfirmedEvent notification, CancellationToken cancellationToken)
     {
         try
         {
@@ -143,7 +143,7 @@ public class FileCategoryConfirmedNotificationHandler : INotificationHandler<Fil
     }
 }
 
-public class FileMovedNotificationHandler : INotificationHandler<FileMovedEvent>
+public class FileMovedNotificationHandler : IEventHandler<FileMovedEvent>
 {
     private readonly INotificationService _notificationService;
     private readonly ILogger<FileMovedNotificationHandler> _logger;
@@ -159,7 +159,7 @@ public class FileMovedNotificationHandler : INotificationHandler<FileMovedEvent>
     /// <summary>
     /// Handles file moved events by notifying about successful file operation completion.
     /// </summary>
-    public async Task Handle(FileMovedEvent notification, CancellationToken cancellationToken)
+    public async Task HandleAsync(FileMovedEvent notification, CancellationToken cancellationToken)
     {
         try
         {
@@ -185,7 +185,7 @@ public class FileMovedNotificationHandler : INotificationHandler<FileMovedEvent>
     }
 }
 
-public class FileProcessingErrorNotificationHandler : INotificationHandler<FileProcessingErrorEvent>
+public class FileProcessingErrorNotificationHandler : IEventHandler<FileProcessingErrorEvent>
 {
     private readonly INotificationService _notificationService;
     private readonly ILogger<FileProcessingErrorNotificationHandler> _logger;
@@ -201,7 +201,7 @@ public class FileProcessingErrorNotificationHandler : INotificationHandler<FileP
     /// <summary>
     /// Handles file processing error events by notifying about operation failures.
     /// </summary>
-    public async Task Handle(FileProcessingErrorEvent notification, CancellationToken cancellationToken)
+    public async Task HandleAsync(FileProcessingErrorEvent notification, CancellationToken cancellationToken)
     {
         try
         {
@@ -228,7 +228,7 @@ public class FileProcessingErrorNotificationHandler : INotificationHandler<FileP
     }
 }
 
-public class FileRetryScheduledNotificationHandler : INotificationHandler<FileRetryScheduledEvent>
+public class FileRetryScheduledNotificationHandler : IEventHandler<FileRetryScheduledEvent>
 {
     private readonly INotificationService _notificationService;
     private readonly ILogger<FileRetryScheduledNotificationHandler> _logger;
@@ -244,7 +244,7 @@ public class FileRetryScheduledNotificationHandler : INotificationHandler<FileRe
     /// <summary>
     /// Handles retry scheduled events by notifying about retry attempts.
     /// </summary>
-    public async Task Handle(FileRetryScheduledEvent notification, CancellationToken cancellationToken)
+    public async Task HandleAsync(FileRetryScheduledEvent notification, CancellationToken cancellationToken)
     {
         try
         {
@@ -270,7 +270,7 @@ public class FileRetryScheduledNotificationHandler : INotificationHandler<FileRe
     }
 }
 
-public class FileStatusChangedNotificationHandler : INotificationHandler<FileStatusChangedEvent>
+public class FileStatusChangedNotificationHandler : IEventHandler<FileStatusChangedEvent>
 {
     private readonly INotificationService _notificationService;
     private readonly ILogger<FileStatusChangedNotificationHandler> _logger;
@@ -286,7 +286,7 @@ public class FileStatusChangedNotificationHandler : INotificationHandler<FileSta
     /// <summary>
     /// Handles file status change events by notifying about status transitions.
     /// </summary>
-    public async Task Handle(FileStatusChangedEvent notification, CancellationToken cancellationToken)
+    public async Task HandleAsync(FileStatusChangedEvent notification, CancellationToken cancellationToken)
     {
         try
         {

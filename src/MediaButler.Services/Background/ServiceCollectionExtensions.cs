@@ -1,3 +1,4 @@
+using MediaButler.Core.Common;
 using MediaButler.Core.Services;
 using MediaButler.Data.Repositories;
 using MediaButler.Services.BackgroundServices;
@@ -62,8 +63,20 @@ public static class ServiceCollectionExtensions
         // Register metrics event handler for automatic metrics collection
         services.AddScoped<MetricsEventHandler>();
         
-        // Register MediatR for domain event handling
-        services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblyContaining<ProcessingLogEventHandler>());
+        // Register event handlers
+        var assembly = typeof(ProcessingLogEventHandler).Assembly;
+        var handlerTypes = assembly.GetTypes()
+            .Where(t => t.IsClass && !t.IsAbstract && t.GetInterfaces()
+                .Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEventHandler<>)));
+
+        foreach (var handlerType in handlerTypes)
+        {
+            foreach (var interfaceType in handlerType.GetInterfaces()
+                .Where(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEventHandler<>)))
+            {
+                services.AddScoped(interfaceType, handlerType);
+            }
+        }
 
         return services;
     }
