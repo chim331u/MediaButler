@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lucapaganotti/mediabutler-go/internal/domain"
-	"github.com/lucapaganotti/mediabutler-go/internal/repository"
-	"github.com/lucapaganotti/mediabutler-go/pkg/pagination"
-	"github.com/lucapaganotti/mediabutler-go/pkg/result"
+	"github.com/chim331u/mediabutler-go/internal/domain"
+	"github.com/chim331u/mediabutler-go/internal/repository"
+	"github.com/chim331u/mediabutler-go/pkg/pagination"
+	"github.com/chim331u/mediabutler-go/pkg/result"
 )
 
 // mockFileRepository is a mock implementation of FileRepository for testing

@@ -9,11 +9,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/lucapaganotti/mediabutler-go/internal/domain"
-	"github.com/lucapaganotti/mediabutler-go/internal/repository"
-	"github.com/lucapaganotti/mediabutler-go/internal/sse"
-	"github.com/lucapaganotti/mediabutler-go/pkg/pagination"
-	"github.com/lucapaganotti/mediabutler-go/pkg/result"
+	"github.com/chim331u/mediabutler-go/internal/domain"
+	"github.com/chim331u/mediabutler-go/internal/repository"
+	"github.com/chim331u/mediabutler-go/internal/sse"
+	"github.com/chim331u/mediabutler-go/pkg/pagination"
+	"github.com/chim331u/mediabutler-go/pkg/result"
 )
 
 // FileService defines business logic for file management

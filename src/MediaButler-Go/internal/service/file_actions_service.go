@@ -6,10 +6,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/lucapaganotti/mediabutler-go/internal/domain"
-	"github.com/lucapaganotti/mediabutler-go/internal/jobs/batch"
-	"github.com/lucapaganotti/mediabutler-go/internal/repository"
-	"github.com/lucapaganotti/mediabutler-go/pkg/result"
+	"github.com/chim331u/mediabutler-go/internal/domain"
+	"github.com/chim331u/mediabutler-go/internal/jobs/batch"
+	"github.com/chim331u/mediabutler-go/internal/repository"
+	"github.com/chim331u/mediabutler-go/pkg/result"
 	"github.com/rs/zerolog"
 )
 

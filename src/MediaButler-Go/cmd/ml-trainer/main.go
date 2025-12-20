@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/lucapaganotti/mediabutler-go/pkg/ml/training"
+	"github.com/chim331u/mediabutler-go/pkg/ml/training"
 	_ "github.com/mattn/go-sqlite3"
 )
 

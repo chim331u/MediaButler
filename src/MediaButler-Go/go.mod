@@ -1,10 +1,11 @@
-module github.com/lucapaganotti/mediabutler-go
+module github.com/chim331u/mediabutler-go
 
 go 1.21
 
 require (
 	github.com/go-chi/chi/v5 v5.2.3
 	github.com/go-chi/cors v1.2.1
+	github.com/google/uuid v1.6.0
 	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/rs/zerolog v1.32.0
 	github.com/spf13/viper v1.18.2
@@ -12,7 +13,6 @@ require (
 
 require (
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect

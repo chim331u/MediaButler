@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lucapaganotti/mediabutler-go/internal/config"
-	"github.com/lucapaganotti/mediabutler-go/pkg/result"
+	"github.com/chim331u/mediabutler-go/internal/config"
+	"github.com/chim331u/mediabutler-go/pkg/result"
 	"github.com/rs/zerolog"
 )
 

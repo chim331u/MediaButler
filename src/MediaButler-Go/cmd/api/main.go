@@ -14,14 +14,14 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
-	"github.com/lucapaganotti/mediabutler-go/internal/api"
-	"github.com/lucapaganotti/mediabutler-go/internal/api/handlers"
-	"github.com/lucapaganotti/mediabutler-go/internal/config"
-	"github.com/lucapaganotti/mediabutler-go/internal/jobs/batch"
-	"github.com/lucapaganotti/mediabutler-go/internal/jobs/progress"
-	"github.com/lucapaganotti/mediabutler-go/internal/repository"
-	"github.com/lucapaganotti/mediabutler-go/internal/service"
-	"github.com/lucapaganotti/mediabutler-go/internal/sse"
+	"github.com/chim331u/mediabutler-go/internal/api"
+	"github.com/chim331u/mediabutler-go/internal/api/handlers"
+	"github.com/chim331u/mediabutler-go/internal/config"
+	"github.com/chim331u/mediabutler-go/internal/jobs/batch"
+	"github.com/chim331u/mediabutler-go/internal/jobs/progress"
+	"github.com/chim331u/mediabutler-go/internal/repository"
+	"github.com/chim331u/mediabutler-go/internal/service"
+	"github.com/chim331u/mediabutler-go/internal/sse"
 )
 
 const version = "1.0.0"
@@ -109,8 +109,9 @@ func main() {
 	// Initialize Handlers
 	healthHandler := handlers.NewHealthHandler(version)
 	filesHandler := handlers.NewFilesHandler(fileService, scannerService, cfg.FileDiscovery.WatchFolders)
-	processingHandler := handlers.NewProcessingHandler(fileService, statsService)
+	processingHandler := handlers.NewProcessingHandler(fileService, statsService, mlClient)
 	fileActionsHandler := handlers.NewFileActionsHandler(fileActionsService)
+	trainingHandler := handlers.NewTrainingHandler(mlClient)
 	sseHandler := handlers.NewSSEHandler(sseBroker, logger)
 
 	// Configure Router
@@ -120,6 +121,7 @@ func main() {
 		FilesHandler:       filesHandler,
 		ProcessingHandler:  processingHandler,
 		FileActionsHandler: fileActionsHandler,
+		TrainingHandler:    trainingHandler,
 		SSEHandler:         sseHandler,
 		AllowedOrigins:     cfg.Server.CORSAllowedOrigins,
 		AllowCredentials:   true,

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/lucapaganotti/mediabutler-go/pkg/ml/classifier"
-	"github.com/lucapaganotti/mediabutler-go/pkg/ml/tokenizer"
+	"github.com/chim331u/mediabutler-go/pkg/ml/classifier"
+	"github.com/chim331u/mediabutler-go/pkg/ml/tokenizer"
 )
 
 // IncrementalTrainer handles incremental model training from SQLite

@@ -90,11 +90,7 @@ WHERE Status IN (sqlc.slice('statuses'))
   AND (sqlc.narg('search_term') IS NULL
        OR FileName LIKE '%' || sqlc.narg('search_term') || '%'
        OR Category LIKE '%' || sqlc.narg('search_term') || '%')
-ORDER BY
-  CASE WHEN sqlc.narg('order_by') = 'CreatedDate' THEN CreatedDate END ASC,
-  CASE WHEN sqlc.narg('order_by') = 'LastUpdateDate' THEN LastUpdateDate END DESC,
-  CASE WHEN sqlc.narg('order_by') = 'FileName' THEN FileName END ASC,
-  LastUpdateDate DESC
+ORDER BY LastUpdateDate DESC
 LIMIT ? OFFSET ?;
 
 -- name: CountFilesByStatuses :one

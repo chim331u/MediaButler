@@ -3,7 +3,7 @@ package handlers
 import (
 	"time"
 
-	"github.com/lucapaganotti/mediabutler-go/internal/service"
+	"github.com/chim331u/mediabutler-go/internal/service"
 )
 
 // ScanFoldersRequest is the optional request body for POST /api/files/scan

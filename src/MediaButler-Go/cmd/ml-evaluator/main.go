@@ -9,10 +9,10 @@ import (
 	"sort"
 	"time"
 
-	"github.com/lucapaganotti/mediabutler-go/pkg/ml/classifier"
-	"github.com/lucapaganotti/mediabutler-go/pkg/ml/tfidf"
-	"github.com/lucapaganotti/mediabutler-go/pkg/ml/tokenizer"
-	"github.com/lucapaganotti/mediabutler-go/pkg/ml/training"
+	"github.com/chim331u/mediabutler-go/pkg/ml/classifier"
+	"github.com/chim331u/mediabutler-go/pkg/ml/tfidf"
+	"github.com/chim331u/mediabutler-go/pkg/ml/tokenizer"
+	"github.com/chim331u/mediabutler-go/pkg/ml/training"
 	_ "github.com/mattn/go-sqlite3"
 )
 

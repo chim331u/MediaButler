@@ -3,7 +3,7 @@ package progress
 import (
 	"time"
 
-	"github.com/lucapaganotti/mediabutler-go/internal/sse"
+	"github.com/chim331u/mediabutler-go/internal/sse"
 	"github.com/rs/zerolog"
 )
 

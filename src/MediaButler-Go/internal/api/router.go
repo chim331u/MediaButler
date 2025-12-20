@@ -3,23 +3,24 @@ package api
 import (
 	"time"
 
+	"github.com/chim331u/mediabutler-go/internal/api/handlers"
+	apimiddleware "github.com/chim331u/mediabutler-go/internal/api/middleware"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/lucapaganotti/mediabutler-go/internal/api/handlers"
-	apimiddleware "github.com/lucapaganotti/mediabutler-go/internal/api/middleware"
 	"github.com/rs/zerolog"
 )
 
 // RouterConfig holds configuration for the router
 type RouterConfig struct {
-	Logger            zerolog.Logger
-	HealthHandler     *handlers.HealthHandler
-	FilesHandler      *handlers.FilesHandler
-	ProcessingHandler *handlers.ProcessingHandler
+	Logger             zerolog.Logger
+	HealthHandler      *handlers.HealthHandler
+	FilesHandler       *handlers.FilesHandler
+	ProcessingHandler  *handlers.ProcessingHandler
 	FileActionsHandler *handlers.FileActionsHandler
-	SSEHandler        *handlers.SSEHandler
-	AllowedOrigins    []string
-	AllowCredentials  bool
+	TrainingHandler    *handlers.TrainingHandler
+	SSEHandler         *handlers.SSEHandler
+	AllowedOrigins     []string
+	AllowCredentials   bool
 }
 
 // NewRouter creates a new Chi router with all endpoints configured
@@ -96,6 +97,11 @@ func NewRouter(cfg RouterConfig) *chi.Mux {
 			r.Route("/queue", func(r chi.Router) {
 				r.Get("/status", cfg.ProcessingHandler.GetQueueStatus) // GET /api/processing/queue/status
 			})
+			// ML Evaluation Queue
+			r.Post("/ml-evaluation/queue", cfg.ProcessingHandler.QueueForMLEvaluation) // POST /api/processing/ml-evaluation/queue
+
+			// ML Categorization
+			r.Post("/ml/categorize", cfg.ProcessingHandler.CategorizeFile) // POST /api/processing/ml/categorize
 		})
 
 		// File actions (v1 API)
@@ -104,12 +110,18 @@ func NewRouter(cfg RouterConfig) *chi.Mux {
 
 			// Batch operations
 			if cfg.FileActionsHandler != nil {
-				r.Post("/organize-batch", cfg.FileActionsHandler.OrganizeBatch)               // POST /api/v1/file-actions/organize-batch
-				r.Get("/batch-status/{jobId}", cfg.FileActionsHandler.GetBatchStatus)         // GET /api/v1/file-actions/batch-status/{jobId}
-				r.Post("/batch-cancel/{jobId}", cfg.FileActionsHandler.CancelBatchJob)        // POST /api/v1/file-actions/batch-cancel/{jobId}
-				r.Get("/batch-jobs", cfg.FileActionsHandler.ListBatchJobs)                    // GET /api/v1/file-actions/batch-jobs
-				r.Post("/validate-batch", cfg.FileActionsHandler.ValidateBatch)               // POST /api/v1/file-actions/validate-batch
+				r.Post("/organize-batch", cfg.FileActionsHandler.OrganizeBatch)        // POST /api/v1/file-actions/organize-batch
+				r.Get("/batch-status/{jobId}", cfg.FileActionsHandler.GetBatchStatus)  // GET /api/v1/file-actions/batch-status/{jobId}
+				r.Post("/batch-cancel/{jobId}", cfg.FileActionsHandler.CancelBatchJob) // POST /api/v1/file-actions/batch-cancel/{jobId}
+				r.Get("/batch-jobs", cfg.FileActionsHandler.ListBatchJobs)             // GET /api/v1/file-actions/batch-jobs
+				r.Post("/validate-batch", cfg.FileActionsHandler.ValidateBatch)        // POST /api/v1/file-actions/validate-batch
 			}
+		})
+
+		// Training endpoints
+		r.Route("/training", func(r chi.Router) {
+			r.Post("/trainModel", cfg.TrainingHandler.TrainModel) // POST /api/training/trainModel
+			r.Get("/trainModel", cfg.TrainingHandler.TrainModel)  // GET /api/training/trainModel
 		})
 	})
 

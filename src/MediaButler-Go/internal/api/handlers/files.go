@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/lucapaganotti/mediabutler-go/internal/domain"
-	"github.com/lucapaganotti/mediabutler-go/internal/service"
-	"github.com/lucapaganotti/mediabutler-go/pkg/pagination"
+	"github.com/chim331u/mediabutler-go/internal/domain"
+	"github.com/chim331u/mediabutler-go/internal/service"
+	"github.com/chim331u/mediabutler-go/pkg/pagination"
 	"github.com/rs/zerolog/log"
 )
 

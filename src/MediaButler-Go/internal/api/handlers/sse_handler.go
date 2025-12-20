@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/lucapaganotti/mediabutler-go/internal/sse"
+	"github.com/chim331u/mediabutler-go/internal/sse"
 	"github.com/rs/zerolog"
 )
 

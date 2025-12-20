@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lucapaganotti/mediabutler-go/internal/config"
+	"github.com/chim331u/mediabutler-go/internal/config"
 )
 
 // Test NewMLClient

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/lucapaganotti/mediabutler-go/internal/domain"
+	"github.com/chim331u/mediabutler-go/internal/domain"
 )
 
 // BatchJobRepository handles database operations for batch jobs
@@ -473,13 +473,13 @@ func (r *batchJobRepository) GetItemsWithFileDetails(ctx context.Context, jobID 
 	query := `
 		SELECT
 			bji.*,
-			tf.file_name,
-			tf.original_path,
-			tf.file_size
+			tf.FileName,
+			tf.OriginalPath,
+			tf.FileSize
 		FROM batch_job_items bji
-		INNER JOIN tracked_files tf ON bji.file_hash = tf.hash
+		INNER JOIN TrackedFiles tf ON bji.file_hash = tf.Hash
 		WHERE bji.batch_job_id = ?
-		  AND tf.is_active = 1
+		  AND tf.IsActive = 1
 		ORDER BY bji.id ASC
 	`
 

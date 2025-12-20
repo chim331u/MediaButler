@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/lucapaganotti/mediabutler-go/internal/domain"
-	"github.com/lucapaganotti/mediabutler-go/pkg/result"
+	"github.com/chim331u/mediabutler-go/internal/domain"
+	"github.com/chim331u/mediabutler-go/pkg/result"
 )
 
 // mockFileRepositoryForStats extends mockFileRepository with GetProcessingStats

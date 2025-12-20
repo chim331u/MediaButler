@@ -45,12 +45,12 @@ func (q *Queries) CountFilesByStatus(ctx context.Context, status int64) (int64, 
 
 const countFilesByStatuses = `-- name: CountFilesByStatuses :one
 SELECT COUNT(*) FROM TrackedFiles
-WHERE Status IN (/*SLICE:statuses*/?)
-  AND IsActive = 1
-  AND (?2 IS NULL OR Category = ?2)
-  AND (?3 IS NULL
-       OR FileName LIKE '%' || ?3 || '%'
-       OR Category LIKE '%' || ?3 || '%')
+WHERE IsActive = 1
+  AND (?1 IS NULL OR Category = ?1)
+  AND (?2 IS NULL
+       OR FileName LIKE '%' || ?2 || '%'
+       OR Category LIKE '%' || ?2 || '%')
+  AND Status IN (/*SLICE:statuses*/?)
 `
 
 type CountFilesByStatusesParams struct {
@@ -62,15 +62,18 @@ type CountFilesByStatusesParams struct {
 // CountFilesByStatuses
 //
 //	SELECT COUNT(*) FROM TrackedFiles
-//	WHERE Status IN (/*SLICE:statuses*/?)
-//	  AND IsActive = 1
-//	  AND (?2 IS NULL OR Category = ?2)
-//	  AND (?3 IS NULL
-//	       OR FileName LIKE '%' || ?3 || '%'
-//	       OR Category LIKE '%' || ?3 || '%')
+//	WHERE IsActive = 1
+//	  AND (?1 IS NULL OR Category = ?1)
+//	  AND (?2 IS NULL
+//	       OR FileName LIKE '%' || ?2 || '%'
+//	       OR Category LIKE '%' || ?2 || '%')
+//	  AND Status IN (/*SLICE:statuses*/?)
 func (q *Queries) CountFilesByStatuses(ctx context.Context, arg CountFilesByStatusesParams) (int64, error) {
 	query := countFilesByStatuses
 	var queryParams []interface{}
+	queryParams = append(queryParams, arg.Category)
+	queryParams = append(queryParams, arg.SearchTerm)
+
 	if len(arg.Statuses) > 0 {
 		for _, v := range arg.Statuses {
 			queryParams = append(queryParams, v)
@@ -79,8 +82,7 @@ func (q *Queries) CountFilesByStatuses(ctx context.Context, arg CountFilesByStat
 	} else {
 		query = strings.Replace(query, "/*SLICE:statuses*/?", "NULL", 1)
 	}
-	queryParams = append(queryParams, arg.Category)
-	queryParams = append(queryParams, arg.SearchTerm)
+
 	row := q.db.QueryRowContext(ctx, query, queryParams...)
 	var count int64
 	err := row.Scan(&count)
@@ -102,7 +104,7 @@ type CreateFileParams struct {
 	Status         int64     `db:"status" json:"status"`
 	CreatedDate    time.Time `db:"createddate" json:"createddate"`
 	LastUpdateDate time.Time `db:"lastupdatedate" json:"lastupdatedate"`
-	IsActive       int64     `db:"isactive" json:"isactive"`
+	IsActive       bool      `db:"isactive" json:"isactive"`
 }
 
 // CreateFile
@@ -519,17 +521,13 @@ func (q *Queries) GetFilesByStatus(ctx context.Context, arg GetFilesByStatusPara
 
 const getFilesByStatuses = `-- name: GetFilesByStatuses :many
 SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
-WHERE Status IN (/*SLICE:statuses*/?)
-  AND IsActive = 1
-  AND (?4 IS NULL OR Category = ?4)
-  AND (?5 IS NULL
-       OR FileName LIKE '%' || ?5 || '%'
-       OR Category LIKE '%' || ?5 || '%')
-ORDER BY
-  CASE WHEN sqlc.narg('order_by') = 'CreatedDate' THEN CreatedDate END ASC,
-  CASE WHEN sqlc.narg('order_by') = 'LastUpdateDate' THEN LastUpdateDate END DESC,
-  CASE WHEN sqlc.narg('order_by') = 'FileName' THEN FileName END ASC,
-  LastUpdateDate DESC
+WHERE IsActive = 1
+  AND (?1 IS NULL OR Category = ?1)
+  AND (?2 IS NULL
+       OR FileName LIKE '%' || ?2 || '%'
+       OR Category LIKE '%' || ?2 || '%')
+  AND Status IN (/*SLICE:statuses*/?)
+ORDER BY LastUpdateDate DESC
 LIMIT ? OFFSET ?
 `
 
@@ -544,21 +542,20 @@ type GetFilesByStatusesParams struct {
 // GetFilesByStatuses
 //
 //	SELECT hash, filename, originalpath, filesize, status, suggestedcategory, confidence, category, targetpath, movedtopath, classifiedat, movedat, lasterror, lasterrorat, retrycount, createddate, lastupdatedate, note, isactive FROM TrackedFiles
-//	WHERE Status IN (/*SLICE:statuses*/?)
-//	  AND IsActive = 1
-//	  AND (?4 IS NULL OR Category = ?4)
-//	  AND (?5 IS NULL
-//	       OR FileName LIKE '%' || ?5 || '%'
-//	       OR Category LIKE '%' || ?5 || '%')
-//	ORDER BY
-//	  CASE WHEN sqlc.narg('order_by') = 'CreatedDate' THEN CreatedDate END ASC,
-//	  CASE WHEN sqlc.narg('order_by') = 'LastUpdateDate' THEN LastUpdateDate END DESC,
-//	  CASE WHEN sqlc.narg('order_by') = 'FileName' THEN FileName END ASC,
-//	  LastUpdateDate DESC
+//	WHERE IsActive = 1
+//	  AND (?1 IS NULL OR Category = ?1)
+//	  AND (?2 IS NULL
+//	       OR FileName LIKE '%' || ?2 || '%'
+//	       OR Category LIKE '%' || ?2 || '%')
+//	  AND Status IN (/*SLICE:statuses*/?)
+//	ORDER BY LastUpdateDate DESC
 //	LIMIT ? OFFSET ?
 func (q *Queries) GetFilesByStatuses(ctx context.Context, arg GetFilesByStatusesParams) ([]Trackedfile, error) {
 	query := getFilesByStatuses
 	var queryParams []interface{}
+	queryParams = append(queryParams, arg.Category)
+	queryParams = append(queryParams, arg.SearchTerm)
+
 	if len(arg.Statuses) > 0 {
 		for _, v := range arg.Statuses {
 			queryParams = append(queryParams, v)
@@ -567,8 +564,7 @@ func (q *Queries) GetFilesByStatuses(ctx context.Context, arg GetFilesByStatuses
 	} else {
 		query = strings.Replace(query, "/*SLICE:statuses*/?", "NULL", 1)
 	}
-	queryParams = append(queryParams, arg.Category)
-	queryParams = append(queryParams, arg.SearchTerm)
+
 	queryParams = append(queryParams, arg.Limit)
 	queryParams = append(queryParams, arg.Offset)
 	rows, err := q.db.QueryContext(ctx, query, queryParams...)

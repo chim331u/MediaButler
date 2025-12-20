@@ -227,11 +227,7 @@ type Querier interface {
 	//    AND (?5 IS NULL
 	//         OR FileName LIKE '%' || ?5 || '%'
 	//         OR Category LIKE '%' || ?5 || '%')
-	//  ORDER BY
-	//    CASE WHEN sqlc.narg('order_by') = 'CreatedDate' THEN CreatedDate END ASC,
-	//    CASE WHEN sqlc.narg('order_by') = 'LastUpdateDate' THEN LastUpdateDate END DESC,
-	//    CASE WHEN sqlc.narg('order_by') = 'FileName' THEN FileName END ASC,
-	//    LastUpdateDate DESC
+	//  ORDER BY LastUpdateDate DESC
 	//  LIMIT ? OFFSET ?
 	GetFilesByStatuses(ctx context.Context, arg GetFilesByStatusesParams) ([]Trackedfile, error)
 	//GetFilesExceedingRetryLimit

@@ -66,5 +66,5 @@ type Trackedfile struct {
 	CreatedDate       time.Time  `db:"createddate" json:"createddate"`
 	LastUpdateDate    time.Time  `db:"lastupdatedate" json:"lastupdatedate"`
 	Note              *string    `db:"note" json:"note"`
-	IsActive          int64      `db:"isactive" json:"isactive"`
+	IsActive          bool       `db:"isactive" json:"isactive"`
 }

@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/lucapaganotti/mediabutler-go/internal/db"
-	"github.com/lucapaganotti/mediabutler-go/internal/domain"
-	"github.com/lucapaganotti/mediabutler-go/pkg/result"
+	"github.com/chim331u/mediabutler-go/internal/db"
+	"github.com/chim331u/mediabutler-go/internal/domain"
+	"github.com/chim331u/mediabutler-go/pkg/result"
 )
 
 // FileRepository defines the interface for TrackedFile data access
@@ -94,13 +94,13 @@ func (r *fileRepository) Create(ctx context.Context, file *domain.TrackedFile) r
 
 	err := r.queries.CreateFile(ctx, db.CreateFileParams{
 		Hash:           file.Hash,
-		Filename:       file.FileName,
-		Originalpath:   file.OriginalPath,
-		Filesize:       file.FileSize,
+		FileName:       file.FileName,
+		OriginalPath:   file.OriginalPath,
+		FileSize:       file.FileSize,
 		Status:         int64(file.Status),
-		Createddate:    file.CreatedDate,
-		Lastupdatedate: file.LastUpdateDate,
-		Isactive:       file.IsActive,
+		CreatedDate:    file.CreatedDate,
+		LastUpdateDate: file.LastUpdateDate,
+		IsActive:       file.IsActive,
 	})
 
 	if err != nil {
@@ -117,20 +117,20 @@ func (r *fileRepository) Update(ctx context.Context, file *domain.TrackedFile) r
 	}
 
 	err := r.queries.UpdateFile(ctx, db.UpdateFileParams{
-		Filename:          file.FileName,
-		Originalpath:      file.OriginalPath,
-		Filesize:          file.FileSize,
+		FileName:          file.FileName,
+		OriginalPath:      file.OriginalPath,
+		FileSize:          file.FileSize,
 		Status:            int64(file.Status),
-		Suggestedcategory: file.SuggestedCategory,
+		SuggestedCategory: file.SuggestedCategory,
 		Confidence:        derefFloat64(file.Confidence, 0.0),
 		Category:          file.Category,
-		Targetpath:        file.TargetPath,
-		Classifiedat:      file.ClassifiedAt,
-		Movedat:           file.MovedAt,
-		Lasterror:         file.LastError,
-		Lasterrorat:       file.LastErrorAt,
-		Retrycount:        int64(file.RetryCount),
-		Lastupdatedate:    file.LastUpdateDate,
+		TargetPath:        file.TargetPath,
+		ClassifiedAt:      file.ClassifiedAt,
+		MovedAt:           file.MovedAt,
+		LastError:         file.LastError,
+		LastErrorAt:       file.LastErrorAt,
+		RetryCount:        int64(file.RetryCount),
+		LastUpdateDate:    file.LastUpdateDate,
 		Note:              file.Note,
 		Hash:              file.Hash,
 	})
@@ -145,7 +145,7 @@ func (r *fileRepository) Update(ctx context.Context, file *domain.TrackedFile) r
 // SoftDelete marks a file as inactive
 func (r *fileRepository) SoftDelete(ctx context.Context, hash string, reason *string) result.Result[bool] {
 	err := r.queries.SoftDeleteFile(ctx, db.SoftDeleteFileParams{
-		Lastupdatedate: domain.Now(),
+		LastUpdateDate: domain.Now(),
 		Note:           reason,
 		Hash:           hash,
 	})
@@ -160,7 +160,7 @@ func (r *fileRepository) SoftDelete(ctx context.Context, hash string, reason *st
 // Restore reactivates a soft-deleted file
 func (r *fileRepository) Restore(ctx context.Context, hash string, reason *string) result.Result[bool] {
 	err := r.queries.RestoreFile(ctx, db.RestoreFileParams{
-		Lastupdatedate: domain.Now(),
+		LastUpdateDate: domain.Now(),
 		Note:           reason,
 		Hash:           hash,
 	})
@@ -322,26 +322,26 @@ func (r *fileRepository) toDomain(dbFile *db.Trackedfile) *domain.TrackedFile {
 	return &domain.TrackedFile{
 		BaseEntity: domain.BaseEntity{
 			ID:             0, // SQLite doesn't have ID for TrackedFiles (Hash is PK)
-			CreatedDate:    dbFile.Createddate,
-			LastUpdateDate: dbFile.Lastupdatedate,
-			IsActive:       dbFile.Isactive,
+			CreatedDate:    dbFile.CreatedDate,
+			LastUpdateDate: dbFile.LastUpdateDate,
+			IsActive:       dbFile.IsActive,
 			Note:           dbFile.Note,
 		},
 		Hash:              dbFile.Hash,
-		FileName:          dbFile.Filename,
-		OriginalPath:      dbFile.Originalpath,
-		FileSize:          dbFile.Filesize,
+		FileName:          dbFile.FileName,
+		OriginalPath:      dbFile.OriginalPath,
+		FileSize:          dbFile.FileSize,
 		Status:            domain.FileStatus(dbFile.Status),
-		SuggestedCategory: dbFile.Suggestedcategory,
+		SuggestedCategory: dbFile.SuggestedCategory,
 		Confidence:        toFloat64Ptr(dbFile.Confidence),
-		ClassifiedAt:      dbFile.Classifiedat,
+		ClassifiedAt:      dbFile.ClassifiedAt,
 		Category:          dbFile.Category,
-		TargetPath:        dbFile.Targetpath,
-		MovedToPath:       dbFile.Movedtopath,
-		MovedAt:           dbFile.Movedat,
-		LastError:         dbFile.Lasterror,
-		LastErrorAt:       dbFile.Lasterrorat,
-		RetryCount:        int(dbFile.Retrycount),
+		TargetPath:        dbFile.TargetPath,
+		MovedToPath:       dbFile.MovedToPath,
+		MovedAt:           dbFile.MovedAt,
+		LastError:         dbFile.LastError,
+		LastErrorAt:       dbFile.LastErrorAt,
+		RetryCount:        int(dbFile.RetryCount),
 	}
 }
 
@@ -403,4 +403,8 @@ func boolToInt(b bool) int64 {
 		return 1
 	}
 	return 0
+}
+
+func int64ToBool(i int64) bool {
+	return i != 0
 }
