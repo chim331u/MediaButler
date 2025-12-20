@@ -52,7 +52,7 @@ DEPLOYMENT_PLATFORM="${DEPLOYMENT_PLATFORM:-}"  # Will be set by user selection
 
 # Git Repository Configuration
 GITHUB_REPO="${GITHUB_REPO:-https://github.com/chim331u/MediaButler.git}"
-GIT_BRANCH="${GIT_BRANCH:-qnapoptimization}"  # Default branch for MediaButler (current: delploy)
+GIT_BRANCH="${GIT_BRANCH:-main}"  # Default branch for MediaButler
 LOCAL_REPO_DIR="${LOCAL_REPO_DIR:-/tmp/MediaButler}"
 
 # Docker Configuration
@@ -133,12 +133,12 @@ select_deployment_platform() {
     echo ""
     echo "Select deployment target:"
     echo ""
-    echo "  ${GREEN}1)${NC} QNAP NAS (ARM32) - Production deployment"
+    echo -e "  ${GREEN}1)${NC} QNAP NAS (ARM32) - Production deployment"
     echo "     - ARM32 optimized build"
     echo "     - 1GB RAM optimizations"
     echo "     - QNAP volume paths"
     echo ""
-    echo "  ${GREEN}2)${NC} MacBook ARM64 - Local development"
+    echo -e "  ${GREEN}2)${NC} MacBook ARM64 - Local development"
     echo "     - ARM64 native build"
     echo "     - Development-friendly settings"
     echo "     - Local volume paths"
@@ -220,48 +220,195 @@ configure_mac_platform() {
     mkdir -p "$HOME/mediabutler/logs"
 }
 
+#############################################################################
+# INTERACTIVE CONFIGURATION
+#############################################################################
+
+prompt_for_setting() {
+    local prompt_text="$1"
+    local default_value="$2"
+    local current_value="$3"
+
+    if [[ -n "$current_value" ]]; then
+        read -p "$(echo -e ${YELLOW}${prompt_text} [${NC}${default_value}${YELLOW}]: ${NC})" user_input
+        echo "${user_input:-$default_value}"
+    else
+        echo "$default_value"
+    fi
+}
+
+interactive_configuration() {
+    echo ""
+    echo "============================================================================="
+    echo -e "  ${BLUE}INTERACTIVE CONFIGURATION${NC}"
+    echo "============================================================================="
+    echo ""
+    log "Press Enter to accept default values shown in brackets [default]"
+    echo ""
+
+    # Git Configuration
+    echo -e "${BLUE}Git Repository Configuration:${NC}"
+    echo ""
+
+    read -p "$(echo -e ${YELLOW}Git Repository URL [${NC}${GITHUB_REPO}${YELLOW}]: ${NC})" user_repo
+    GITHUB_REPO="${user_repo:-$GITHUB_REPO}"
+
+    read -p "$(echo -e ${YELLOW}Git Branch [${NC}${GIT_BRANCH}${YELLOW}]: ${NC})" user_branch
+    GIT_BRANCH="${user_branch:-$GIT_BRANCH}"
+
+    echo ""
+
+    # Docker Configuration
+    echo -e "${BLUE}Docker Configuration:${NC}"
+    echo ""
+
+    read -p "$(echo -e ${YELLOW}Container Name [${NC}${CONTAINER_NAME}${YELLOW}]: ${NC})" user_container
+    CONTAINER_NAME="${user_container:-$CONTAINER_NAME}"
+
+    read -p "$(echo -e ${YELLOW}Docker Image Name [${NC}${DOCKER_IMAGE_NAME}${YELLOW}]: ${NC})" user_image
+    DOCKER_IMAGE_NAME="${user_image:-$DOCKER_IMAGE_NAME}"
+
+    read -p "$(echo -e ${YELLOW}Host Port [${NC}${HOST_PORT}${YELLOW}]: ${NC})" user_port
+    HOST_PORT="${user_port:-$HOST_PORT}"
+
+    echo ""
+
+    # Volume Mappings
+    echo -e "${BLUE}Volume Mappings (Host:Container):${NC}"
+    echo ""
+
+    local data_host=$(echo "$DATA_VOLUME" | cut -d':' -f1)
+    local watch_host=$(echo "$WATCH_VOLUME" | cut -d':' -f1)
+    local library_host=$(echo "$LIBRARY_VOLUME" | cut -d':' -f1)
+    local logs_host=$(echo "$LOGS_VOLUME" | cut -d':' -f1)
+
+    read -p "$(echo -e ${YELLOW}Data Directory - host path [${NC}${data_host}${YELLOW}]: ${NC})" user_data
+    data_host="${user_data:-$data_host}"
+    DATA_VOLUME="${data_host}:/data"
+
+    read -p "$(echo -e ${YELLOW}Watch Folder - host path [${NC}${watch_host}${YELLOW}]: ${NC})" user_watch
+    watch_host="${user_watch:-$watch_host}"
+    WATCH_VOLUME="${watch_host}:/watch"
+
+    read -p "$(echo -e ${YELLOW}Library Folder - host path [${NC}${library_host}${YELLOW}]: ${NC})" user_library
+    library_host="${user_library:-$library_host}"
+    LIBRARY_VOLUME="${library_host}:/library"
+
+    read -p "$(echo -e ${YELLOW}Logs Folder - host path [${NC}${logs_host}${YELLOW}]: ${NC})" user_logs
+    logs_host="${user_logs:-$logs_host}"
+    LOGS_VOLUME="${logs_host}:/app/logs"
+
+    echo ""
+
+    # Application Settings
+    echo -e "${BLUE}Application Settings:${NC}"
+    echo ""
+
+    echo "Select Environment:"
+    echo "  1) Production"
+    echo "  2) Development"
+    read -p "$(echo -e ${YELLOW}Choice [${NC}1${YELLOW}]: ${NC})" env_choice
+    case "${env_choice:-1}" in
+        2)
+            ASPNETCORE_ENVIRONMENT="Development"
+            ;;
+        *)
+            ASPNETCORE_ENVIRONMENT="Production"
+            ;;
+    esac
+
+    echo ""
+    echo "Select Log Level:"
+    echo "  1) Information (recommended)"
+    echo "  2) Debug"
+    echo "  3) Warning"
+    echo "  4) Error"
+    read -p "$(echo -e ${YELLOW}Choice [${NC}1${YELLOW}]: ${NC})" log_choice
+    case "${log_choice:-1}" in
+        2)
+            LOG_LEVEL="Debug"
+            ;;
+        3)
+            LOG_LEVEL="Warning"
+            ;;
+        4)
+            LOG_LEVEL="Error"
+            ;;
+        *)
+            LOG_LEVEL="Information"
+            ;;
+    esac
+
+    echo ""
+
+    # Performance Settings (optional advanced configuration)
+    echo -e "${BLUE}Performance Settings:${NC}"
+    echo ""
+    read -p "$(echo -e ${YELLOW}Configure advanced performance settings? - y/N [${NC}N${YELLOW}]: ${NC})" configure_perf
+
+    if [[ "$configure_perf" =~ ^[Yy]$ ]]; then
+        echo ""
+        read -p "$(echo -e ${YELLOW}Max Batch Size [${NC}${MAX_BATCH_SIZE}${YELLOW}]: ${NC})" user_batch
+        MAX_BATCH_SIZE="${user_batch:-$MAX_BATCH_SIZE}"
+
+        read -p "$(echo -e ${YELLOW}Scan Interval (minutes) [${NC}${SCAN_INTERVAL_MINUTES}${YELLOW}]: ${NC})" user_scan
+        SCAN_INTERVAL_MINUTES="${user_scan:-$SCAN_INTERVAL_MINUTES}"
+
+        read -p "$(echo -e ${YELLOW}Database Connection Pool Size [${NC}${DATABASE_CONNECTION_POOL_SIZE}${YELLOW}]: ${NC})" user_pool
+        DATABASE_CONNECTION_POOL_SIZE="${user_pool:-$DATABASE_CONNECTION_POOL_SIZE}"
+
+        read -p "$(echo -e ${YELLOW}Memory Threshold (MB) [${NC}${MEMORY_THRESHOLD_MB}${YELLOW}]: ${NC})" user_mem
+        MEMORY_THRESHOLD_MB="${user_mem:-$MEMORY_THRESHOLD_MB}"
+
+        read -p "$(echo -e ${YELLOW}Auto GC Trigger (MB) [${NC}${AUTO_GC_TRIGGER_MB}${YELLOW}]: ${NC})" user_gc
+        AUTO_GC_TRIGGER_MB="${user_gc:-$AUTO_GC_TRIGGER_MB}"
+    fi
+
+    success "Configuration completed"
+}
+
 review_and_confirm_configuration() {
     echo ""
     echo "============================================================================="
     echo "  DEPLOYMENT CONFIGURATION REVIEW"
     echo "============================================================================="
     echo ""
-    echo "${BLUE}Platform Configuration:${NC}"
+    echo -e "${BLUE}Platform Configuration:${NC}"
     echo "  Deployment Target:  $DEPLOYMENT_PLATFORM"
     echo "  Docker Platform:    $DOCKER_PLATFORM"
     echo "  Environment:        $ASPNETCORE_ENVIRONMENT"
     echo ""
-    echo "${BLUE}Git Repository Configuration:${NC}"
+    echo -e "${BLUE}Git Repository Configuration:${NC}"
     echo "  Repository URL:     $GITHUB_REPO"
     echo "  Branch:             $GIT_BRANCH"
     echo "  Local Clone Path:   $LOCAL_REPO_DIR"
     echo ""
-    echo "${BLUE}Docker Configuration:${NC}"
+    echo -e "${BLUE}Docker Configuration:${NC}"
     echo "  Image Name:         $DOCKER_IMAGE_NAME"
     echo "  Image Tag:          $DOCKER_IMAGE_TAG"
     echo "  Container Name:     $CONTAINER_NAME"
     echo "  Dockerfile Path:    $DOCKERFILE_PATH"
     echo "  Build Context:      $BUILD_CONTEXT"
     echo ""
-    echo "${BLUE}Container Runtime:${NC}"
+    echo -e "${BLUE}Container Runtime:${NC}"
     echo "  Host Port:          $HOST_PORT"
     echo "  Container Port:     $CONTAINER_PORT"
     echo ""
-    echo "${BLUE}Volume Mappings (Host:Container):${NC}"
+    echo -e "${BLUE}Volume Mappings (Host:Container):${NC}"
     echo "  Data:               $DATA_VOLUME"
     echo "  Watch Folder:       $WATCH_VOLUME"
     echo "  Library:            $LIBRARY_VOLUME"
     echo "  Logs:               $LOGS_VOLUME"
     echo ""
-    echo "${BLUE}Application Settings:${NC}"
+    echo -e "${BLUE}Application Settings:${NC}"
     echo "  Log Level:          $LOG_LEVEL"
     echo ""
-    echo "${BLUE}MediaButler Paths (Container):${NC}"
+    echo -e "${BLUE}MediaButler Paths (Container):${NC}"
     echo "  Watch Folder:       $WATCHFOLDER_PATH"
     echo "  Library Path:       $LIBRARY_PATH"
     echo "  Database Path:      $DATABASE_PATH"
     echo ""
-    echo "${BLUE}Performance Optimization Settings:${NC}"
+    echo -e "${BLUE}Performance Optimization Settings:${NC}"
     echo "  Max Batch Size:     $MAX_BATCH_SIZE"
     echo "  Scan Interval:      $SCAN_INTERVAL_MINUTES minutes"
     echo "  DB Pool Size:       $DATABASE_CONNECTION_POOL_SIZE"
@@ -810,22 +957,25 @@ cleanup_temp_files() {
 #############################################################################
 
 print_banner() {
-    echo "============================================================================="
-    echo "  MediaButler API - QNAP ARM32 NAS Deployment Script"
-    echo "============================================================================="
-    echo "Repository: $GITHUB_REPO"
-    echo "Branch: $GIT_BRANCH"
-    echo "Image: ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
-    echo "Container: $CONTAINER_NAME"
-    echo "Port: $HOST_PORT:$CONTAINER_PORT"
     echo ""
-    echo "Volume Mappings:"
-    echo "  Data: $(echo $DATA_VOLUME | cut -d: -f1) → /data"
-    echo "  Watch: $(echo $WATCH_VOLUME | cut -d: -f1) → /watch"
-    echo "  Library: $(echo $LIBRARY_VOLUME | cut -d: -f1) → /library"
-    echo "  Logs: $(echo $LOGS_VOLUME | cut -d: -f1) → /app/logs"
+    echo "============================================================================="
+    echo "  MediaButler API - Interactive Deployment Script"
+    echo "============================================================================="
     echo ""
-    echo "Configuration: All parameters integrated in script (no .env file needed)"
+    echo "  Multi-Platform: QNAP ARM32 NAS / MacBook ARM64"
+    echo "  Interactive Configuration with Sensible Defaults"
+    echo ""
+    echo "  This script will guide you through:"
+    echo "    • Platform selection"
+    echo "    • Repository and branch configuration"
+    echo "    • Docker container settings"
+    echo "    • Volume mappings"
+    echo "    • Application settings"
+    echo "    • Performance optimization (optional)"
+    echo ""
+    echo "  Press Enter to accept default values shown in [brackets]"
+    echo "  Type --help for more information"
+    echo ""
     echo "============================================================================="
 }
 
@@ -850,63 +1000,91 @@ print_summary() {
 
 show_help() {
     cat << EOF
-MediaButler API Deployment Script for QNAP ARM32 NAS
+MediaButler API Deployment Script - Multi-Platform (QNAP ARM32 / MacBook ARM64)
 ============================================================================
 
 DESCRIPTION:
-    This script performs complete deployment of MediaButler API on
-    QNAP ARM32 NAS with 1GB RAM optimization. All configuration parameters
-    are integrated in the script with sensible defaults.
+    This script performs complete deployment of MediaButler API with
+    interactive configuration. Supports both QNAP ARM32 NAS (1GB RAM
+    optimized) and MacBook ARM64 development environments.
+
+FEATURES:
+    - Platform selection (QNAP ARM32 or MacBook ARM64)
+    - Interactive configuration with sensible defaults
+    - Git repository and branch selection
+    - Docker container and volume configuration
+    - Environment and logging configuration
+    - Optional advanced performance tuning
 
 USAGE:
     $0 [OPTIONS]
 
 QUICK START:
-    # 1. Edit configuration section in the script (lines 30-70)
-    # 2. Run deployment
+    # Simply run the script and follow the interactive prompts
     $0
 
-OPTIONS:
+    The script will guide you through:
+    1. Platform selection (QNAP NAS or MacBook)
+    2. Git repository and branch (default: main)
+    3. Docker settings (container name, port)
+    4. Volume mappings (data, watch, library, logs)
+    5. Application settings (environment, log level)
+    6. Optional performance tuning
+    7. Final review and confirmation
+
+OPTIONS (Optional - Override Interactive Prompts):
     -h, --help              Show this help message
-    -r, --repo URL          Git repository URL
-    -b, --branch NAME       Git branch name (default: main)
-    -p, --port PORT         Host port for API (default: 30129)
-    -n, --name NAME         Container name (default: mediabutler_api)
-    -i, --image NAME        Docker image name (default: mediabutler_api_image)
+    -r, --repo URL          Git repository URL (skips interactive prompt)
+    -b, --branch NAME       Git branch name (skips interactive prompt)
+    -p, --port PORT         Host port for API (skips interactive prompt)
+    -n, --name NAME         Container name (skips interactive prompt)
+    -i, --image NAME        Docker image name (skips interactive prompt)
 
-CONFIGURATION:
-    All parameters are configured in the script header (lines 30-70):
+    Note: Using command-line options will still show interactive prompts
+          for other settings not specified.
 
-    # Main Configuration
-    GITHUB_REPO             Git repository URL
-    GIT_BRANCH              Git branch to deploy (default: main)
-    HOST_PORT               Host port for API (default: 30129)
-    CONTAINER_NAME          Docker container name (default: mediabutler_api)
+PLATFORM-SPECIFIC DEFAULTS:
 
-    # QNAP Volume Paths
-    DATA_VOLUME             Application data (default: /share/CACHEDEV2_DATA/...)
-    WATCH_VOLUME            Files to process (default: /share/Download/Incoming)
-    LIBRARY_VOLUME          Organized files (default: /share/Video/MediaButler)
+    QNAP ARM32 NAS (Production):
+    - Data:     /share/CACHEDEV2_DATA/Storage/Docker/mediabutler
+    - Watch:    /share/Download/Incoming
+    - Library:  /share/Video/Serie
+    - Port:     30139
+    - Workers:  2 (ARM32 optimized)
+    - Memory:   250MB threshold
 
-ENVIRONMENT VARIABLE OVERRIDE:
-    You can still override any parameter with environment variables:
+    MacBook ARM64 (Development):
+    - Data:     ~/mediabutler/data
+    - Watch:    ~/mediabutler/watch
+    - Library:  ~/mediabutler/library
+    - Port:     30139
+    - Workers:  2
+    - Memory:   1000MB threshold
 
+ENVIRONMENT VARIABLE PRE-CONFIGURATION:
+    You can pre-set defaults using environment variables before running:
+
+    export GITHUB_REPO="https://github.com/myuser/MediaButler.git"
+    export GIT_BRANCH="develop"
     export HOST_PORT="8080"
-    export WATCH_VOLUME="/share/MyDownloads:/watch"
     $0
+
+    The script will use these as defaults in interactive prompts.
 
 EXAMPLES:
-    # Basic deployment (edit script configuration first)
+    # Interactive deployment (recommended)
     $0
 
-    # Override specific parameters
-    $0 --port 8080 --branch develop
+    # Non-interactive with command-line options
+    $0 --repo https://github.com/myuser/MediaButler.git --branch main --port 8080
 
-    # Different repository/branch
-    $0 -r https://github.com/myuser/MediaButler.git -b main
+    # Pre-configure with environment variables
+    export GIT_BRANCH="develop"
+    export HOST_PORT="8080"
+    $0
 
-    # Custom container name
-    $0 --name my_mediabutler_api
+    # Quick deployment with minimal prompts
+    $0 -b main -p 30139
 
 REQUIREMENTS:
     - QNAP NAS ARM32 with Container Station enabled
@@ -967,6 +1145,9 @@ main() {
 
     # Platform selection (QNAP ARM32 or MacBook ARM64)
     select_deployment_platform
+
+    # Interactive configuration
+    interactive_configuration
 
     # Review and confirm configuration
     review_and_confirm_configuration
