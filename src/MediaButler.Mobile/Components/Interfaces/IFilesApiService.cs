@@ -1,0 +1,134 @@
+using MediaButler.Core.Enums;
+using MediaButler.Mobile.Models;
+
+namespace MediaButler.Mobile.Components.Interfaces;
+
+/// <summary>
+/// Files API service following "Simple Made Easy" principles.
+/// Single responsibility: File management operations only.
+/// Composes with IHttpClientService without braiding concerns.
+/// </summary>
+public interface IFilesApiService
+{
+    /// <summary>
+    /// Gets tracked files with pagination and optional filtering.
+    /// Pure function - same inputs produce same outputs.
+    /// </summary>
+    Task<Result<IReadOnlyList<FileManagementDto>>> GetFilesAsync(
+        int skip = 0,
+        int take = 20,
+        string? status = null,
+        string? category = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets tracked files with pagination, filtering, search, and ordering by multiple status values.
+    /// Enables efficient querying across multiple processing states.
+    /// </summary>
+    Task<Result<PaginatedFilesDto>> GetFilesByStatusesAsync(
+        int skip = 0,
+        int take = 20,
+        FileStatus[]? statuses = null,
+        string? category = null,
+        string? searchTerm = null,
+        string? orderBy = null,
+        bool descending = true,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets a specific tracked file by its hash.
+    /// </summary>
+    Task<Result<FileManagementDto>> GetFileAsync(
+        string hash,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets files that are awaiting user confirmation after classification.
+    /// </summary>
+    Task<Result<IReadOnlyList<FileManagementDto>>> GetPendingFilesAsync(
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets files ready for ML classification processing.
+    /// </summary>
+    Task<Result<IReadOnlyList<FileManagementDto>>> GetFilesReadyForClassificationAsync(
+        int limit = 50,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Confirms a file's category assignment.
+    /// </summary>
+    Task<Result<FileManagementDto>> ConfirmFileCategoryAsync(
+        string hash,
+        string category,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Marks a file as moved to its target location.
+    /// </summary>
+    Task<Result<FileManagementDto>> MarkFileAsMovedAsync(
+        string hash,
+        string targetPath,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Soft deletes a tracked file.
+    /// </summary>
+    Task<Result> DeleteFileAsync(
+        string hash,
+        string? reason = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Manually triggers a scan of configured watch folders.
+    /// </summary>
+    Task<Result<ScanResultDto>> ScanFoldersAsync(
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Manually triggers a scan of a specific folder.
+    /// </summary>
+    Task<Result<ScanResultDto>> ScanSpecificFolderAsync(
+        string folderPath,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Organizes multiple files in a batch operation.
+    /// Submits files for background processing via batch organize API.
+    /// </summary>
+    Task<Result<BatchJobResponseDto>> OrganizeBatchAsync(
+        BatchOrganizeRequestDto request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the status of a batch job.
+    /// </summary>
+    Task<Result<BatchJobResponseDto>> GetBatchStatusAsync(
+        string jobId,
+        bool includeDetails = false,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets distinct categories from tracked files.
+    /// Returns all unique category values that have been assigned to files in the system.
+    /// </summary>
+    Task<Result<IReadOnlyList<string>>> GetDistinctCategoriesAsync(
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Marks a file as ignored, preventing it from being processed further.
+    /// This transitions the file to the Ignored status.
+    /// </summary>
+    Task<Result<object>> IgnoreFileAsync(
+        string hash,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Queues files for ML evaluation/re-evaluation.
+    /// Processes files in New, Classified, and ReadyToMove status.
+    /// </summary>
+    Task<Result<MlEvaluationResponse>> QueueMlEvaluationAsync(
+        string? filterByCategory = null,
+        bool forceReEvaluation = true,
+        CancellationToken cancellationToken = default);
+}

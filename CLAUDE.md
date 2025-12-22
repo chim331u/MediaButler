@@ -26,7 +26,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```
 MediaButler/
 ├── src/
-│   ├── MediaButler.API/           # .NET 8 REST API + Hangfire worker (combined)
+│   ├── MediaButler.API/           # .NET 10 REST API + Hangfire worker (combined)
 │   ├── MediaButler.Core/          # Domain models, interfaces, BaseEntity
 │   ├── MediaButler.Data/          # EF Core, SQLite, Repository pattern
 │   ├── MediaButler.ML/            # Classification engine, separate from domain
@@ -99,9 +99,9 @@ Databases
 - **Rationale**: Eliminates inter-process communication complexity, reduces memory footprint, simplifies ARM32 deployment
 
 **Technology Stack:**
-- .NET 8 with C# 12 (API, Services, Core, Data, ML components)
-- .NET 10 preview (Web UI - Blazor WebAssembly)
-- .NET 10 (Mobile - MAUI Android)
+- .NET 10 with C# 13 (all projects: API, Services, Core, Data, ML, Web, Mobile)
+- Blazor WebAssembly (Web UI)
+- MAUI Android (Mobile app)
 - SQLite with Entity Framework Core
 - ASP.NET Core Web API with Controllers
 - Hangfire 1.8.14 with SQLite storage (combined client + server mode)
@@ -152,13 +152,13 @@ dotnet run --project src/MediaButler.API --configuration Release
 
 ### Web Development (Blazor WebAssembly - .NET 10)
 ```bash
-# Run Web UI (development mode with .NET 10 preview)
+# Run Web UI (development mode)
 dotnet run --project src/MediaButler.Web
 
 # Build Web UI for production (static files)
 dotnet publish src/MediaButler.Web -c Release -o ./dist/web
 
-# Run both API (.NET 8) and Web (.NET 10) concurrently
+# Run both API and Web concurrently (both .NET 10)
 # Terminal 1: Start API server (includes background worker)
 dotnet run --project src/MediaButler.API
 # Terminal 2: Start Web UI (configure API base URL in appsettings)
@@ -737,7 +737,7 @@ CREATE TABLE SeriesPatterns (
 ### **Blazor WebAssembly (.NET 10) - FULLY IMPLEMENTED**
 **Project**: `src/MediaButler.Web`
 - **Status**: Production-ready Web UI with advanced features
-- **Technology**: .NET 10 preview with Radzen.Blazor components
+- **Technology**: .NET 10 with Radzen.Blazor components
 - **Dependencies**: `MediaButler.Core` for shared models and DTOs
 - **Features**:
   - Real-time file monitoring via SignalR

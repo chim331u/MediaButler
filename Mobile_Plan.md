@@ -1,11 +1,11 @@
 # MediaButler Mobile App Migration Plan
-## From Legacy API to New REST API (.NET 8)
+## From Legacy API to New REST API (.NET 10)
 
 **Version**: 1.0
 **Date**: 2025-12-22
 **Strategy**: Full Sequential Migration (Option C)
 **Target Framework**: .NET 10 MAUI Blazor Hybrid (Android)
-**API Target**: .NET 8 REST API with Modern Patterns
+**API Target**: .NET 10 REST API with Modern Patterns
 
 ---
 
