@@ -1,0 +1,168 @@
+﻿@page "/lastview"
+@inject TooltipService tooltipService
+@inherits LayoutComponentBase
+@inject NotificationService NotificationService
+
+
+<div class="p-2">
+
+    @if (files == null)
+    {
+        <p><em>Loading ...</em></p>
+    }
+    else
+    {
+        <RadzenRow>
+            <RadzenTextBox Placeholder="Search" Value="@searchText" @oninput=@OnInput Name="Search" type="search" />
+        </RadzenRow>
+
+        <br />
+        <RadzenDataGrid @ref="grid" AllowFiltering="true" AllowPaging="true" PageSize="10" AllowSorting="true"
+                        RowRender="@RowRender" ExpandMode="DataGridExpandMode.Single"
+                        Data="@files" TItem="FilesDetailDto" RowExpand="RowExpand">
+            <Template Context="file">
+                <RadzenDataGrid AllowFiltering="true" AllowPaging="true" AllowSorting="true" Data="@filesOthers" TItem="FilesDetailDto">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="FilesDetailDto" Property="FileCategory" Width="30%" Title="Category" Filterable="false">
+                            <Template Context="data">
+                                <p style="white-space:pre-wrap">@data.FileCategory</p>
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="FilesDetailDto" Property="Name" Title="Name" Width="50%">
+                            <Template Context="data">
+                                <p style="white-space:pre-wrap">@data.Name</p>
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="FilesDetailDto" Context="file" Title="Actions" Filterable="false" Sortable="false"
+                                              TextAlign="TextAlign.Center" Width="20%">
+
+                            <Template Context="detail">
+                                <RadzenButton ButtonStyle="ButtonStyle.Primary" Icon="visibility_off" Variant="Variant.Flat"
+                                              Shade="Shade.Lighter" Size="ButtonSize.Medium" Class="my-1 ms-1"
+                                              Click="@(args => NotShowAgain(detail))" @onclick:stopPropagation="true"
+                                              MouseEnter="@(args => ShowTooltipNotShowAgain(args, new TooltipOptions()
+                                                                        { Position = TooltipPosition.Left }))">
+                                </RadzenButton>
+
+                            </Template>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+            </Template>
+            <Columns>
+                <RadzenDataGridColumn TItem="FilesDetailDto" Property="FileCategory" Title="Category" Width="30%" Filterable="false" Sortable="false">
+                    <Template Context="data">
+                        <p style="white-space:pre-wrap">@data.FileCategory</p>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="FilesDetailDto" Property="Name" Title="Name" Width="70%" Filterable="true" Sortable="true" >
+                    <Template Context="data">
+                        <p style="white-space:pre-wrap">@data.Name</p>
+                    </Template>
+                </RadzenDataGridColumn>
+
+            </Columns>
+        </RadzenDataGrid>
+
+    }
+</div>
+
+@code {
+    [Inject]
+    public IServiceApi _service { get; set; }
+    [Inject]
+    public IUtilityServices _utilityService { get; set; }
+
+    IEnumerable<FilesDetailDto>? filesFromApi;
+    IEnumerable<FilesDetailDto>? files;
+    IList<FilesDetailDto>? filesOthers;
+
+    RadzenDataGrid<FilesDetailDto>? grid;
+    string? searchText;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+
+        await RefreshList();
+    }
+
+    private async Task RefreshList()
+    {
+        filesFromApi = await _service.GetLastFilesList();
+
+        files = filesFromApi;
+    }
+
+    void RowRender(RowRenderEventArgs<FilesDetailDto> args)
+    {
+    }
+
+    async void RowExpand(FilesDetailDto item)
+    {
+        filesOthers = new List<FilesDetailDto>();
+
+        filesOthers = await _service.GetAllFiles(item.FileCategory);
+
+        StateHasChanged();
+
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        //base.OnAfterRender(firstRender);
+
+        //if (firstRender)
+        //{
+        //    await grid.ExpandRow(files.FirstOrDefault());
+        //}
+    }
+
+    protected async Task NotShowAgain(FilesDetailDto item)
+    {
+        item.IsToCategorize = false;
+        item.IsNew = false;
+        item.IsNotToMove = true;
+
+        if (await _service.UpdateFileDetail(item) != null)
+        {
+            NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Info,
+                    Summary = "File update",
+                    Detail = $"File will not be shown again",
+                    Duration = 4000
+
+                });
+        }
+        else
+        {
+            NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Error,
+                    Summary = "File NOT update",
+                    Detail = $"Error in updating file: see log for detail",
+                    Duration = 4000
+
+                });
+        }
+        await RefreshList();
+    }
+
+    void ShowTooltipNotShowAgain(ElementReference elementReference, TooltipOptions options = null) => tooltipService.Open(elementReference, "Not Show Again", options);
+
+    void OnInput(Microsoft.AspNetCore.Components.ChangeEventArgs args)
+    {
+        searchText = args.Value.ToString();
+        if (string.IsNullOrEmpty(searchText))
+        {
+            files = filesFromApi;
+        }
+        else
+        {
+            files = filesFromApi.Where(x => x.Name.ToUpper().Contains(searchText.ToUpper()) || x.FileCategory.ToUpper().Contains(searchText.ToUpper())).ToList();
+        }
+
+        StateHasChanged();
+    }
+}

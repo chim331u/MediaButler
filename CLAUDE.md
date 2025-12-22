@@ -32,7 +32,7 @@ MediaButler/
 │   ├── MediaButler.ML/            # Classification engine, separate from domain
 │   ├── MediaButler.Services/      # Business logic, application services
 │   ├── MediaButler.Web/           # Web UI (Blazor WebAssembly .NET 10)
-│   └── MediaButler.Mobile/        # Android app (MAUI .NET 9)
+│   └── MediaButler.Mobile/        # Android app (MAUI .NET 10)
 ├── tests/
 │   ├── MediaButler.Tests.Unit/           # 250+ fast unit tests
 │   ├── MediaButler.Tests.Integration/    # 300+ integration tests
@@ -101,7 +101,7 @@ Databases
 **Technology Stack:**
 - .NET 8 with C# 12 (API, Services, Core, Data, ML components)
 - .NET 10 preview (Web UI - Blazor WebAssembly)
-- .NET 9 (Mobile - MAUI Android)
+- .NET 10 (Mobile - MAUI Android)
 - SQLite with Entity Framework Core
 - ASP.NET Core Web API with Controllers
 - Hangfire 1.8.14 with SQLite storage (combined client + server mode)
@@ -747,10 +747,10 @@ CREATE TABLE SeriesPatterns (
   - Complete CRUD operations for file management
 - **Architecture**: Lightweight WebAssembly client consuming REST API
 
-### **MAUI Android (.NET 9)**
+### **MAUI Android (.NET 10)**
 **Project**: `src/MediaButler.Mobile`
 - **Status**: In development
-- **Technology**: .NET 9 MAUI for Android
+- **Technology**: .NET 10 MAUI for Android
 - **Why Android Only**: Aligns with NAS/home server use case
 - **Features**: File notifications, quick confirmations, system monitoring
 

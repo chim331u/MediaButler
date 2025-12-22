@@ -1,0 +1,340 @@
+﻿@page "/"
+@page "/home"
+
+<RadzenRow AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
+    <RadzenButton Click="refreshCategory" Icon="autorenew" ButtonStyle="ButtonStyle.Dark" Size="ButtonSize.Large" IsBusy=@busyRefresh
+    BusyText="Wait ..." />
+    <RadzenButton Click="TrainModel" Icon="psychology" ButtonStyle="ButtonStyle.Dark" Size="ButtonSize.Large" IsBusy=@busyTrain
+    BusyText="Training ..." />
+
+    @if (filetomove)
+    {
+        <RadzenButton Click="moveFiles" Icon="drive_file_move" ButtonStyle="ButtonStyle.Secondary" Size="ButtonSize.Large" IsBusy=@busy
+        BusyText="Moving ..." />
+    }
+    else
+    {
+        <RadzenButton Click="moveFiles" Icon="drive_file_move" ButtonStyle="ButtonStyle.Dark" Size="ButtonSize.Large" IsBusy=@busy
+        BusyText="Moving ..." />
+    }
+
+
+
+</RadzenRow>
+<hr />
+<RadzenLabel>@log</RadzenLabel>
+<hr />
+
+<RadzenRow AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Left">
+    @if (viewaddcategory)
+    {
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent=JustifyContent.SpaceBetween
+        Wrap="FlexWrap.Wrap" Gap="1rem">
+            <RadzenTextBox @bind-Value="newCat" Placeholder="New Category" Name="Category" />
+            <RadzenButton Click="NewCatCancel" ButtonStyle="ButtonStyle.Dark" Icon="cancel"></RadzenButton>
+            <RadzenButton Click="AddNewCat" ButtonStyle="ButtonStyle.Info" Icon="save"></RadzenButton>
+        </RadzenStack>
+    }
+    else
+    {
+        <RadzenButton Variant="Variant.Text" Click="ViewCategory" Icon="add" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Medium" Text="New Category" />
+
+    }
+</RadzenRow>
+
+<RadzenRow>
+    <RadzenLabel>@testo</RadzenLabel>
+</RadzenRow>
+
+<RadzenRow>
+
+    @if (fileDetail == null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else
+    {
+
+        <RadzenDataGrid AllowFiltering="false" AllowColumnResize="false" AllowAlternatingRows="true" Density="Density.Compact"
+        FilterMode="FilterMode.Advanced" AllowSorting="true"
+        AllowVirtualization="true"
+        Data="@fileDetail" TItem="FilesDetailDto">
+
+            @*                PageSize="9" AllowPaging="true" PagerHorizontalAlign="HorizontalAlign.Left" ShowPagingSummary="true"*@
+            <Columns>
+
+
+                <RadzenDataGridColumn TItem="FilesDetailDto" Property="Name" Title="Name" Width="50%" Filterable="false">
+                    <Template Context="name">
+                        <p style="white-space:normal">@name.Name (@_utilityService.FileSizeFormatted(name.FileSize))</p>
+                    </Template>
+                </RadzenDataGridColumn>
+
+
+                <RadzenDataGridColumn Context="category" TItem="FilesDetailDto" Property="FileCategory" Title="Category" Width="40%">
+                    <Template Context="category">
+                        <RadzenDropDown AllowClear="true"
+                        TValue="string" Class="w-99" Placeholder="Select a Category"
+                        FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                        AllowFiltering="false"
+                        Data=@categories @bind-Value="@category.FileCategory" />
+                    </Template>
+
+                </RadzenDataGridColumn>
+
+                <RadzenDataGridColumn TItem="FilesDetailDto" Context="detail" Title="Actions" Filterable="false" Sortable="false"
+                TextAlign="TextAlign.Center" Width="20%">
+                    <Template Context="detail">
+
+                        <RadzenSwitch @bind-Value=@detail.IsToCategorize Change=@(args => OnSwitchChange(args, "Switch")) />
+
+                    </Template>
+                </RadzenDataGridColumn>
+
+            </Columns>
+        </RadzenDataGrid>
+    }
+
+</RadzenRow>
+
+
+
+@code {
+    [Inject]
+    public IServiceApi _controller { get; set; }
+    [Inject]
+    public IUtilityServices _utilityService { get; set; }
+    private IEnumerable<FilesDetailDto> fileDetail;
+
+    private FilesDetailDto file;
+    protected List<string> categories;
+    private string testo;
+    private string log;
+    private string newCat;
+    bool viewaddcategory = false;
+    bool filetomove;
+    bool busy;
+    bool busyRefresh;
+    bool busyTrain;
+    HubConnection? _hubConnection;
+    List<int> fileMoved = new List<int>();
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _hubConnection = new HubConnectionBuilder()
+            //.WithUrl("http://192.168.1.5:30109/notifications")
+            .WithUrl(_utilityService.ApiUrl + "notifications")
+                .WithAutomaticReconnect()
+                .ConfigureLogging(logging =>
+                {
+                    logging.SetMinimumLevel(LogLevel.Debug);
+                })
+            .Build();
+
+            _hubConnection.On<string, decimal>("notifications", (msg1, msg2) =>
+            {
+                Log.Information($"SignalR - Message received ==> Message received: {msg1} + {msg2}");
+                StateHasChanged();
+            });
+
+            _hubConnection.On<int, string, MoveFilesResults>("moveFilesNotifications", (fileId, resultText, result) =>
+           {
+               Log.Information($"SignalR - Message received ==> File with id: {fileId} - Result: {result} - Text: {resultText}");
+               log = $"File with id: {fileId} - Result: {result} - Text: {resultText}";
+
+               if (result == MoveFilesResults.Completed)
+               {
+                   // fileMoved.Add(fileId);
+
+                   // fileDetail = fileDetail.Where(u =>fileMoved.All(p2=>p2 != u.Id)).ToList();
+                   fileDetail = fileDetail.Where(x => x.Id != fileId).ToList();
+                   notify(0);
+
+               }
+               InvokeAsync(StateHasChanged);
+               //StateHasChanged();
+
+           });
+
+            _hubConnection.On<string, MoveFilesResults>("jobNotifications", (resultText, result) =>
+               {
+                   // Log.Information($"SignalR - Message received ==> {resultText}");
+                   // log = $"{resultText}";
+
+                   if (result == MoveFilesResults.Completed)
+                   {
+                       //job completed
+                       //TODO something
+                       Log.Information($"SignalR - Message received ==> {resultText}");
+                       log = $"{resultText}";
+                       fileMoved = new List<int>();
+                       busy = false;
+                       refreshFileList();
+                   }
+
+                   // StateHasChanged();
+                   InvokeAsync(StateHasChanged);
+               });
+
+            if (_hubConnection.State == HubConnectionState.Disconnected)
+            {
+                await _hubConnection.StartAsync();
+                Log.Information($"SignalR - Connection established. Connection ID: {_hubConnection.ConnectionId}");
+                log = $"SignalR - Connection established. Connection ID: {_hubConnection.ConnectionId}";
+                StateHasChanged();
+            }
+            else
+            {
+                Log.Information($"SignalR - Already Connected. Connection ID: {_hubConnection.ConnectionId}");
+                log = $"SignalR - Already Connected. Connection ID: {_hubConnection.ConnectionId}";
+                StateHasChanged();
+            }
+
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error signalR: {ex.Message}");
+        }
+
+
+        // await refreshFileList();
+        await refreshCategory();
+    }
+
+
+    private async Task refreshCategory()
+    {
+        busyRefresh = true;
+        log = "Refresh data: loading...";
+
+        if (await _controller.RefreshCategory() != null)
+        {
+            await refreshFileList();
+            log = "Data updated";
+        }
+        else
+        {
+            log = $"Update Fail";
+        }
+
+        busyRefresh = false;
+    }
+
+
+    private async Task refreshFileList()
+    {
+        fileDetail = await _controller.GetFiles();
+        await RefreshCategoryList();
+        log = "Data updated";
+        notify(0);
+    }
+
+    private async Task TrainModel()
+    {
+        log = "start train model...";
+        busyTrain = true;
+        log = await _controller.TrainModel();
+        busyTrain = false;
+    }
+
+    // private async Task moveFiles()
+    // {
+    //     log = "start moving files...";
+    //     busy = true;
+    //     //await Task.Delay(2000);
+
+    //     foreach (var item in fileDetail.Where(x => x.IsToCategorize))
+    //     {
+    //         log = await _controller.MoveFile(item);
+    //         notify(1);
+    //     }
+
+    //     //TODO move file
+    //     busy = false;
+    //     await refreshFileList();
+    //     //log = string.Empty;
+    // }    
+
+    private async Task moveFiles()
+    {
+        log = "start moving files...";
+        busy = true;
+        //await Task.Delay(2000);
+
+        var filesToMove = fileDetail.Where(f => f.IsToCategorize).ToList();
+
+        var jobId = await _controller.MoveFiles(filesToMove);
+
+        if (!string.IsNullOrEmpty(jobId))
+        {
+            log = $"Scheduled job n {jobId}";
+        }
+        else
+        {
+            log = "Move file failed: check the log";
+            busy=false;
+            InvokeAsync(StateHasChanged);
+        }
+
+       
+    }
+
+
+    protected async Task RefreshCategoryList()
+    {
+        categories = await _controller.GetCategories();
+        InvokeAsync(StateHasChanged);
+    }
+
+
+    private void notify(int num)
+    {
+        testo = $"Files to move: {fileDetail.Where(x => x.IsToCategorize).Count() - num}";
+    }
+
+    private bool AreThereFileToMove()
+    {
+        if (fileDetail.Where(x => x.IsToCategorize).Count() > 0)
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    void OnSwitchChange(bool? value, string name)
+    {
+        notify(0);
+        filetomove = AreThereFileToMove();
+    }
+
+    private void ViewCategory()
+    {
+        viewaddcategory = true;
+    }
+
+    private void NewCatCancel()
+    {
+        viewaddcategory = false;
+        newCat = string.Empty;
+    }
+
+
+    private void AddNewCat()
+    {
+        if (!string.IsNullOrEmpty(newCat))
+        {
+            categories.Add(newCat);
+            log = $"Added new category {newCat}";
+            viewaddcategory = false;
+            newCat = string.Empty;
+        }
+        else
+        {
+            log = $"ERROR: new category {newCat} NOT added";
+        }
+    }
+}
