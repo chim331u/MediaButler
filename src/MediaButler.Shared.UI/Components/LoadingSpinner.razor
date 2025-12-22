@@ -1,0 +1,26 @@
+@*
+    Simple loading spinner component using Radzen.
+    Example shared component following "Simple Made Easy" principles.
+*@
+
+<div class="loading-spinner-container">
+    <RadzenProgressBarCircular
+        ShowValue="false"
+        Mode="ProgressBarMode.Indeterminate"
+        Size="ProgressBarCircularSize.Large">
+    </RadzenProgressBarCircular>
+    @if (!string.IsNullOrEmpty(Message))
+    {
+        <RadzenText TextStyle="TextStyle.Body1" class="loading-message">
+            @Message
+        </RadzenText>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// Optional message to display below the spinner
+    /// </summary>
+    [Parameter]
+    public string? Message { get; set; }
+}
