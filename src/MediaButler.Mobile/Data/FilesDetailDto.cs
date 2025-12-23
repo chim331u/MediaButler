@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace FC_APP.Data
+namespace MediaButler.Mobile.Data
 {
     public class FilesDetailDto
     {

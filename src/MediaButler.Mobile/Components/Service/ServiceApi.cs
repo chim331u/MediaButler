@@ -1,17 +1,11 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Net.Http;
-using FC_App.Components.Interface;
-using FC_APP.Components.Interface;
-using FC_APP.Data;
+﻿using System.Net.Http.Json;
+using System.Text.Json;
+using MediaButler.Mobile.Components.Interface;
+using MediaButler.Mobile.Data;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using System.Net.Http.Json;
-using System.Text.Json;
-using System.Threading.Tasks;
 
-
-namespace FC_APP.Components.Service
+namespace MediaButler.Mobile.Components.Service
 {
     public class ServiceApi : IServiceApi
     {

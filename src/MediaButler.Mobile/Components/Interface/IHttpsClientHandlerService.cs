@@ -1,6 +1,4 @@
-﻿using System.Net.Http;
-
-namespace FC_APP.Components.Interface
+﻿namespace MediaButler.Mobile.Components.Interface
 {
     public interface IHttpsClientHandlerService
     {

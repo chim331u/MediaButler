@@ -1,8 +1,6 @@
-﻿using FC_APP.Data;
-using System;
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 
-namespace FC_APP.Data
+namespace MediaButler.Mobile.Data
 {
     public class FilesDetail : BaseEntity
     {

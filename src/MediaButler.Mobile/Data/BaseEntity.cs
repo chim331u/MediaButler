@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace FC_APP.Data
+﻿namespace MediaButler.Mobile.Data
 {
     public abstract class BaseEntity
     {

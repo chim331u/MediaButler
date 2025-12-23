@@ -1,4 +1,4 @@
-﻿namespace FC_App.Data
+﻿namespace MediaButler.Mobile.Data.Setting
 {
     public class GlobalSetting
     {

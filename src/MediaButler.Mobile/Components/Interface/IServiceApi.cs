@@ -1,9 +1,6 @@
-﻿using System.Collections.Generic;
-using System.Threading.Tasks;
-using FC_APP.Data;
-using Microsoft.AspNetCore.SignalR.Client;
+﻿using MediaButler.Mobile.Data;
 
-namespace FC_APP.Components.Interface
+namespace MediaButler.Mobile.Components.Interface
 {
     public interface IServiceApi
     {

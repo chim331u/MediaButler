@@ -1,58 +1,108 @@
-﻿using System.Net.Http;
+using System.Net.Security;
+using System.Security.Cryptography.X509Certificates;
+using MediaButler.Mobile.Components.Interface;
+using Microsoft.Extensions.Logging;
 
-namespace FC_APP.Components.Interface
+namespace MediaButler.Mobile.Components.Service;
+
+/// <summary>
+/// Provides platform-specific HTTP message handlers with secure certificate validation.
+/// Implements IP-based trust strategy for local network NAS devices.
+/// </summary>
+public class HttpsClientHandlerService : IHttpsClientHandlerService
 {
-    public class HttpsClientHandlerService : IHttpsClientHandlerService
-    {
-        public HttpMessageHandler GetPlatformMessageHandler()
-        {
-#if ANDROID
-#if NET6_0
-            var handler = new CustomAndroidMessageHandler();
-#elif NET7_0_OR_GREATER
-            var handler = new Xamarin.Android.Net.AndroidMessageHandler();
-#endif
-            handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) =>
-            {
-                if (cert != null && cert.Issuer.Equals("CN=localhost"))
-                    return true;
-                return errors == System.Net.Security.SslPolicyErrors.None;
-            };
-            return handler;
-#elif IOS
-            var handler = new NSUrlSessionHandler
-            {
-                TrustOverrideForUrl = IsHttpsLocalhost
-            };
-            return handler;
-#elif WINDOWS || MACCATALYST
-            return null;
-#else
-            throw new PlatformNotSupportedException("Only Android, iOS, MacCatalyst, and Windows supported.");
-#endif
-        }
-#if ANDROID && NET6_0
-    internal sealed class CustomAndroidMessageHandler : Xamarin.Android.Net.AndroidMessageHandler
-    {
-        protected override Javax.Net.Ssl.IHostnameVerifier GetSSLHostnameVerifier(Javax.Net.Ssl.HttpsURLConnection connection)
-            => new CustomHostnameVerifier();
+    private readonly ILogger<HttpsClientHandlerService> _logger;
 
-        private sealed class CustomHostnameVerifier : Java.Lang.Object, Javax.Net.Ssl.IHostnameVerifier
-        {
-            public bool Verify(string hostname, Javax.Net.Ssl.ISSLSession session)
-            {
-                return Javax.Net.Ssl.HttpsURLConnection.DefaultHostnameVerifier.Verify(hostname, session) ||
-                    hostname == "10.0.2.2" && session.PeerPrincipal?.Name == "CN=localhost";
-            }
-        }
+    // Trusted local network IP ranges (RFC 1918 private networks)
+    private static readonly string[] TrustedLocalRanges = new[]
+    {
+        "192.168.",  // Class C private network (typical home routers)
+        "10.",       // Class A private network (large enterprise networks)
+        "172.16.", "172.17.", "172.18.", "172.19.",  // Class B private network
+        "172.20.", "172.21.", "172.22.", "172.23.",
+        "172.24.", "172.25.", "172.26.", "172.27.",
+        "172.28.", "172.29.", "172.30.", "172.31.",
+        "127.0.0.1", // IPv4 loopback
+        "localhost"  // Localhost DNS name
+    };
+
+    public HttpsClientHandlerService(ILogger<HttpsClientHandlerService> logger)
+    {
+        _logger = logger;
     }
+
+    public HttpMessageHandler GetPlatformMessageHandler()
+    {
+#if ANDROID
+        var handler = new Xamarin.Android.Net.AndroidMessageHandler();
+#elif WINDOWS || MACCATALYST
+        var handler = new HttpClientHandler();
 #elif IOS
-        public bool IsHttpsLocalhost(NSUrlSessionHandler sender, string url, Security.SecTrust trust)
-        {
-            if (url.StartsWith("https://localhost"))
-                return true;
-            return false;
-        }
+        var handler = new NSUrlSessionHandler();
+#else
+        var handler = new HttpClientHandler();
 #endif
+
+        // Apply custom certificate validation to all platforms
+        handler.ServerCertificateCustomValidationCallback = ValidateServerCertificate;
+
+        return handler;
+    }
+
+    /// <summary>
+    /// Validates server SSL/TLS certificates with IP-based trust strategy.
+    /// - Valid certificates: Always trusted (public HTTPS sites)
+    /// - Local network hosts (192.168.x.x, 10.x.x.x): Trusted with warning logs
+    /// - Remote hosts with invalid certs: REJECTED (protection against MITM attacks)
+    /// </summary>
+    private bool ValidateServerCertificate(
+        HttpRequestMessage request,
+        X509Certificate2? certificate,
+        X509Chain? chain,
+        SslPolicyErrors sslPolicyErrors)
+    {
+        var host = request.RequestUri?.Host;
+
+        // ✅ Valid certificate - always trust (no SSL errors)
+        if (sslPolicyErrors == SslPolicyErrors.None)
+        {
+            _logger.LogDebug("✅ Valid HTTPS certificate for {Host}", host);
+            return true;
+        }
+
+        // ⚠️ Check if host is in trusted local network
+        if (IsLocalNetworkHost(host))
+        {
+            _logger.LogWarning(
+                "⚠️  Accepting self-signed certificate for local network host: {Host}. " +
+                "SSL Errors: {Errors}. Certificate Subject: {Subject}. " +
+                "This is expected for NAS devices with self-signed certificates.",
+                host,
+                sslPolicyErrors,
+                certificate?.Subject ?? "N/A");
+            return true; // Trust local NAS devices with self-signed certs
+        }
+
+        // ❌ Remote host with invalid certificate - REJECT for security
+        _logger.LogError(
+            "❌ REJECTING invalid certificate for remote host: {Host}. " +
+            "SSL Errors: {Errors}. Certificate Subject: {Subject}. " +
+            "This connection may be compromised (MITM attack).",
+            host,
+            sslPolicyErrors,
+            certificate?.Subject ?? "N/A");
+        return false;
+    }
+
+    /// <summary>
+    /// Checks if the host is within trusted local network IP ranges (RFC 1918).
+    /// </summary>
+    private bool IsLocalNetworkHost(string? host)
+    {
+        if (string.IsNullOrWhiteSpace(host))
+            return false;
+
+        return TrustedLocalRanges.Any(range =>
+            host.StartsWith(range, StringComparison.OrdinalIgnoreCase));
     }
 }

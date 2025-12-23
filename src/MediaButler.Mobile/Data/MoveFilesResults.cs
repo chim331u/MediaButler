@@ -1,4 +1,4 @@
-﻿namespace FC_APP.Data
+﻿namespace MediaButler.Mobile.Data
 {
     public enum MoveFilesResults
     {

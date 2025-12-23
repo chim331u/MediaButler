@@ -1,8 +1,6 @@
-﻿using System.Collections.Generic;
-using System.Threading.Tasks;
-using FC_App.Data;
+﻿using MediaButler.Mobile.Data.Setting;
 
-namespace FC_App.Components.Interface
+namespace MediaButler.Mobile.Components.Interface
 {
     public interface IUtilityServices
     {

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!--
+        Development configuration for MediaButler Mobile App
+        Allows connections to localhost and local network IPs with self-signed certificates
+
+        SECURITY WARNING: This configuration should ONLY be used in development builds
+        For production, remove localhost/cleartext domains and use proper CA-signed certificates
+    -->
+
+    <!-- Development/Debug configuration -->
+    <domain-config cleartextTrafficPermitted="true">
+        <!-- Android Emulator localhost mapping (10.0.2.2 maps to host machine's localhost) -->
+        <domain includeSubdomains="true">10.0.2.2</domain>
+
+        <!-- Standard localhost -->
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+
+        <!-- Common local network ranges (for NAS devices with self-signed certs) -->
+        <!-- Class C private network (192.168.x.x) - typical home routers -->
+        <domain includeSubdomains="true">192.168.0.0</domain>
+        <domain includeSubdomains="true">192.168.1.0</domain>
+        <domain includeSubdomains="true">192.168.2.0</domain>
+
+        <!-- Class A private network (10.x.x.x) - enterprise networks -->
+        <domain includeSubdomains="true">10.0.0.0</domain>
+
+        <!-- Trust all certificates for these domains (development only) -->
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </domain-config>
+
+    <!--
+        Base configuration for all other domains
+        Uses system CA certificates only (secure for production)
+    -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

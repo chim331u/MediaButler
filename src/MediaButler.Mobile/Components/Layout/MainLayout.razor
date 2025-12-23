@@ -1,9 +1,58 @@
 ﻿@inherits LayoutComponentBase
 
-<div class="page">
-    <main>
-        <article class="content px-4">
+
+<RadzenLayout>
+    <RadzenBody>
+
+        <div>
             @Body
-        </article>
-    </main>
-</div>
+        </div>
+    </RadzenBody>
+    <RadzenFooter>
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem" JustifyContent="JustifyContent.SpaceBetween" Wrap="FlexWrap.Wrap">
+
+            <RadzenStack Orientation="Orientation.Vertical" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center">
+                <RadzenIcon Icon="home" onclick="@(()=> NavigateTo("home"))" />
+                @*                 <RadzenStack>Home</RadzenStack> *@
+            </RadzenStack>
+
+            <RadzenStack Orientation="Orientation.Vertical" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center"
+                         onclick="@(()=> NavigateTo("setting"))">
+                <RadzenIcon Icon="settings" title="Setting" style="font-weight: 100;" />@* <RadzenStack>Setting</RadzenStack> *@
+            </RadzenStack>
+
+            <RadzenStack Orientation="Orientation.Vertical" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center"
+                         onclick="@(()=> NavigateTo("logger"))">
+                <RadzenIcon Icon="article" title="Log" style="font-weight: 100;" />@* <RadzenStack>Log</RadzenStack> *@
+            </RadzenStack>
+
+            <RadzenStack Orientation="Orientation.Vertical" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center"
+                         onclick="@(()=> NavigateTo("lastView"))">
+                <RadzenIcon Icon="visibility" title="lastView" style="font-weight: 100;" />
+            </RadzenStack>
+        </RadzenStack>
+    </RadzenFooter>
+</RadzenLayout>
+
+@code {
+
+
+
+    protected override void OnInitialized()
+    {
+        System.Threading.Thread.CurrentThread.CurrentCulture = new System.Globalization.CultureInfo("it-IT");
+       
+    }
+
+
+    private void NavigateTo(string page)
+    {
+        NavManager.NavigateTo($"/{page}");
+    }
+
+}
+
+<RadzenDialog />
+<RadzenNotification />
+<RadzenContextMenu />
+<RadzenTooltip />

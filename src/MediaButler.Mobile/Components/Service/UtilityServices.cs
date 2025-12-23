@@ -1,18 +1,12 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Globalization;
+using System.Text.Json;
+using MediaButler.Mobile.Components.Interface;
+using MediaButler.Mobile.Data.Setting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
-using FC_App.Components.Interface;
-using FC_App.Data;
-using System.Globalization;
-using System.IO;
-using System.Linq;
-using System.Text.Json;
-using System.Threading.Tasks;
-using Microsoft.Maui.Storage;
 
-namespace FC_App.Components.Service
+namespace MediaButler.Mobile.Components.Service
 {
     public class UtilityServices : IUtilityServices
     {
@@ -179,12 +173,15 @@ namespace FC_App.Components.Service
         {
             var networks = new List<NetworkSetting>();
 
+            // Android Emulator Development Configuration
+            // 10.0.2.2 maps to host machine's localhost
+            // Port 5271 = HTTP (dev server default)
             networks.Add(new NetworkSetting
             {
                 Name = "LocalDev",
                 Address = "10.0.2.2",
-                Port = "7125",
-                Schema = "https",
+                Port = "5271",
+                Schema = "http",
                 IsActive = true
             });
 
