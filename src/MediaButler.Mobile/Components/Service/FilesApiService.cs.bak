@@ -50,7 +50,7 @@ public class FilesApiService : IFilesApiService
 
             if (!result.IsSuccess)
             {
-                return Result<IReadOnlyList<FileManagementDto>>.Failure(result.Error, result.StatusCode ?? 0);
+                return Result<IReadOnlyList<FileManagementDto>>.Failure(result.Error, result.StatusCode);
             }
 
             var files = result.Value?.Select(MapToFileManagementDto).ToList() ?? new List<FileManagementDto>();
@@ -103,7 +103,7 @@ public class FilesApiService : IFilesApiService
 
             if (!result.IsSuccess)
             {
-                return Result<PaginatedFilesDto>.Failure(result.Error, result.StatusCode ?? 0);
+                return Result<PaginatedFilesDto>.Failure(result.Error, result.StatusCode);
             }
 
             var response = result.Value;
@@ -138,7 +138,7 @@ public class FilesApiService : IFilesApiService
 
             if (!result.IsSuccess)
             {
-                return Result<FileManagementDto>.Failure(result.Error, result.StatusCode ?? 0);
+                return Result<FileManagementDto>.Failure(result.Error, result.StatusCode);
             }
 
             var file = MapToFileManagementDto(result.Value!);
@@ -159,7 +159,7 @@ public class FilesApiService : IFilesApiService
 
             if (!result.IsSuccess)
             {
-                return Result<IReadOnlyList<FileManagementDto>>.Failure(result.Error, result.StatusCode ?? 0);
+                return Result<IReadOnlyList<FileManagementDto>>.Failure(result.Error, result.StatusCode);
             }
 
             var files = result.Value?.Select(MapToFileManagementDto).ToList() ?? new List<FileManagementDto>();
@@ -181,7 +181,7 @@ public class FilesApiService : IFilesApiService
 
             if (!result.IsSuccess)
             {
-                return Result<IReadOnlyList<FileManagementDto>>.Failure(result.Error, result.StatusCode ?? 0);
+                return Result<IReadOnlyList<FileManagementDto>>.Failure(result.Error, result.StatusCode);
             }
 
             var files = result.Value?.Select(MapToFileManagementDto).ToList() ?? new List<FileManagementDto>();
@@ -205,7 +205,7 @@ public class FilesApiService : IFilesApiService
 
             if (!result.IsSuccess)
             {
-                return Result<FileManagementDto>.Failure(result.Error, result.StatusCode ?? 0);
+                return Result<FileManagementDto>.Failure(result.Error, result.StatusCode);
             }
 
             var file = MapToFileManagementDto(result.Value!);
@@ -229,7 +229,7 @@ public class FilesApiService : IFilesApiService
 
             if (!result.IsSuccess)
             {
-                return Result<FileManagementDto>.Failure(result.Error, result.StatusCode ?? 0);
+                return Result<FileManagementDto>.Failure(result.Error, result.StatusCode);
             }
 
             var file = MapToFileManagementDto(result.Value!);
@@ -258,7 +258,7 @@ public class FilesApiService : IFilesApiService
 
             if (!result.IsSuccess)
             {
-                return Result.Failure(result.Error, result.StatusCode ?? 0);
+                return Result.Failure(result.Error, result.StatusCode);
             }
 
             return Result.Success();
@@ -278,7 +278,7 @@ public class FilesApiService : IFilesApiService
 
             if (!result.IsSuccess)
             {
-                return Result<ScanResultDto>.Failure(result.Error, result.StatusCode ?? 0);
+                return Result<ScanResultDto>.Failure(result.Error, result.StatusCode);
             }
 
             var scanResult = MapToScanResultDto(result.Value!);
@@ -301,7 +301,7 @@ public class FilesApiService : IFilesApiService
 
             if (!result.IsSuccess)
             {
-                return Result<ScanResultDto>.Failure(result.Error, result.StatusCode ?? 0);
+                return Result<ScanResultDto>.Failure(result.Error, result.StatusCode);
             }
 
             var scanResult = MapToScanResultDto(result.Value!);
@@ -323,7 +323,7 @@ public class FilesApiService : IFilesApiService
 
             if (!result.IsSuccess)
             {
-                return Result<BatchJobResponseDto>.Failure(result.Error, result.StatusCode ?? 0);
+                return Result<BatchJobResponseDto>.Failure(result.Error, result.StatusCode);
             }
 
             var batchJob = MapToBatchJobResponseDto(result.Value!);
@@ -347,7 +347,7 @@ public class FilesApiService : IFilesApiService
 
             if (!result.IsSuccess)
             {
-                return Result<BatchJobResponseDto>.Failure(result.Error, result.StatusCode ?? 0);
+                return Result<BatchJobResponseDto>.Failure(result.Error, result.StatusCode);
             }
 
             var batchJob = MapToBatchJobResponseDto(result.Value!);
@@ -368,7 +368,7 @@ public class FilesApiService : IFilesApiService
 
             if (!result.IsSuccess)
             {
-                return Result<IReadOnlyList<string>>.Failure(result.Error, result.StatusCode ?? 0);
+                return Result<IReadOnlyList<string>>.Failure(result.Error, result.StatusCode);
             }
 
             var categories = result.Value?.ToList() ?? new List<string>();
@@ -395,7 +395,7 @@ public class FilesApiService : IFilesApiService
 
             if (!result.IsSuccess)
             {
-                return Result<object>.Failure(result.Error, result.StatusCode ?? 0);
+                return Result<object>.Failure(result.Error, result.StatusCode);
             }
 
             return Result<object>.Success(result.Value ?? new object());
@@ -426,7 +426,7 @@ public class FilesApiService : IFilesApiService
 
             if (!result.IsSuccess)
             {
-                return Result<MlEvaluationResponse>.Failure(result.Error, result.StatusCode ?? 0);
+                return Result<MlEvaluationResponse>.Failure(result.Error, result.StatusCode);
             }
 
             return Result<MlEvaluationResponse>.Success(result.Value!);
