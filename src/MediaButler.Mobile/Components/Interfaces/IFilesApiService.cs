@@ -1,3 +1,8 @@
+using MediaButler.Core.Enums;
+using MediaButler.Mobile.Models;
+
+namespace MediaButler.Mobile.Components.Interfaces;
+
 public interface IFilesApiService
 {
     /// <summary>

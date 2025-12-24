@@ -524,10 +524,14 @@ public class FilesApiService : IFilesApiService
     }
 }
 
+// ============================================================================
+// API Response Models (for deserialization only - not exposed in public API)
+// ============================================================================
+
 /// <summary>
-/// DTO for API response mapping
+/// API response model for TrackedFile (used for deserialization only).
 /// </summary>
-public class TrackedFileResponse
+internal class TrackedFileResponse
 {
     public required string Hash { get; set; }
     public required string FileName { get; set; }
@@ -553,9 +557,9 @@ public class TrackedFileResponse
 }
 
 /// <summary>
-/// DTO for scan result mapping
+/// API response model for ScanResult (used for deserialization only).
 /// </summary>
-public class ScanResult
+internal class ScanResult
 {
     public int FilesDiscovered { get; set; }
     public DateTime ScanStartedAt { get; set; }
@@ -567,87 +571,9 @@ public class ScanResult
 }
 
 /// <summary>
-/// DTO for scan result in the web layer
+/// API response model for BatchJobResponse (used for deserialization only).
 /// </summary>
-public class ScanResultDto
-{
-    public int FilesDiscovered { get; set; }
-    public DateTime ScanStartedAt { get; set; }
-    public DateTime ScanCompletedAt { get; set; }
-    public bool MonitoringEnabled { get; set; }
-    public List<string> MonitoredPaths { get; set; } = new();
-    public string? ScannedPath { get; set; }
-    public double ScanDurationMs { get; set; }
-}
-
-/// <summary>
-/// DTO for batch organize request in the web layer
-/// </summary>
-public class BatchOrganizeRequestDto
-{
-    public required List<FileActionDto> Files { get; set; }
-    public bool ContinueOnError { get; set; } = false;
-    public bool ValidateTargetPaths { get; set; } = true;
-    public bool CreateDirectories { get; set; } = true;
-    public bool DryRun { get; set; } = false;
-    public string? BatchName { get; set; }
-    public int? MaxConcurrency { get; set; }
-}
-
-/// <summary>
-/// DTO for file action in the web layer
-/// </summary>
-public class FileActionDto
-{
-    public required string Hash { get; set; }
-    public required string ConfirmedCategory { get; set; }
-    public string? CustomTargetPath { get; set; }
-    public Dictionary<string, object>? Metadata { get; set; }
-}
-
-/// <summary>
-/// DTO for batch job response in the web layer
-/// </summary>
-public class BatchJobResponseDto
-{
-    public required string JobId { get; set; }
-    public required string Status { get; set; } = "Queued";
-    public DateTime QueuedAt { get; set; } = DateTime.UtcNow;
-    public DateTime? StartedAt { get; set; }
-    public DateTime? CompletedAt { get; set; }
-    public int TotalFiles { get; set; }
-    public int ProcessedFiles { get; set; }
-    public int SuccessfulFiles { get; set; }
-    public int FailedFiles { get; set; }
-    public int ProgressPercentage => TotalFiles > 0 ? (ProcessedFiles * 100) / TotalFiles : 0;
-    public Dictionary<string, object> Metadata { get; set; } = new();
-    public List<string> Errors { get; set; } = new();
-    public TimeSpan? EstimatedTimeRemaining { get; set; }
-    public TimeSpan? AverageProcessingTime { get; set; }
-    public List<FileProcessingResultDto>? DetailedResults { get; set; }
-}
-
-/// <summary>
-/// DTO for file processing result in the web layer
-/// </summary>
-public class FileProcessingResultDto
-{
-    public required string FileHash { get; set; }
-    public required string FileName { get; set; }
-    public required bool Success { get; set; }
-    public required string TargetPath { get; set; }
-    public string? ActualPath { get; set; }
-    public string? Error { get; set; }
-    public TimeSpan? ProcessingTime { get; set; }
-    public bool IsDryRun { get; set; }
-    public DateTime ProcessedAt { get; set; } = DateTime.UtcNow;
-    public Dictionary<string, object>? Metadata { get; set; }
-}
-
-/// <summary>
-/// DTO for API response mapping (reusing the API models for simplicity)
-/// </summary>
-public class BatchJobResponse
+internal class BatchJobResponse
 {
     public required string JobId { get; set; }
     public required string Status { get; set; } = "Queued";
@@ -666,9 +592,9 @@ public class BatchJobResponse
 }
 
 /// <summary>
-/// DTO for paginated files response from API
+/// API response model for PaginatedFilesResponse (used for deserialization only).
 /// </summary>
-public class PaginatedFilesResponse
+internal class PaginatedFilesResponse
 {
     public List<TrackedFileResponse> Items { get; set; } = new();
     public int Total { get; set; }
@@ -677,9 +603,9 @@ public class PaginatedFilesResponse
 }
 
 /// <summary>
-/// DTO for file processing result from API
+/// API response model for FileProcessingResult (used for deserialization only).
 /// </summary>
-public class FileProcessingResult
+internal class FileProcessingResult
 {
     public required string FileHash { get; set; }
     public required string FileName { get; set; }

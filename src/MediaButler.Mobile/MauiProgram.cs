@@ -47,8 +47,8 @@ public static class MauiProgram
             return httpsHandler.GetPlatformMessageHandler();
         });
 
-        // TODO M4: Re-enable after DTO alignment
-        // builder.Services.AddScoped<IFilesApiService, FilesApiService>();
+        // M4: FilesApiService integrated - DTO alignment complete
+        builder.Services.AddScoped<IFilesApiService, FilesApiService>();
         builder.Services.AddScoped<ITrainingApiService, TrainingApiService>();
 
         var _cachePath = FileSystem.Current.CacheDirectory;
