@@ -202,8 +202,8 @@
 <div class="p-2">
     <RadzenRow JustifyContent="JustifyContent.SpaceBetween">
 
-        <RadzenButton Click="RefreshFileListAsync" Icon="autorenew" ButtonStyle="ButtonStyle.Dark"
-                      Size="ButtonSize.Large"/>
+        <RadzenButton Click="ScanFolders" Icon="folder_open" ButtonStyle="ButtonStyle.Dark"
+                      Size="ButtonSize.Large" IsBusy="@_busyScan" BusyText="Scanning..."/>
 
         <RadzenSelectBar @bind-Value="@_selectedStatusGroup" TValue="string"
                          Change="@(args => OnChangeStatusFilter(args))"

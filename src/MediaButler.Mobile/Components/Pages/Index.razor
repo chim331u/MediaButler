@@ -1,23 +1,26 @@
-﻿@page "/"
+@page "/"
 @page "/home"
+@using MediaButler.Mobile.Components.Interfaces
 @using MediaButler.Mobile.Components.Interface
+@using MediaButler.Mobile.Data
+@using MediaButler.Mobile.Data.MigrationHelpers
+@using MediaButler.Mobile.Models
+@using MediaButler.Core.Enums
 
 <RadzenRow AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
-    <RadzenButton Click="refreshCategory" Icon="autorenew" ButtonStyle="ButtonStyle.Dark" Size="ButtonSize.Large" IsBusy=@busyRefresh
-    BusyText="Wait ..." />
+    <RadzenButton Click="ScanFolders" Icon="folder_open" ButtonStyle="ButtonStyle.Dark" Size="ButtonSize.Large" IsBusy=@busyRefresh
+    BusyText="Scanning ..." />
     <RadzenButton Click="TrainModel" Icon="psychology" ButtonStyle="ButtonStyle.Dark" Size="ButtonSize.Large" IsBusy=@busyTrain
     BusyText="Training ..." />
-
-    @if (filetomove)
-    {
-        <RadzenButton Click="moveFiles" Icon="drive_file_move" ButtonStyle="ButtonStyle.Secondary" Size="ButtonSize.Large" IsBusy=@busy
-        BusyText="Moving ..." />
-    }
-    else
-    {
-        <RadzenButton Click="moveFiles" Icon="drive_file_move" ButtonStyle="ButtonStyle.Dark" Size="ButtonSize.Large" IsBusy=@busy
-        BusyText="Moving ..." />
-    }
+    <RadzenButton  Icon="category" Click="ForceCategory" ButtonStyle="ButtonStyle.Dark"
+                   Size="ButtonSize.Large"
+    />
+    <RadzenButton Click="moveFiles" Icon="drive_file_move"
+                  ButtonStyle="@(HasFilesToMove ? ButtonStyle.Primary : ButtonStyle.Dark)"
+                  Size="ButtonSize.Large"
+                  IsBusy=@busy
+                  BusyText="Moving ..."
+                  Disabled="@(!HasFilesToMove)" />
 
 
 
@@ -94,6 +97,21 @@
 
             </Columns>
         </RadzenDataGrid>
+
+        @* M5: Load More button for pagination *@
+        @if (_flags?.Value?.EnablePagination == true && hasMoreFiles)
+        {
+            <RadzenRow JustifyContent="JustifyContent.Center" class="mt-3">
+                <RadzenButton
+                    Click="LoadMoreFiles"
+                    Text="@($"Load More ({totalCount - fileDetail.Count()} remaining)")"
+                    Icon="expand_more"
+                    ButtonStyle="ButtonStyle.Light"
+                    Size="ButtonSize.Large"
+                    IsBusy="@isLoadingMore"
+                    BusyText="Loading..." />
+            </RadzenRow>
+        }
     }
 
 </RadzenRow>
@@ -101,11 +119,26 @@
 
 
 @code {
+    // NEW: IFilesApiService replaces IServiceApi
     [Inject]
-    public IServiceApi _controller { get; set; }
+    public IFilesApiService _filesApiService { get; set; }
+
+    [Inject]
+    public ITrainingApiService _trainingApiService { get; set; }
+
     [Inject]
     public IUtilityServices _utilityService { get; set; }
+
+    // M5: Feature flags for performance optimizations
+    [Inject]
+    public Microsoft.Extensions.Options.IOptions<FeatureFlags>? _flags { get; set; }
+
+    // M6: SignalR notification service (centralized)
+    [Inject]
+    public ISignalRNotificationService _signalRService { get; set; }
+
     private IEnumerable<FilesDetailDto> fileDetail;
+    private List<FileManagementDto> fileDetailManagement; // Keep original with Hash for API operations
 
     private FilesDetailDto file;
     protected List<string> categories;
@@ -117,109 +150,171 @@
     bool busy;
     bool busyRefresh;
     bool busyTrain;
-    HubConnection? _hubConnection;
     List<int> fileMoved = new List<int>();
+
+    // Batch job tracking
+    private string? _currentBatchJobId;
+
+    // Helper property for move button state
+    private bool HasFilesToMove => fileDetail?.Any(f => f.IsToCategorize && !string.IsNullOrEmpty(f.FileCategory)) == true;
+
+    // M5: Pagination state
+    private int currentPage = 0;
+    private const int PageSize = 20;
+    private int totalCount = 0;
+    private bool hasMoreFiles = true;
+    private bool isLoadingMore = false;
 
 
     protected override async Task OnInitializedAsync()
     {
+        // M6: Use centralized SignalR service instead of inline HubConnection
         try
         {
-            _hubConnection = new HubConnectionBuilder()
-            //.WithUrl("http://192.168.1.5:30109/notifications")
-            .WithUrl(_utilityService.ApiUrl + "notifications")
-                .WithAutomaticReconnect()
-                .ConfigureLogging(logging =>
-                {
-                    logging.SetMinimumLevel(LogLevel.Debug);
-                })
-            .Build();
+            // Subscribe to SignalR notifications
+            SetupSignalRSubscriptions();
 
-            _hubConnection.On<string, decimal>("notifications", (msg1, msg2) =>
-            {
-                Log.Information($"SignalR - Message received ==> Message received: {msg1} + {msg2}");
-                StateHasChanged();
-            });
-
-            _hubConnection.On<int, string, MoveFilesResults>("moveFilesNotifications", (fileId, resultText, result) =>
-           {
-               Log.Information($"SignalR - Message received ==> File with id: {fileId} - Result: {result} - Text: {resultText}");
-               log = $"File with id: {fileId} - Result: {result} - Text: {resultText}";
-
-               if (result == MoveFilesResults.Completed)
-               {
-                   // fileMoved.Add(fileId);
-
-                   // fileDetail = fileDetail.Where(u =>fileMoved.All(p2=>p2 != u.Id)).ToList();
-                   fileDetail = fileDetail.Where(x => x.Id != fileId).ToList();
-                   notify(0);
-
-               }
-               InvokeAsync(StateHasChanged);
-               //StateHasChanged();
-
-           });
-
-            _hubConnection.On<string, MoveFilesResults>("jobNotifications", (resultText, result) =>
-               {
-                   // Log.Information($"SignalR - Message received ==> {resultText}");
-                   // log = $"{resultText}";
-
-                   if (result == MoveFilesResults.Completed)
-                   {
-                       //job completed
-                       //TODO something
-                       Log.Information($"SignalR - Message received ==> {resultText}");
-                       log = $"{resultText}";
-                       fileMoved = new List<int>();
-                       busy = false;
-                       refreshFileList();
-                   }
-
-                   // StateHasChanged();
-                   InvokeAsync(StateHasChanged);
-               });
-
-            if (_hubConnection.State == HubConnectionState.Disconnected)
-            {
-                await _hubConnection.StartAsync();
-                Log.Information($"SignalR - Connection established. Connection ID: {_hubConnection.ConnectionId}");
-                log = $"SignalR - Connection established. Connection ID: {_hubConnection.ConnectionId}";
-                StateHasChanged();
-            }
-            else
-            {
-                Log.Information($"SignalR - Already Connected. Connection ID: {_hubConnection.ConnectionId}");
-                log = $"SignalR - Already Connected. Connection ID: {_hubConnection.ConnectionId}";
-                StateHasChanged();
-            }
-
+            // Start SignalR connection
+            await _signalRService.StartAsync();
+            log = $"SignalR - Connection established";
+            Log.Information("✅ SignalR connection started from Index.razor");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error signalR: {ex.Message}");
+            log = $"Error connecting to SignalR: {ex.Message}";
+            Log.Error(ex, "Failed to start SignalR connection");
         }
 
-
-        // await refreshFileList();
+        // Load initial data
         await refreshCategory();
     }
 
+    private void SetupSignalRSubscriptions()
+    {
+        // Subscribe to general notifications
+        _signalRService.OnNotification((msg1, msg2) =>
+        {
+            Log.Information($"📢 Notification received: {msg1} + {msg2}");
+            InvokeAsync(StateHasChanged);
+        });
+
+        // Subscribe to file processing notifications
+        _signalRService.OnFileProcessed((fileId, resultText, result) =>
+        {
+            Log.Information($"📥 File processed: {fileId} - {result} - {resultText}");
+            log = $"File with id: {fileId} - Result: {result} - Text: {resultText}";
+
+            if (result == MoveFilesResults.Completed)
+            {
+                // Remove completed file from list
+                fileDetail = fileDetail.Where(x => x.Id != fileId).ToList();
+                notify(0);
+            }
+
+            InvokeAsync(StateHasChanged);
+        });
+
+        // Subscribe to batch job notifications
+        _signalRService.OnJobCompleted((resultText, result) =>
+        {
+            Log.Information($"📨 Batch job notification: {result} - {resultText}");
+
+            if (result == MoveFilesResults.Completed)
+            {
+                Log.Information($"✅ Batch job completed successfully");
+                log = $"✅ Batch job completed!";
+                log += $"\n{resultText}";
+
+                // Clear move queue for successfully moved files
+                if (fileDetail != null)
+                {
+                    foreach (var file in fileDetail.Where(f => f.IsToCategorize))
+                    {
+                        file.IsToCategorize = false;
+                    }
+                }
+
+                fileMoved = new List<int>();
+                busy = false;
+
+                // Refresh file list to show updated statuses
+                log += $"\n🔄 Refreshing file list...";
+                InvokeAsync(async () =>
+                {
+                    await refreshFileList();
+                    log += $"\n✅ File list updated";
+                    notify(0);
+                    StateHasChanged();
+                });
+            }
+            else if (result == MoveFilesResults.Failed)
+            {
+                Log.Error($"❌ Batch job failed: {resultText}");
+                log = $"❌ Batch job failed";
+                log += $"\n{resultText}";
+                busy = false;
+                InvokeAsync(StateHasChanged);
+            }
+        });
+
+        Log.Debug("SignalR subscriptions configured");
+    }
+
+    private async Task ScanFolders()
+    {
+        busyRefresh = true;
+        log = "Scanning folders for new files...";
+
+        try
+        {
+            var result = await _filesApiService.ScanFoldersAsync(CancellationToken.None);
+
+            if (result.IsSuccess && result.Value != null)
+            {
+                var scanResult = result.Value;
+                log = $"Scan completed!";
+                log += $"\n📁 Files discovered: {scanResult.FilesDiscovered}";
+                log += $"\n⏱️ Duration: {scanResult.ScanDurationMs:F0}ms";
+                log += $"\n👁️ Monitoring: {(scanResult.MonitoringEnabled ? "Enabled" : "Disabled")}";
+
+                if (scanResult.MonitoredPaths.Any())
+                {
+                    log += $"\n📂 Monitored paths: {string.Join(", ", scanResult.MonitoredPaths)}";
+                }
+
+                // Refresh file list if new files were discovered
+                if (scanResult.FilesDiscovered > 0)
+                {
+                    log += $"\n🔄 Refreshing file list...";
+                    await Task.Delay(1000); // Short delay to allow file processing
+                    await refreshFileList();
+                    log += $"\n✅ File list updated with {scanResult.FilesDiscovered} new files";
+                }
+            }
+            else
+            {
+                log = $"❌ Scan failed: {result.Error}";
+            }
+        }
+        catch (Exception ex)
+        {
+            log = $"❌ Scan error: {ex.Message}";
+            Log.Error(ex, "Failed to scan folders");
+        }
+        finally
+        {
+            busyRefresh = false;
+        }
+    }
 
     private async Task refreshCategory()
     {
         busyRefresh = true;
         log = "Refresh data: loading...";
 
-        if (await _controller.RefreshCategory() != null)
-        {
-            await refreshFileList();
-            log = "Data updated";
-        }
-        else
-        {
-            log = $"Update Fail";
-        }
+        // NEW: Use IFilesApiService to get files
+        await refreshFileList();
+        log = "Data updated";
 
         busyRefresh = false;
     }
@@ -227,66 +322,244 @@
 
     private async Task refreshFileList()
     {
-        fileDetail = await _controller.GetFiles();
+        // M5: Reset pagination state
+        currentPage = 0;
+        hasMoreFiles = true;
+
+        // M5: Feature flag controlled page size (20 if enabled, 100 if disabled)
+        var pageSize = _flags?.Value?.EnablePagination == true ? PageSize : 100;
+
+        // NEW: Use IFilesApiService.GetFilesByStatusesAsync to get files ready for categorization
+        var statuses = new FileStatus[] { FileStatus.Classified, FileStatus.ReadyToMove, FileStatus.New };
+        var result = await _filesApiService.GetFilesByStatusesAsync(
+            skip: 0,
+            take: pageSize,
+            statuses: statuses,
+            cancellationToken: CancellationToken.None
+        );
+
+        if (result.IsSuccess && result.Value != null)
+        {
+            // Store original FileManagementDto (with Hash) for API operations
+            fileDetailManagement = result.Value.Items.ToList();
+
+            // Convert to FilesDetailDto for UI binding (legacy compatibility)
+            fileDetail = DtoMapper.ToFilesDetailDtoList(result.Value.Items);
+            totalCount = result.Value.Total;
+            hasMoreFiles = fileDetail.Count() < totalCount;
+            log = $"Loaded {fileDetail.Count()} of {totalCount} files";
+        }
+        else
+        {
+            log = $"Failed to load files: {result.Error}";
+            fileDetail = new List<FilesDetailDto>();
+            fileDetailManagement = new List<FileManagementDto>();
+            hasMoreFiles = false;
+        }
+
         await RefreshCategoryList();
-        log = "Data updated";
         notify(0);
     }
 
+    // M5: Load more files for pagination
+    private async Task LoadMoreFiles()
+    {
+        if (!hasMoreFiles || isLoadingMore) return;
+
+        isLoadingMore = true;
+        currentPage++;
+
+        var statuses = new FileStatus[] { FileStatus.Classified, FileStatus.ReadyToMove, FileStatus.New, FileStatus.Moved };
+        var result = await _filesApiService.GetFilesByStatusesAsync(
+            skip: currentPage * PageSize,
+            take: PageSize,
+            statuses: statuses,
+            cancellationToken: CancellationToken.None
+        );
+
+        if (result.IsSuccess && result.Value != null)
+        {
+            // Store original FileManagementDto (with Hash)
+            fileDetailManagement = fileDetailManagement.Concat(result.Value.Items).ToList();
+
+            // Convert to FilesDetailDto for UI
+            var newFiles = DtoMapper.ToFilesDetailDtoList(result.Value.Items);
+            fileDetail = fileDetail.Concat(newFiles).ToList();
+            hasMoreFiles = fileDetail.Count() < totalCount;
+            log = $"Loaded {fileDetail.Count()} of {totalCount} files";
+        }
+        else
+        {
+            log = $"Failed to load more files: {result.Error}";
+        }
+
+        isLoadingMore = false;
+        StateHasChanged();
+    }
+
+    private async Task ForceCategory()
+    {
+        log = "Starting ML re-evaluation for files...";
+
+        try
+        {
+            var result = await _filesApiService.QueueMlEvaluationAsync(
+                filterByCategory: null, // Process all categories
+                forceReEvaluation: true // Force re-evaluation even if already classified
+            );
+
+            if (result.IsSuccess && result.Value != null)
+            {
+                var response = result.Value;
+                log = "ML evaluation queued successfully!";
+                log += $"\nFiles queued: {response.TotalFilesQueued}";
+                log += $"\nEstimated processing time: {response.EstimatedProcessingTimeMinutes} minutes";
+                log += $"\nMessage: {response.Message}";
+
+                if (response.TotalFilesQueued > 0)
+                {
+                    // Refresh the file list after a short delay to show updated statuses
+                    await Task.Delay(2000);
+                    await refreshFileList();
+                }
+            }
+            else
+            {
+                log = $"Failed to queue ML evaluation: {result.Error}";
+            }
+        }
+        catch (Exception ex)
+        {
+            log = $"ML evaluation error: {ex.Message}";
+        }
+    }
+    
     private async Task TrainModel()
     {
         log = "start train model...";
         busyTrain = true;
-        log = await _controller.TrainModel();
-        busyTrain = false;
-    }
 
-    // private async Task moveFiles()
-    // {
-    //     log = "start moving files...";
-    //     busy = true;
-    //     //await Task.Delay(2000);
+        // NEW: Use ITrainingApiService
+        var result = await _trainingApiService.TrainModelAsync(CancellationToken.None);
 
-    //     foreach (var item in fileDetail.Where(x => x.IsToCategorize))
-    //     {
-    //         log = await _controller.MoveFile(item);
-    //         notify(1);
-    //     }
-
-    //     //TODO move file
-    //     busy = false;
-    //     await refreshFileList();
-    //     //log = string.Empty;
-    // }    
-
-    private async Task moveFiles()
-    {
-        log = "start moving files...";
-        busy = true;
-        //await Task.Delay(2000);
-
-        var filesToMove = fileDetail.Where(f => f.IsToCategorize).ToList();
-
-        var jobId = await _controller.MoveFiles(filesToMove);
-
-        if (!string.IsNullOrEmpty(jobId))
+        if (result.IsSuccess)
         {
-            log = $"Scheduled job n {jobId}";
+            log = $"Training completed: Accuracy {result.Value?.Accuracy:P2}";
         }
         else
         {
-            log = "Move file failed: check the log";
-            busy=false;
-            InvokeAsync(StateHasChanged);
+            log = $"Training failed: {result.Error}";
         }
 
-       
+        busyTrain = false;
+    }
+
+    private async Task moveFiles()
+    {
+        var filesToMove = fileDetail.Where(f => f.IsToCategorize).ToList();
+
+        if (!filesToMove.Any())
+        {
+            log = "No files selected to move";
+            return;
+        }
+
+        busy = true;
+        log = $"Starting batch move operation for {filesToMove.Count} file(s)...";
+
+        try
+        {
+            // Validate all files have categories
+            foreach (var file in filesToMove)
+            {
+                if (string.IsNullOrWhiteSpace(file.FileCategory))
+                {
+                    log = $"❌ File {file.Name} has no category selected";
+                    busy = false;
+                    return;
+                }
+            }
+
+            // Create batch request using FileManagementDto (has real Hash values)
+            var fileActions = new List<FileActionDto>();
+            foreach (var file in filesToMove)
+            {
+                // Find corresponding FileManagementDto with real Hash
+                var managementDto = fileDetailManagement.FirstOrDefault(m => m.Id == file.Id);
+
+                if (managementDto == null || string.IsNullOrWhiteSpace(managementDto.Hash))
+                {
+                    log = $"❌ File {file.Name} is missing hash - cannot process";
+                    busy = false;
+                    return;
+                }
+
+                fileActions.Add(new FileActionDto
+                {
+                    Hash = managementDto.Hash,
+                    ConfirmedCategory = file.FileCategory ?? "UNKNOWN"
+                });
+            }
+
+            var batchRequest = new BatchOrganizeRequestDto
+            {
+                Files = fileActions,
+                BatchName = $"Mobile Batch Move - {DateTime.Now:yyyy-MM-dd HH:mm:ss}",
+                ContinueOnError = true,
+                ValidateTargetPaths = true,
+                CreateDirectories = true,
+                DryRun = false,
+                MaxConcurrency = 2 // ARM32 friendly
+            };
+
+            // Submit the batch job
+            var result = await _filesApiService.OrganizeBatchAsync(batchRequest, CancellationToken.None);
+
+            if (result.IsSuccess && result.Value != null)
+            {
+                _currentBatchJobId = result.Value.JobId;
+                log = $"✅ Batch job started successfully";
+                log += $"\n📋 Job ID: {_currentBatchJobId}";
+                log += $"\n📁 Processing {result.Value.TotalFiles} files in background...";
+                log += $"\n⏳ SignalR will notify when complete";
+
+                // Note: Don't set busy = false here - wait for SignalR completion
+                // SignalR OnJobCompleted will handle setting busy = false
+            }
+            else
+            {
+                log = $"❌ Failed to start batch move: {result.Error}";
+                busy = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            log = $"❌ Batch move operation error: {ex.Message}";
+            Log.Error(ex, "Failed to start batch move operation");
+            busy = false;
+        }
+        finally
+        {
+            InvokeAsync(StateHasChanged);
+        }
     }
 
 
     protected async Task RefreshCategoryList()
     {
-        categories = await _controller.GetCategories();
+        // NEW: Use IFilesApiService.GetDistinctCategoriesAsync
+        var result = await _filesApiService.GetDistinctCategoriesAsync(CancellationToken.None);
+
+        if (result.IsSuccess && result.Value != null)
+        {
+            categories = result.Value.ToList();
+        }
+        else
+        {
+            categories = new List<string>();
+            Log.Warning($"Failed to load categories: {result.Error}");
+        }
+
         InvokeAsync(StateHasChanged);
     }
 
@@ -336,6 +609,23 @@
         else
         {
             log = $"ERROR: new category {newCat} NOT added";
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        // M6: Stop SignalR connection when leaving Index page (battery optimization)
+        try
+        {
+            if (_signalRService != null && _signalRService.ConnectionState == HubConnectionState.Connected)
+            {
+                await _signalRService.StopAsync();
+                Log.Information("SignalR connection stopped (Index.razor disposed)");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Error stopping SignalR connection");
         }
     }
 }

@@ -153,17 +153,30 @@ builder.Services.AddScoped<IProgressReporter, SignalRProgressReporter>();
 builder.Services.AddScoped<IBatchThrottler, Arm32BatchThrottler>();
 
 // Register SignalR notification client for job-to-hub communication
-builder.Services.AddHttpClient<MediaButler.API.Services.SignalRNotificationClient>(client =>
+// Use Singleton pattern with HttpClient factory to ensure proper BaseAddress configuration
+builder.Services.AddHttpClient("SignalRNotificationClient", (serviceProvider, client) =>
 {
-    var signalRConfig = builder.Configuration.GetSection("SignalRClient");
-    var apiBaseUrl = signalRConfig["ApiBaseUrl"] ?? "http://localhost:5000";
+    var configuration = serviceProvider.GetRequiredService<IConfiguration>();
+    var signalRConfig = configuration.GetSection("SignalRClient");
+    var apiBaseUrl = signalRConfig["ApiBaseUrl"] ?? "http://localhost:5271";
     var timeoutSeconds = signalRConfig.GetValue<int>("TimeoutSeconds", 30);
 
     client.BaseAddress = new Uri(apiBaseUrl);
     client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
     client.DefaultRequestHeaders.Add("User-Agent", "MediaButler-API/1.0");
+})
+.SetHandlerLifetime(TimeSpan.FromMinutes(5));
+
+// Register as Singleton with factory pattern to use configured HttpClient
+builder.Services.AddSingleton<MediaButler.API.Services.SignalRNotificationClient>(serviceProvider =>
+{
+    var httpClientFactory = serviceProvider.GetRequiredService<IHttpClientFactory>();
+    var httpClient = httpClientFactory.CreateClient("SignalRNotificationClient");
+    var configuration = serviceProvider.GetRequiredService<IConfiguration>();
+    var logger = serviceProvider.GetRequiredService<ILogger<MediaButler.API.Services.SignalRNotificationClient>>();
+
+    return new MediaButler.API.Services.SignalRNotificationClient(httpClient, configuration, logger);
 });
-builder.Services.AddSingleton<MediaButler.API.Services.SignalRNotificationClient>();
 
 // Register recurring job registration service
 builder.Services.AddHostedService<MediaButler.API.Services.RecurringJobRegistrationService>();

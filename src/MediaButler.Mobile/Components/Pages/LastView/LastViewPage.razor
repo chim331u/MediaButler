@@ -1,6 +1,9 @@
 ﻿@page "/lastview"
 @inject TooltipService tooltipService
+@using MediaButler.Mobile.Components.Interfaces
 @using MediaButler.Mobile.Components.Interface
+@using MediaButler.Mobile.Data.MigrationHelpers
+@using MediaButler.Core.Enums
 @inherits LayoutComponentBase
 @inject NotificationService NotificationService
 
@@ -69,8 +72,9 @@
 </div>
 
 @code {
+    // NEW: IFilesApiService replaces IServiceApi
     [Inject]
-    public IServiceApi _service { get; set; }
+    public IFilesApiService _filesApiService { get; set; }
     [Inject]
     public IUtilityServices _utilityService { get; set; }
 
@@ -90,7 +94,25 @@
 
     private async Task RefreshList()
     {
-        filesFromApi = await _service.GetLastFilesList();
+        // NEW: Use IFilesApiService to get files with "Moved" status
+        var statuses = new FileStatus[] { FileStatus.Moved };
+        var result = await _filesApiService.GetFilesByStatusesAsync(
+            skip: 0,
+            take: 100,
+            statuses: statuses,
+            cancellationToken: CancellationToken.None
+        );
+
+        if (result.IsSuccess && result.Value != null)
+        {
+            // Convert FileManagementDto to FilesDetailDto using DtoMapper
+            filesFromApi = DtoMapper.ToFilesDetailDtoList(result.Value.Items);
+        }
+        else
+        {
+            // Handle error - show empty list
+            filesFromApi = new List<FilesDetailDto>();
+        }
 
         files = filesFromApi;
     }
@@ -103,7 +125,20 @@
     {
         filesOthers = new List<FilesDetailDto>();
 
-        filesOthers = await _service.GetAllFiles(item.FileCategory);
+        // NEW: Use IFilesApiService to get files by category
+        var statuses = new FileStatus[] { FileStatus.Moved };
+        var result = await _filesApiService.GetFilesByStatusesAsync(
+            skip: 0,
+            take: 1000,
+            statuses: statuses,
+            category: item.FileCategory,
+            cancellationToken: CancellationToken.None
+        );
+
+        if (result.IsSuccess && result.Value != null)
+        {
+            filesOthers = DtoMapper.ToFilesDetailDtoList(result.Value.Items);
+        }
 
         StateHasChanged();
 
@@ -121,11 +156,13 @@
 
     protected async Task NotShowAgain(FilesDetailDto item)
     {
-        item.IsToCategorize = false;
-        item.IsNew = false;
-        item.IsNotToMove = true;
+        // NEW: Use IFilesApiService to mark file as ignored
+        // Generate hash from ID (temporary until API provides real hashes)
+        var hash = $"legacy_{item.Id}";
 
-        if (await _service.UpdateFileDetail(item) != null)
+        var result = await _filesApiService.IgnoreFileAsync(hash, CancellationToken.None);
+
+        if (result.IsSuccess)
         {
             NotificationService.Notify(new NotificationMessage
                 {
@@ -142,7 +179,7 @@
                 {
                     Severity = NotificationSeverity.Error,
                     Summary = "File NOT update",
-                    Detail = $"Error in updating file: see log for detail",
+                    Detail = $"Error in updating file: {result.Error}",
                     Duration = 4000
 
                 });

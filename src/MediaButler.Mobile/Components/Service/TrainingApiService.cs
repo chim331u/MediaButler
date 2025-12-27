@@ -26,9 +26,8 @@ public class TrainingApiService : ITrainingApiService
     {
         try
         {
-            var result = await _httpClient.PostAsync<TrainingSessionResponse>(
+            var result = await _httpClient.GetAsync<TrainingSessionResponse>(
                 "/api/training/trainModel",
-                payload: null,
                 cancellationToken);
 
             if (!result.IsSuccess)
@@ -103,30 +102,28 @@ public class TrainingApiService : ITrainingApiService
         {
             SessionId = response.SessionId,
             Status = response.Status,
+            Message = response.Message,
             StartedAt = response.StartedAt,
-            CompletedAt = response.CompletedAt,
             Accuracy = response.Accuracy,
-            SampleCount = response.SampleCount,
-            ModelVersion = response.ModelVersion,
-            ErrorMessage = response.ErrorMessage,
-            Metrics = response.Metrics
+            TrainingSampleCount = response.TrainingSampleCount,
+            CategoryCount = response.CategoryCount,
+            ModelVersion = response.ModelVersion
         };
     }
 }
 
 /// <summary>
 /// API response DTO for training session data.
-/// Matches API contract from MediaButler.API/Controllers/TrainingController.cs
+/// Matches TrainingStartResponse from MediaButler.API/Controllers/TrainingController.cs
 /// </summary>
 public class TrainingSessionResponse
 {
     public required string SessionId { get; set; }
     public required string Status { get; set; }
+    public required string Message { get; set; }
     public DateTime StartedAt { get; set; }
-    public DateTime? CompletedAt { get; set; }
     public double? Accuracy { get; set; }
-    public int SampleCount { get; set; }
-    public string? ModelVersion { get; set; }
-    public string? ErrorMessage { get; set; }
-    public Dictionary<string, object>? Metrics { get; set; }
+    public int? TrainingSampleCount { get; set; }
+    public int? CategoryCount { get; set; }
+    public int? ModelVersion { get; set; }
 }

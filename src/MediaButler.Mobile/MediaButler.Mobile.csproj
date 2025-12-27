@@ -55,10 +55,15 @@
 
         <!-- Raw Assets (also remove the "Resources\Raw" prefix) -->
         <MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
+
+        <!-- Embedded Configuration -->
+        <EmbeddedResource Include="wwwroot\appsettings.json" />
     </ItemGroup>
 
     <ItemGroup>
         <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.1" />
+        <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="10.0.1" />
+        <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.1" />
         <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.1" />
         <PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
         <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Maui" Version="$(MauiVersion)" />
@@ -72,6 +77,15 @@
 
     <ItemGroup>
       <ProjectReference Include="..\MediaButler.Core\MediaButler.Core.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Compile Remove="Data\BaseEntity.cs" />
+      <Compile Remove="Data\Categories.cs" />
+      <Compile Remove="Data\Configs.cs" />
+      <Compile Remove="Data\ConfigSettings.cs" />
+      <Compile Remove="Data\FileMovedDto.cs" />
+      <Compile Remove="Data\FilesDetail.cs" />
     </ItemGroup>
 
 </Project>

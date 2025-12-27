@@ -11,27 +11,29 @@ public class MlEvaluationRequest
 
 /// <summary>
 /// Response from ML evaluation operation.
+/// Matches API MlEvaluationResponse from ProcessingController.
 /// </summary>
 public class MlEvaluationResponse
 {
-    public required string JobId { get; set; }
-    public int FilesQueued { get; set; }
+    public bool Success { get; set; }
+    public int TotalFilesQueued { get; set; }
+    public required string Message { get; set; }
     public DateTime QueuedAt { get; set; }
-    public string? Message { get; set; }
+    public int EstimatedProcessingTimeMinutes { get; set; }
 }
 
 /// <summary>
 /// Training session DTO for ML model training.
+/// Matches TrainingStartResponse from API.
 /// </summary>
 public class TrainingSessionDto
 {
     public required string SessionId { get; set; }
     public required string Status { get; set; }  // "Running", "Completed", "Failed"
+    public required string Message { get; set; }
     public DateTime StartedAt { get; set; }
-    public DateTime? CompletedAt { get; set; }
     public double? Accuracy { get; set; }
-    public int SampleCount { get; set; }
-    public string? ModelVersion { get; set; }
-    public string? ErrorMessage { get; set; }
-    public Dictionary<string, object>? Metrics { get; set; }
+    public int? TrainingSampleCount { get; set; }
+    public int? CategoryCount { get; set; }
+    public int? ModelVersion { get; set; }
 }

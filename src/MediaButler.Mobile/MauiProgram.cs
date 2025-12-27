@@ -1,10 +1,14 @@
 ﻿using MediaButler.Mobile.Components.Interface;
 using MediaButler.Mobile.Components.Interfaces;
 using MediaButler.Mobile.Components.Service;
+using MediaButler.Mobile.Models;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Radzen;
 using Serilog;
+using System.Reflection;
 
 namespace MediaButler.Mobile;
 
@@ -19,6 +23,27 @@ public static class MauiProgram
 
         builder.Services.AddMauiBlazorWebView();
 
+        // Load appsettings.json configuration
+        var assembly = Assembly.GetExecutingAssembly();
+        using var stream = assembly.GetManifestResourceStream("MediaButler.Mobile.wwwroot.appsettings.json");
+
+        if (stream != null)
+        {
+            var config = new ConfigurationBuilder()
+                .AddJsonStream(stream)
+                .Build();
+
+            builder.Configuration.AddConfiguration(config);
+        }
+
+        // M5: Bind FeatureFlags configuration
+        builder.Services.Configure<FeatureFlags>(
+            builder.Configuration.GetSection("FeatureFlags"));
+
+        // M6: Bind NotificationSettings configuration
+        builder.Services.Configure<NotificationSettings>(
+            builder.Configuration.GetSection("NotificationSettings"));
+
 #if DEBUG
         builder.Services.AddBlazorWebViewDeveloperTools();
         builder.Logging.AddDebug();
@@ -29,7 +54,6 @@ public static class MauiProgram
         builder.Services.AddScoped<TooltipService>();
         builder.Services.AddScoped<ContextMenuService>();
         builder.Services.AddScoped<IUtilityServices, UtilityServices>();
-        builder.Services.AddScoped<IServiceApi, ServiceApi>();
         builder.Services.AddSingleton<IHttpsClientHandlerService, HttpsClientHandlerService>();
         builder.Services.AddSingleton<IConfigurationService, ConfigurationService>();
 
@@ -47,9 +71,26 @@ public static class MauiProgram
             return httpsHandler.GetPlatformMessageHandler();
         });
 
-        // M4: FilesApiService integrated - DTO alignment complete
-        builder.Services.AddScoped<IFilesApiService, FilesApiService>();
+        // M5: Memory cache for response caching
+        builder.Services.AddMemoryCache();
+
+        // M5: Caching decorator pattern (FilesApiService wrapped with cache)
+        builder.Services.AddScoped<FilesApiService>(); // Concrete implementation
+        builder.Services.AddScoped<IFilesApiService>(sp =>
+        {
+            var concrete = sp.GetRequiredService<FilesApiService>();
+            var cache = sp.GetRequiredService<IMemoryCache>();
+            var logger = sp.GetRequiredService<ILogger<CachedFilesApiService>>();
+            var flags = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<FeatureFlags>>();
+
+            return new CachedFilesApiService(concrete, cache, logger, flags);
+        });
+
         builder.Services.AddScoped<ITrainingApiService, TrainingApiService>();
+
+        // M6: SignalR notification service (Scoped for battery optimization)
+        // Connects on demand, disconnects on app background
+        builder.Services.AddScoped<ISignalRNotificationService, SignalRNotificationService>();
 
         var _cachePath = FileSystem.Current.CacheDirectory;
 
