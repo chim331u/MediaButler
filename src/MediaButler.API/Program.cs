@@ -321,7 +321,7 @@ app.MapGet("/", () => new
     HealthCheck = "/api/health",
     Timestamp = DateTime.UtcNow
 });
-
+ 
 app.Run();
 
 // Make Program class accessible for testing
