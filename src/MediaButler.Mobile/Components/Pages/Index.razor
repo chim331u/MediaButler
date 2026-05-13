@@ -133,9 +133,9 @@
     [Inject]
     public Microsoft.Extensions.Options.IOptions<FeatureFlags>? _flags { get; set; }
 
-    // M6: SignalR notification service (centralized)
+    // M6: SSE notification service (centralized)
     [Inject]
-    public ISignalRNotificationService _signalRService { get; set; }
+    public ISseNotificationService _sseService { get; set; }
 
     private IEnumerable<FilesDetailDto> fileDetail;
     private List<FileManagementDto> fileDetailManagement; // Keep original with Hash for API operations
@@ -168,38 +168,38 @@
 
     protected override async Task OnInitializedAsync()
     {
-        // M6: Use centralized SignalR service instead of inline HubConnection
+        // M6: Use centralized SSE service instead of inline HubConnection
         try
         {
-            // Subscribe to SignalR notifications
-            SetupSignalRSubscriptions();
+            // Subscribe to notifications
+            SetupSseSubscriptions();
 
-            // Start SignalR connection
-            await _signalRService.StartAsync();
-            log = $"SignalR - Connection established";
-            Log.Information("✅ SignalR connection started from Index.razor");
+            // Start SSE connection
+            await _sseService.StartAsync();
+            log = $"SSE - Connection established";
+            Log.Information("✅ SSE connection started from Index.razor");
         }
         catch (Exception ex)
         {
-            log = $"Error connecting to SignalR: {ex.Message}";
-            Log.Error(ex, "Failed to start SignalR connection");
+            log = $"Error connecting to SSE: {ex.Message}";
+            Log.Error(ex, "Failed to start SSE connection");
         }
 
         // Load initial data
         await refreshCategory();
     }
 
-    private void SetupSignalRSubscriptions()
+    private void SetupSseSubscriptions()
     {
         // Subscribe to general notifications
-        _signalRService.OnNotification((msg1, msg2) =>
+        _sseService.OnNotification((msg1, msg2) =>
         {
             Log.Information($"📢 Notification received: {msg1} + {msg2}");
             InvokeAsync(StateHasChanged);
         });
 
         // Subscribe to file processing notifications
-        _signalRService.OnFileProcessed((fileId, resultText, result) =>
+        _sseService.OnFileProcessed((fileId, resultText, result) =>
         {
             Log.Information($"📥 File processed: {fileId} - {result} - {resultText}");
             log = $"File with id: {fileId} - Result: {result} - Text: {resultText}";
@@ -215,7 +215,7 @@
         });
 
         // Subscribe to batch job notifications
-        _signalRService.OnJobCompleted((resultText, result) =>
+        _sseService.OnJobCompleted((resultText, result) =>
         {
             Log.Information($"📨 Batch job notification: {result} - {resultText}");
 
@@ -257,7 +257,7 @@
             }
         });
 
-        Log.Debug("SignalR subscriptions configured");
+        Log.Debug("SSE subscriptions configured");
     }
 
     private async Task ScanFolders()
@@ -521,10 +521,10 @@
                 log = $"✅ Batch job started successfully";
                 log += $"\n📋 Job ID: {_currentBatchJobId}";
                 log += $"\n📁 Processing {result.Value.TotalFiles} files in background...";
-                log += $"\n⏳ SignalR will notify when complete";
+                log += $"\n⏳ SSE will notify when complete";
 
-                // Note: Don't set busy = false here - wait for SignalR completion
-                // SignalR OnJobCompleted will handle setting busy = false
+                // Note: Don't set busy = false here - wait for SSE completion
+                // SSE OnJobCompleted will handle setting busy = false
             }
             else
             {
@@ -614,18 +614,18 @@
 
     public async ValueTask DisposeAsync()
     {
-        // M6: Stop SignalR connection when leaving Index page (battery optimization)
+        // M6: Stop SSE connection when leaving Index page (battery optimization)
         try
         {
-            if (_signalRService != null && _signalRService.ConnectionState == HubConnectionState.Connected)
+            if (_sseService != null && _sseService.IsConnected)
             {
-                await _signalRService.StopAsync();
-                Log.Information("SignalR connection stopped (Index.razor disposed)");
+                await _sseService.StopAsync();
+                Log.Information("SSE connection stopped (Index.razor disposed)");
             }
         }
         catch (Exception ex)
         {
-            Log.Warning(ex, "Error stopping SignalR connection");
+            Log.Warning(ex, "Error stopping SSE connection");
         }
     }
 }

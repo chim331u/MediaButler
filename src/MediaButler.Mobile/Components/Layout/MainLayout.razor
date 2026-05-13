@@ -45,11 +45,11 @@
 
 @code {
     // M6: Global toast notifications (Scenario A - toasts appear anywhere)
-    // Note: SignalR service is Scoped, managed by Index.razor
+    // Note: SSE service is Scoped, managed by Index.razor
     // MainLayout just displays toasts for critical events (batch job completion)
 
     [Inject]
-    public ISignalRNotificationService? SignalRService { get; set; }
+    public ISseNotificationService? SseService { get; set; }
 
     protected override void OnInitialized()
     {
@@ -68,10 +68,10 @@
     {
         try
         {
-            // Check if SignalR is enabled and service is available
-            if (SignalRService == null)
+            // Check if SSE is enabled and service is available
+            if (SseService == null)
             {
-                Log.Debug("SignalR service not available in MainLayout (expected if not on Index page)");
+                Log.Debug("SSE service not available in MainLayout (expected if not on Index page)");
                 return;
             }
 
@@ -85,7 +85,7 @@
             // Subscribe to batch job completion (PRIORITY - Scenario A)
             if (settings.EnabledTypes.Contains("jobNotifications"))
             {
-                SignalRService.OnJobCompleted((resultText, result) =>
+                SseService.OnJobCompleted((resultText, result) =>
                 {
                     InvokeAsync(() => ShowJobCompletionToast(resultText, result));
                 });
@@ -96,7 +96,7 @@
             // Optional: Subscribe to other notification types if enabled
             if (settings.EnabledTypes.Contains("moveFilesNotifications"))
             {
-                SignalRService.OnFileProcessed((fileId, resultText, result) =>
+                SseService.OnFileProcessed((fileId, resultText, result) =>
                 {
                     InvokeAsync(() => ShowFileProcessedToast(fileId, resultText, result));
                 });
@@ -104,7 +104,7 @@
 
             if (settings.EnabledTypes.Contains("notifications"))
             {
-                SignalRService.OnNotification((message, progress) =>
+                SseService.OnNotification((message, progress) =>
                 {
                     InvokeAsync(() => ShowGeneralNotification(message, progress));
                 });
@@ -195,7 +195,7 @@
 
     public async ValueTask DisposeAsync()
     {
-        // Note: SignalR service is Scoped, will be disposed by DI container
+        // Note: SSE service is Scoped, will be disposed by DI container
         // No explicit unsubscribe needed
     }
 }

@@ -1,6 +1,7 @@
 using FluentAssertions;
 using MediaButler.ML.Configuration;
 using MediaButler.ML.Interfaces;
+using MediaButler.Core.Interfaces;
 using MediaButler.ML.Services;
 using MediaButler.ML.Utils;
 using Microsoft.Extensions.Logging;
@@ -48,7 +49,9 @@ public class CsvTrainingIntegrationTests : IDisposable
 
         // Create services
         _csvImporter = new CsvTrainingDataImporter(_importerLogger);
-        _trainingService = new ModelTrainingService(_trainingLogger, _featureEngineering);
+        var mockPersistence = new Mock<IMLPersistenceService>().Object;
+        var mockModelManager = new Mock<IMLModelManager>().Object;
+        _trainingService = new ModelTrainingService(_trainingLogger, _featureEngineering, mockPersistence, mockModelManager);
     }
 
     [Fact]
@@ -129,7 +132,7 @@ Game.of.Thrones.S08E06.avi;GAME OF THRONES";
 
         var config = new TrainingModels.CsvImportConfiguration
         {
-            HasHeader = false,
+            HasHeader = true,
             ValidateFileExtensions = true
         };
 

@@ -3,12 +3,11 @@
 @using MediaButler.Web.Models
 @using MediaButler.Web.Services
 @using MediaButler.Core.Enums
-@using Microsoft.AspNetCore.SignalR.Client
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @inject IFilesApiService FilesApiService
 @inject ITrainingApiService TrainingApiService
-@inject ISignalRNotificationService SignalRService
+@inject ISseNotificationService SseService
 @implements IAsyncDisposable
 
 <style>
@@ -584,7 +583,8 @@
     {
         await InitializeNotificationSubscriptionsAsync();
         await LoadCategoriesAsync();
-        await RefreshFileListAsync();
+        // Skip initial load here to prevent double-loading.
+        // We rely on ExecuteOnFirstAccessAsync (called in OnAfterRender) to trigger the scan and subsequent load.
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -606,7 +606,8 @@
         WriteConsole("Auto-scanning folders for new files...");
 
         // Perform initial folder scan on first access
-        await ScanFolders();
+        // Pass false to avoid redundant reload if 0 files discovered (Grid already auto-loads)
+        await PerformScanFolders(refreshIfZero: false);
     }
 
     private async Task InitializeNotificationSubscriptionsAsync()
@@ -614,7 +615,7 @@
         try
         {
             // Subscribe to file discovery notifications
-            var fileDiscoverySubscription = SignalRService.SubscribeToFileDiscovery((fileName, filePath, discoveredAt) =>
+            var fileDiscoverySubscription = SseService.SubscribeToFileDiscovery((fileName, filePath, discoveredAt) =>
             {
                 WriteConsole($"New file discovered: {fileName}");
                 InvokeAsync(RefreshWithAllStatusAsync); // Auto-switch to ALL status and refresh
@@ -623,7 +624,7 @@
             _notificationSubscriptions.Add(fileDiscoverySubscription);
 
             // Subscribe to file processing status notifications
-            var fileProcessingSubscription = SignalRService.SubscribeToFileProcessing((fileHash, status, details) =>
+            var fileProcessingSubscription = SseService.SubscribeToFileProcessing((fileHash, status, details) =>
             {
                 WriteConsole($"File processing update: {status} - {details}");
 
@@ -655,7 +656,7 @@
             _notificationSubscriptions.Add(fileProcessingSubscription);
 
             // Subscribe to system status notifications
-            var systemStatusSubscription = SignalRService.SubscribeToSystemStatus((component, status, message) =>
+            var systemStatusSubscription = SseService.SubscribeToSystemStatus((component, status, message) =>
             {
                 WriteConsole($"System [{component}]: {status} - {message}");
                 InvokeAsync(StateHasChanged);
@@ -663,7 +664,7 @@
             _notificationSubscriptions.Add(systemStatusSubscription);
 
             // Subscribe to error notifications
-            var errorSubscription = SignalRService.SubscribeToErrors((source, errorType, message) =>
+            var errorSubscription = SseService.SubscribeToErrors((source, errorType, message) =>
             {
                 WriteConsole($"Error [{errorType}] from {source}: {message}");
                 InvokeAsync(StateHasChanged);
@@ -671,45 +672,45 @@
             _notificationSubscriptions.Add(errorSubscription);
 
             // Subscribe to connection state changes
-            SignalRService.ConnectionStateChanged += OnConnectionStateChanged;
-            SignalRService.Connected += OnSignalRConnected;
-            SignalRService.Disconnected += OnSignalRDisconnected;
-            SignalRService.ConnectionError += OnSignalRError;
+            SseService.ConnectionStateChanged += OnConnectionStateChanged;
+            SseService.ErrorOccurred += OnSseError;
 
-            // Start the SignalR connection
-            await SignalRService.StartAsync();
+            // Start the SSE connection
+            await SseService.StartAsync();
 
-            WriteConsole($"Real-time notifications initialized. Connection: {SignalRService.ConnectionState}");
+            if (SseService.IsConnected && !string.IsNullOrEmpty(SseService.ConnectionId))
+            {
+                 WriteConsole($"Real-time SSE notifications initialized. Connected: True (ID: {SseService.ConnectionId})");
+            }
+            else
+            {
+                WriteConsole($"Real-time SSE notifications initialized. Connected: {SseService.IsConnected}");
+            }
         }
         catch (Exception ex)
         {
-            WriteConsole($"SignalR notification setup error: {ex.Message}");
+            WriteConsole($"SSE notification setup error: {ex.Message}");
             WriteConsole("Falling back to manual refresh for updates");
         }
     }
 
-    private void OnConnectionStateChanged(object? sender, HubConnectionState newState)
+    private void OnConnectionStateChanged(object? sender, bool isConnected)
     {
-        WriteConsole($"Connection state changed: {newState}");
+        if (isConnected && !string.IsNullOrEmpty(SseService.ConnectionId))
+        {
+            WriteConsole($"Connection SSE state changed: Connected (ID: {SseService.ConnectionId})");
+        }
+        else
+        {
+            WriteConsole($"Connection SSE state changed: {(isConnected ? "Connected" : "Disconnected")}");
+        }
         InvokeAsync(StateHasChanged);
     }
 
-    private void OnSignalRConnected(object? sender, EventArgs e)
+    private void OnSseError(object? sender, string error)
     {
-        WriteConsole("Real-time connection established successfully");
-        InvokeAsync(StateHasChanged);
-    }
-
-    private void OnSignalRDisconnected(object? sender, EventArgs e)
-    {
-        WriteConsole("Real-time connection lost - attempting to reconnect...");
-        InvokeAsync(StateHasChanged);
-    }
-
-    private void OnSignalRError(object? sender, Exception ex)
-    {
-        WriteConsole($"Connection error: {ex.Message}");
-        InvokeAsync(StateHasChanged);
+         WriteConsole($"Connection SSE error: {error}");
+         InvokeAsync(StateHasChanged);
     }
 
     private void WriteConsole(string message)
@@ -970,10 +971,18 @@
         // _selectedStatusGroup = previousSelection;
     }
 
+    // Bound to UI Button
     private async Task ScanFolders()
+    {
+        await PerformScanFolders(refreshIfZero: true);
+    }
+
+    private async Task PerformScanFolders(bool refreshIfZero)
     {
         _busyScan = true;
         WriteConsole("Starting folder scan...");
+        // Force UI update to show "Scanning..." state
+        StateHasChanged();
 
         try
         {
@@ -983,10 +992,10 @@
                 WriteConsole($"Scan completed: {result.Value.FilesDiscovered} files discovered");
                 if (result.Value.FilesDiscovered > 0)
                 {
-                    // Auto-switch to ALL status when new files are discovered
+                    // Update: Auto-switch to ALL status when new files are discovered
                     await RefreshWithAllStatusAsync();
                 }
-                else
+                else if (refreshIfZero)
                 {
                     await RefreshFileListAsync();
                 }
@@ -1003,6 +1012,7 @@
         finally
         {
             _busyScan = false;
+            StateHasChanged(); // Ensure button state resets
         }
     }
 
@@ -1386,11 +1396,9 @@
         // Dispose training subscription
         _trainingSubscription?.Dispose();
 
-        // Unsubscribe from SignalR service events
-        SignalRService.ConnectionStateChanged -= OnConnectionStateChanged;
-        SignalRService.Connected -= OnSignalRConnected;
-        SignalRService.Disconnected -= OnSignalRDisconnected;
-        SignalRService.ConnectionError -= OnSignalRError;
+        // Unsubscribe from SSE service events
+        SseService.ConnectionStateChanged -= OnConnectionStateChanged;
+        SseService.ErrorOccurred -= OnSseError;
 
         await Task.CompletedTask;
     }

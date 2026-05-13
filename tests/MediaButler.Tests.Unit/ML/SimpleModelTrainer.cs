@@ -1,6 +1,8 @@
 using MediaButler.ML.Configuration;
 using MediaButler.ML.Services;
 using MediaButler.ML.Utils;
+using MediaButler.ML.Interfaces;
+using MediaButler.Core.Interfaces;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -40,7 +42,9 @@ public class SimpleModelTrainer
 
         var featureEngineering = new FeatureEngineeringService(feLogger, mlConfig);
         var csvImporter = new CsvTrainingDataImporter(importerLogger);
-        var trainingService = new ModelTrainingService(trainingLogger, featureEngineering);
+        var mockPersistence = new Mock<IMLPersistenceService>().Object;
+        var mockModelManager = new Mock<IMLModelManager>().Object;
+        var trainingService = new ModelTrainingService(trainingLogger, featureEngineering, mockPersistence, mockModelManager);
 
         // Import CSV
         var csvPath = Path.Combine(rootDirectory, "data/training/tv-series-training-data.csv");

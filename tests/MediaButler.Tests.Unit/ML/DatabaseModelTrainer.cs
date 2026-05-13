@@ -2,6 +2,8 @@ using MediaButler.Data;
 using MediaButler.ML.Configuration;
 using MediaButler.ML.Models;
 using MediaButler.ML.Services;
+using MediaButler.ML.Interfaces;
+using MediaButler.Core.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -40,7 +42,9 @@ public class DatabaseModelTrainer
         });
 
         var featureEngineering = new FeatureEngineeringService(feLogger, mlConfig);
-        var trainingService = new ModelTrainingService(trainingLogger, featureEngineering);
+        var mockPersistence = new Mock<IMLPersistenceService>().Object;
+        var mockModelManager = new Mock<IMLModelManager>().Object;
+        var trainingService = new ModelTrainingService(trainingLogger, featureEngineering, mockPersistence, mockModelManager);
 
         // Load training data from database
         var dbPath = Path.Combine(rootDirectory, "temp/mediabutler.dev.db");

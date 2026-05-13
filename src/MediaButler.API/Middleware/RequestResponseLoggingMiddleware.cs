@@ -186,6 +186,7 @@ public class RequestResponseLoggingMiddleware
     private static bool ShouldSkipLogging(PathString path)
     {
         return path.StartsWithSegments("/api/health") ||
+               path.StartsWithSegments("/api/sse") ||
                path.StartsWithSegments("/swagger") ||
                path.StartsWithSegments("/_framework") ||
                path.StartsWithSegments("/favicon.ico") ||

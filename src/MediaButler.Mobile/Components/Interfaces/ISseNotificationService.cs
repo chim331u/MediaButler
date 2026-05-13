@@ -1,29 +1,28 @@
 using MediaButler.Mobile.Data;
-using Microsoft.AspNetCore.SignalR.Client;
 
 namespace MediaButler.Mobile.Components.Interfaces;
 
 /// <summary>
-/// SignalR notification service for real-time updates.
-/// Single responsibility: Real-time communication only.
-/// Centralized hub connection management.
+/// SSE notification service for real-time updates.
+/// Single responsibility: Real-time communication via Server-Sent Events.
+/// Centralized connection management.
 /// </summary>
-public interface ISignalRNotificationService
+public interface ISseNotificationService
 {
     /// <summary>
-    /// Starts SignalR connection to notification hub.
+    /// Starts SSE connection to the server.
     /// </summary>
     Task StartAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Stops SignalR connection gracefully.
+    /// Stops SSE connection.
     /// </summary>
     Task StopAsync();
 
     /// <summary>
     /// Current connection state.
     /// </summary>
-    HubConnectionState ConnectionState { get; }
+    bool IsConnected { get; }
 
     /// <summary>
     /// Subscribe to file processing notifications.

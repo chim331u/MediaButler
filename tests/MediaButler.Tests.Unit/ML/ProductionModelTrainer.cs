@@ -1,6 +1,8 @@
 using MediaButler.ML.Configuration;
 using MediaButler.ML.Services;
 using MediaButler.ML.Utils;
+using MediaButler.ML.Interfaces;
+using MediaButler.Core.Interfaces;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -43,7 +45,9 @@ public class ProductionModelTrainer
 
         var featureEngineering = new FeatureEngineeringService(feLogger, mlConfig);
         var csvImporter = new CsvTrainingDataImporter(importerLogger);
-        var trainingService = new ModelTrainingService(trainingLogger, featureEngineering);
+        var mockPersistence = new Mock<IMLPersistenceService>().Object;
+        var mockModelManager = new Mock<IMLModelManager>().Object;
+        var trainingService = new ModelTrainingService(trainingLogger, featureEngineering, mockPersistence, mockModelManager);
 
         // Act - Import real CSV data
         var realCsvPath = Path.Combine(rootDirectory, "data/training/tv-series-training-data.csv");
@@ -103,6 +107,15 @@ public class ProductionModelTrainer
         var trainingResult = await trainingService.TrainModelAsync(
             importResult.Value.ImportedSamples,
             trainingConfig);
+        // Save model
+        var modelPath = Path.Combine(modelsDirectory, $"classification-model-{Guid.NewGuid():N}.zip");
+        var metadata = TrainingModels.ModelMetadata.CreateDefault();
+        metadata = metadata with { Version = trainingResult.Value.ModelVersion };
+        
+        var saveResult = await trainingService.SaveModelAsync(trainingResult.Value, modelPath, metadata);
+        if (saveResult.IsFailure) Assert.Fail($"Model save failed: {saveResult.Error}");
+
+        var model = trainingResult.Value;
         var trainingDuration = DateTime.UtcNow - startTime;
 
         // Assert - Validate training results
@@ -116,13 +129,11 @@ public class ProductionModelTrainer
             return;
         }
 
-        var model = trainingResult.Value;
+
 
         Console.WriteLine($"  📊 Training Samples: {model.TrainingSampleCount}");
         Console.WriteLine($"  ⏱ Training Duration: {model.TrainingDuration.TotalSeconds:F2}s");
-        Console.WriteLine($"  💾 Model Path: {model.ModelPath}");
         Console.WriteLine($"  🆔 Model Version: {model.ModelVersion}");
-        Console.WriteLine($"  📏 Model File Size: {new FileInfo(model.ModelPath).Length / 1024} KB");
 
         Console.WriteLine($"\n📈 Validation Metrics:");
         Console.WriteLine($"  🎯 Accuracy: {model.ValidationMetrics.Accuracy:P2}");
@@ -149,7 +160,7 @@ public class ProductionModelTrainer
             $"Production target: >70% F1 score, got {model.ValidationMetrics.MacroF1Score:P2}");
         Assert.True(trainingDuration.TotalMinutes < 10,
             $"Training should complete in <10 minutes, took {trainingDuration.TotalMinutes:F2} minutes");
-        Assert.True(File.Exists(model.ModelPath), "Model file should exist at specified path");
+        Assert.True(File.Exists(modelPath), "Model file should exist at specified path");
 
         // Verify model is in the correct location
         var expectedModelPath = Path.Combine(modelsDirectory, "classification-simplified-model.zip");

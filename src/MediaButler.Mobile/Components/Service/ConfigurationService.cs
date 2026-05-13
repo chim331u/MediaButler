@@ -1,3 +1,4 @@
+using MediaButler.Mobile.Components.Interface;
 using MediaButler.Mobile.Components.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -6,6 +7,7 @@ namespace MediaButler.Mobile.Components.Service;
 
 /// <summary>
 /// Secure configuration service with validation and caching.
+/// Reads API URL from active NetworkSetting (Settings page) instead of appsettings.json.
 /// Enforces HTTPS for remote connections and validates API settings.
 /// Following "Simple Made Easy": Single responsibility - configuration retrieval only.
 /// </summary>
@@ -13,18 +15,21 @@ public class ConfigurationService : IConfigurationService
 {
     private readonly IConfiguration _configuration;
     private readonly ILogger<ConfigurationService> _logger;
+    private readonly IUtilityServices _utilityServices;
     private string? _cachedApiBaseUrl;
 
     public ConfigurationService(
         IConfiguration configuration,
-        ILogger<ConfigurationService> logger)
+        ILogger<ConfigurationService> logger,
+        IUtilityServices utilityServices)
     {
         _configuration = configuration;
         _logger = logger;
+        _utilityServices = utilityServices;
     }
 
     /// <summary>
-    /// Gets the validated API base URL.
+    /// Gets the validated API base URL from active NetworkSetting.
     /// Validates on first access and caches the result.
     /// </summary>
     public string ApiBaseUrl => _cachedApiBaseUrl ??= ValidateAndGetApiUrl();
@@ -50,21 +55,22 @@ public class ConfigurationService : IConfigurationService
         !string.IsNullOrWhiteSpace(_cachedApiBaseUrl);
 
     /// <summary>
-    /// Validates and retrieves the API base URL from configuration.
+    /// Validates and retrieves the API base URL from active NetworkSetting.
     /// Enforces security rules:
-    /// - URL must be configured
+    /// - URL must be configured in NetworkSettings
     /// - URL must be valid absolute URI
     /// - HTTPS required for remote hosts
     /// - HTTP allowed only for localhost/local network
     /// </summary>
     private string ValidateAndGetApiUrl()
     {
-        var url = _configuration["ApiSettings:BaseUrl"];
+        // Get URL from active NetworkSetting (managed in Settings page)
+        var url = _utilityServices.SetApiUrl();
 
         // Validation 1: URL not empty
         if (string.IsNullOrWhiteSpace(url))
         {
-            var error = "API URL not configured in appsettings.json (ApiSettings:BaseUrl)";
+            var error = "API URL not configured. Please configure network settings in the Settings page.";
             _logger.LogError(error);
             throw new InvalidOperationException(error);
         }

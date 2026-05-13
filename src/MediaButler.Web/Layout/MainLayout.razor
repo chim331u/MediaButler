@@ -4,6 +4,8 @@
 @inherits LayoutComponentBase
 @inject NavigationManager UriHelper
 @inject IJSRuntime JSRuntime
+@using MediaButler.Web.Services
+@inject ISseNotificationService SseService
 
 <RadzenDialog/>
 <RadzenNotification/>
@@ -99,9 +101,17 @@
     bool bodyExpanded = false;
     bool rendered;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         System.Threading.Thread.CurrentThread.CurrentCulture = new System.Globalization.CultureInfo("it-IT");
+        try 
+        {
+            await SseService.StartAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to start SSE: {ex.Message}");
+        }
     }
 
     protected override void OnAfterRender(bool firstRender)

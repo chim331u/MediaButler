@@ -9,7 +9,6 @@ using MediaButler.Core.Services;
 using MediaButler.Core.Configuration;
 using MediaButler.API.Middleware;
 using MediaButler.API.Filters;
-using MediaButler.API.Hubs;
 using MediaButler.API.Services;
 using MediaButler.ML.Extensions;
 using MediaButler.Services.Background;
@@ -26,7 +25,12 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Configure Serilog from appsettings.json following "Simple Made Easy" principles
 builder.Host.UseSerilog((context, configuration) => 
-    configuration.ReadFrom.Configuration(context.Configuration));
+{
+    var assemblyVersion = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "0.0.0";
+    configuration
+        .ReadFrom.Configuration(context.Configuration)
+        .Enrich.WithProperty("Version", assemblyVersion);
+});
 
 // Configure CORS settings from appsettings.json
 var corsSettingsSection = builder.Configuration.GetSection(CorsSettings.SectionName);
@@ -181,9 +185,9 @@ builder.Services.AddSingleton<MediaButler.API.Services.SignalRNotificationClient
 // Register recurring job registration service
 builder.Services.AddHostedService<MediaButler.API.Services.RecurringJobRegistrationService>();
 
-// Add SignalR services
-builder.Services.AddSignalR();
-builder.Services.AddSingleton<ISignalRNotificationService, SignalRNotificationService>();
+// Add SSE services
+builder.Services.AddSingleton<MediaButler.API.Modules.RealTime.SSE.SseConnectionManager>();
+builder.Services.AddRealTimeModule();
 
 // Add SignalR integration for file discovery notifications
 builder.Services.AddHostedService<FileDiscoverySignalRService>();
@@ -194,6 +198,9 @@ builder.Services.AddScoped<IPathGenerationService, PathGenerationService>();
 
 // Add ML services with configuration
 builder.Services.AddMediaButlerML(builder.Configuration);
+
+// Add ML Persistence (Data Layer)
+builder.Services.AddScoped<MediaButler.Core.Interfaces.IMLPersistenceService, MediaButler.Data.Services.MLPersistenceService>();
 
 // Add background processing services with configuration
 builder.Services.AddBackgroundServices(builder.Configuration);
@@ -218,6 +225,10 @@ builder.Services.AddControllers(options =>
     // Configure JSON options for consistent formatting
     options.RespectBrowserAcceptHeader = true;
     options.ReturnHttpNotAcceptable = true;
+})
+.AddJsonOptions(options =>
+{
+    options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
 });
 
 builder.Services.Configure<RouteOptions>(options =>
@@ -308,8 +319,9 @@ app.UseCors("ConfigurablePolicy");
 app.MapControllers();
 
 // Map SignalR hubs
-app.MapHub<NotificationHub>("/notifications");
-app.MapHub<FileProcessingHub>("/file-processing");
+// Map SignalR hubs - REMOVED for SSE Migration
+// app.MapHub<NotificationHub>("/notifications");
+// app.MapHub<FileProcessingHub>("/file-processing");
 
 // Enhanced root endpoint with API information
 app.MapGet("/", () => new

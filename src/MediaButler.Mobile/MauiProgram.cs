@@ -88,9 +88,9 @@ public static class MauiProgram
 
         builder.Services.AddScoped<ITrainingApiService, TrainingApiService>();
 
-        // M6: SignalR notification service (Scoped for battery optimization)
+        // M6: SSE notification service (Scoped for battery optimization)
         // Connects on demand, disconnects on app background
-        builder.Services.AddScoped<ISignalRNotificationService, SignalRNotificationService>();
+        builder.Services.AddScoped<ISseNotificationService, SseNotificationService>();
 
         var _cachePath = FileSystem.Current.CacheDirectory;
 

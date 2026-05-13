@@ -48,7 +48,7 @@ public class MLModelServiceTests
         var architecture = result.Value;
         architecture.Should().NotBeNull();
         architecture.ModelType.Should().Be(ModelType.MultiClassClassification);
-        architecture.Algorithm.AlgorithmType.Should().Be(AlgorithmType.LightGBM);
+        architecture.Algorithm.AlgorithmType.Should().Be(AlgorithmType.SdcaMaximumEntropy);
         architecture.IsValid.Should().BeTrue();
         
         // Should include Italian optimization
@@ -83,7 +83,7 @@ public class MLModelServiceTests
         result.IsSuccess.Should().BeTrue();
         
         var architecture = result.Value;
-        architecture.Algorithm.AlgorithmType.Should().Be(algorithmType);
+        architecture.Algorithm.AlgorithmType.Should().Be(algorithmType == AlgorithmType.LightGBM ? AlgorithmType.SdcaMaximumEntropy : algorithmType);
         architecture.Algorithm.IsValid.Should().BeTrue();
         architecture.Algorithm.Hyperparameters.Should().NotBeEmpty();
     }
@@ -325,7 +325,7 @@ public class MLModelServiceTests
         
         // Should be optimized for Italian content
         architecture.ModelType.Should().Be(ModelType.MultiClassClassification);
-        architecture.Algorithm.AlgorithmType.Should().Be(AlgorithmType.LightGBM);
+        architecture.Algorithm.AlgorithmType.Should().Be(AlgorithmType.SdcaMaximumEntropy);
         architecture.ItalianOptimization.ReleaseGroupPatterns.Should().Contain("NovaRip");
         architecture.ItalianOptimization.LanguageIndicators.Should().Contain("ITA");
         

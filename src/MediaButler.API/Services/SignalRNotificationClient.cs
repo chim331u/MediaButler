@@ -37,6 +37,14 @@ public class SignalRNotificationClient : IDisposable
         _batchSize = signalRConfig.GetValue<int>("BatchSize", 10);
         _flushIntervalMs = signalRConfig.GetValue<int>("FlushIntervalMs", 500);
 
+        // Robustness check: Ensure BaseAddress is set to prevent InvalidOperationException
+        if (_httpClient.BaseAddress == null)
+        {
+            var apiBaseUrl = signalRConfig["ApiBaseUrl"] ?? "http://localhost:8080";
+            _logger.LogWarning("HttpClient BaseAddress was null. Manually setting to {Url}", apiBaseUrl);
+            _httpClient.BaseAddress = new Uri(apiBaseUrl);
+        }
+
         _notificationQueue = new ConcurrentQueue<JobNotification>();
         _flushLock = new SemaphoreSlim(1, 1);
 
@@ -46,8 +54,8 @@ public class SignalRNotificationClient : IDisposable
             TimeSpan.FromMilliseconds(_flushIntervalMs));
 
         _logger.LogInformation(
-            "SignalRNotificationClient initialized: Endpoint={Endpoint}, BatchSize={BatchSize}, FlushInterval={FlushMs}ms",
-            _notificationEndpoint, _batchSize, _flushIntervalMs);
+            "SignalRNotificationClient initialized: Endpoint={Endpoint}, BaseAddress={BaseAddress}, BatchSize={BatchSize}, FlushInterval={FlushMs}ms",
+            _notificationEndpoint, _httpClient.BaseAddress, _batchSize, _flushIntervalMs);
     }
 
     /// <summary>

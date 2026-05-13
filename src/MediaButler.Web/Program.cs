@@ -52,7 +52,8 @@ builder.Services.AddScoped<IFilesApiService, FilesApiService>();
 builder.Services.AddScoped<ITrainingApiService, TrainingApiService>();
 
 // SignalR notification service - centralized real-time communication
-builder.Services.AddSingleton<ISignalRNotificationService, SignalRNotificationService>();
+// SSE notification service - Centralized Server-Sent Events
+builder.Services.AddScoped<ISseNotificationService, SseNotificationService>();
 
 // Radzen services
 builder.Services.AddScoped<DialogService>();

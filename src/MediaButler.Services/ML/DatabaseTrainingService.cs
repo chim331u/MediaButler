@@ -1,5 +1,6 @@
 using MediaButler.Core.Common;
 using MediaButler.Core.Enums;
+using MediaButler.Core.Interfaces;
 using MediaButler.Data;
 using MediaButler.ML.Configuration;
 using MediaButler.ML.Interfaces;
@@ -23,54 +24,41 @@ public class DatabaseTrainingService : IDatabaseTrainingService
     private readonly ILogger<DatabaseTrainingService> _logger;
     private readonly MediaButlerDbContext _dbContext;
     private readonly IModelTrainingService _modelTrainingService;
+    private readonly IMLPersistenceService _persistenceService;
     private readonly MLConfiguration _mlConfig;
 
     public DatabaseTrainingService(
         ILogger<DatabaseTrainingService> logger,
         MediaButlerDbContext dbContext,
         IModelTrainingService modelTrainingService,
+        IMLPersistenceService persistenceService,
         IOptions<MLConfiguration> mlConfig)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         _modelTrainingService = modelTrainingService ?? throw new ArgumentNullException(nameof(modelTrainingService));
+        _persistenceService = persistenceService ?? throw new ArgumentNullException(nameof(persistenceService));
         _mlConfig = mlConfig?.Value ?? throw new ArgumentNullException(nameof(mlConfig));
     }
 
     /// <summary>
-    /// Gets the next model version by reading the existing meta.json file and incrementing.
+    /// Gets the next model version by querying the database.
     /// </summary>
     private async Task<int> GetNextModelVersionAsync(CancellationToken cancellationToken)
     {
-        var metaPath = Path.Combine(_mlConfig.ModelPath, ModelMetaFile);
+        var latest = await _persistenceService.GetLatestModelVersionAsync();
+        if (latest == null) return 1;
 
-        if (!File.Exists(metaPath))
+        // Assuming Version is a string like "1.0.0", but here we just return an integer for legacy compatibility
+        // The ModelTrainingService will handle the string version. 
+        // We just need to give a hint or simplified integer version if needed by CreateModelMetadata
+        // Actually, CreateModelMetadata takes int, so we try to parse the first part.
+        
+        if (int.TryParse(latest.Version?.Split('.').FirstOrDefault(), out var major))
         {
-            _logger.LogInformation("No existing meta.json found, starting from version 1");
-            return 1;
+            return major + 1;
         }
-
-        try
-        {
-            var metaJson = await File.ReadAllTextAsync(metaPath, cancellationToken);
-            using var jsonDoc = JsonDocument.Parse(metaJson);
-
-            if (jsonDoc.RootElement.TryGetProperty("ModelVersion", out var versionElement))
-            {
-                var currentVersion = versionElement.GetInt32();
-                _logger.LogInformation("Found existing model version {CurrentVersion}, incrementing to {NewVersion}",
-                    currentVersion, currentVersion + 1);
-                return currentVersion + 1;
-            }
-
-            _logger.LogWarning("ModelVersion property not found in meta.json, starting from version 1");
-            return 1;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Error reading meta.json, starting from version 1");
-            return 1;
-        }
+        return 1;
     }
 
     /// <summary>

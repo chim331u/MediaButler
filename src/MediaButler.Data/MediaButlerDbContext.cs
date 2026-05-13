@@ -45,6 +45,20 @@ public class MediaButlerDbContext : DbContext
     /// <value>A DbSet of ProcessingLog entities.</value>
     public DbSet<ProcessingLog> ProcessingLogs => Set<ProcessingLog>();
 
+    /// <summary>
+    /// Gets or sets the TrainingSessions entity set.
+    /// Represents training sessions for AI models.
+    /// </summary>
+    /// <value>A DbSet of TrainingSession entities.</value>
+    public DbSet<TrainingSession> TrainingSessions => Set<TrainingSession>();
+
+    /// <summary>
+    /// Gets or sets the ModelVersions entity set.
+    /// Represents different versions of AI models.
+    /// </summary>
+    /// <value>A DbSet of ModelVersion entities.</value>
+    public DbSet<ModelVersion> ModelVersions => Set<ModelVersion>();
+
 
     /// <summary>
     /// Gets or sets the UserPreferences entity set.

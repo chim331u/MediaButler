@@ -4,6 +4,7 @@ using Moq;
 using MediaButler.ML.Services;
 using MediaButler.ML.Models;
 using MediaButler.ML.Interfaces;
+using MediaButler.Core.Interfaces;
 using Xunit;
 
 namespace MediaButler.Tests.Unit.ML;
@@ -23,13 +24,21 @@ public class ModelTrainingServiceTests
 {
     private readonly Mock<ILogger<ModelTrainingService>> _mockLogger;
     private readonly Mock<IFeatureEngineeringService> _mockFeatureEngineering;
+    private readonly Mock<IMLPersistenceService> _mockPersistence;
+    private readonly Mock<IMLModelManager> _mockModelManager;
     private readonly ModelTrainingService _service;
 
     public ModelTrainingServiceTests()
     {
         _mockLogger = new Mock<ILogger<ModelTrainingService>>();
         _mockFeatureEngineering = new Mock<IFeatureEngineeringService>();
-        _service = new ModelTrainingService(_mockLogger.Object, _mockFeatureEngineering.Object);
+        _mockPersistence = new Mock<IMLPersistenceService>();
+        _mockModelManager = new Mock<IMLModelManager>();
+        _service = new ModelTrainingService(
+            _mockLogger.Object, 
+            _mockFeatureEngineering.Object,
+            _mockPersistence.Object,
+            _mockModelManager.Object);
     }
 
     [Fact]
@@ -123,7 +132,7 @@ public class ModelTrainingServiceTests
             persistenceInfo.ModelPath.Should().Be(modelPath);
             persistenceInfo.FileSizeBytes.Should().BeGreaterThan(0);
             persistenceInfo.Metadata.Should().Be(metadata);
-            persistenceInfo.ModelVersion.Should().Be(modelInfo.ModelVersion);
+            persistenceInfo.ModelVersion.Should().Be(metadata.Version);
             persistenceInfo.Checksum.Should().NotBeEmpty();
 
             // File should exist
@@ -368,7 +377,7 @@ public class ModelTrainingServiceTests
             ConfusionMatrix = new ConfusionMatrix
             {
                 Labels = new[] { "BREAKING BAD", "GOMORRA" }.AsReadOnly(),
-                Matrix = new int[,] { { 45, 5 }, { 8, 42 } },
+                Matrix = new int[][] { new[] { 45, 5 }, new[] { 8, 42 } },
                 TotalPredictions = 100
             },
             ConfidenceDistribution = new ConfidenceAnalysis

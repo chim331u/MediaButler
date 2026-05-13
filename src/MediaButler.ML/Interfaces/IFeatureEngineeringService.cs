@@ -27,8 +27,9 @@ public interface IFeatureEngineeringService
     /// Analyzes token frequencies to identify important discriminative features.
     /// </summary>
     /// <param name="seriesTokens">Tokens representing the series name</param>
+    /// <param name="allTokens">Optional list of all tokens for broader analysis (e.g. language detection)</param>
     /// <returns>Token frequency analysis results</returns>
-    Result<TokenFrequencyAnalysis> AnalyzeTokenFrequency(IReadOnlyList<string> seriesTokens);
+    Result<TokenFrequencyAnalysis> AnalyzeTokenFrequency(IReadOnlyList<string> seriesTokens, IReadOnlyList<string>? allTokens = null);
 
     /// <summary>
     /// Generates N-grams from token sequences for context-aware features.

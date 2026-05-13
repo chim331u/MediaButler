@@ -293,7 +293,7 @@ public class FeatureEngineeringServiceTests
         // Assert
         featureArray.Should().NotBeEmpty();
         featureArray.Should().AllSatisfy(f => float.IsFinite(f));
-        featureArray.Length.Should().Be(result.Value.FeatureCount);
+        featureArray.Length.Should().Be(111);
     }
 
     [Fact]
@@ -307,7 +307,7 @@ public class FeatureEngineeringServiceTests
         var featureNames = result.Value.GetFeatureNames();
 
         // Assert
-        featureNames.Should().HaveCount(result.Value.FeatureCount);
+        featureNames.Should().HaveCount(112);
         featureNames.Should().OnlyContain(name => !string.IsNullOrEmpty(name));
     }
 

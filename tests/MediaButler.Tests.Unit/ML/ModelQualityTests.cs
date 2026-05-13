@@ -452,7 +452,7 @@ public class ModelQualityTests
         {
             for (int j = 0; j < matrix.Categories.Count; j++)
             {
-                totalFromMatrix += matrix.Matrix[i, j];
+                totalFromMatrix += matrix.Matrix[i][j];
             }
         }
         totalFromMatrix.Should().Be(matrix.TotalPredictions, "Matrix values should sum to total predictions");
@@ -482,8 +482,8 @@ public class ModelQualityTests
         var unknownIndex = Array.IndexOf(categories, "UNKNOWN");
         
         // Anime series might be confused with each other
-        var narutoToOnePiece = matrix.Matrix[narutoIndex, onePieceIndex];
-        var onePieceToNaruto = matrix.Matrix[onePieceIndex, narutoIndex];
+        var narutoToOnePiece = matrix.Matrix[narutoIndex][onePieceIndex];
+        var onePieceToNaruto = matrix.Matrix[onePieceIndex][narutoIndex];
         
         // These shouldn't be the dominant error pattern, but some confusion is expected for anime series
         narutoToOnePiece.Should().BeLessOrEqualTo(8, "NARUTO shouldn't be frequently misclassified as ONE PIECE");
@@ -493,8 +493,8 @@ public class ModelQualityTests
         var breakingBadIndex = Array.IndexOf(categories, "BREAKING BAD");
         var theOfficeIndex = Array.IndexOf(categories, "THE OFFICE");
         
-        var breakingBadToAnime = matrix.Matrix[breakingBadIndex, narutoIndex] + matrix.Matrix[breakingBadIndex, onePieceIndex];
-        var officeToAnime = matrix.Matrix[theOfficeIndex, narutoIndex] + matrix.Matrix[theOfficeIndex, onePieceIndex];
+        var breakingBadToAnime = matrix.Matrix[breakingBadIndex][narutoIndex] + matrix.Matrix[breakingBadIndex][onePieceIndex];
+        var officeToAnime = matrix.Matrix[theOfficeIndex][narutoIndex] + matrix.Matrix[theOfficeIndex][onePieceIndex];
         
         breakingBadToAnime.Should().BeLessOrEqualTo(2, "BREAKING BAD should rarely be confused with anime series");
         officeToAnime.Should().BeLessOrEqualTo(2, "THE OFFICE should rarely be confused with anime series");
@@ -503,7 +503,7 @@ public class ModelQualityTests
         var knownCategoriesConfusedAsUnknown = 0;
         for (int i = 0; i < categories.Length - 1; i++) // Exclude UNKNOWN itself
         {
-            knownCategoriesConfusedAsUnknown += matrix.Matrix[i, unknownIndex];
+            knownCategoriesConfusedAsUnknown += matrix.Matrix[i][unknownIndex];
         }
         
         // Some known series will be misclassified as unknown, but shouldn't be excessive
@@ -798,20 +798,22 @@ public class ModelQualityTests
     private static EvaluationConfusionMatrix CreateRealisticConfusionMatrix(string[] categories)
     {
         var categoryCount = categories.Length;
-        var matrix = new int[categoryCount, categoryCount];
+        var matrix = new int[categoryCount][];
+        for (int i = 0; i < categoryCount; i++) matrix[i] = new int[categoryCount];
+        
         var totalPredictions = 200;
         
         // Create realistic confusion patterns
         // Breaking Bad: 40 samples, 38 correct, 1 confused with The Office, 1 with Unknown
-        matrix[0, 0] = 38; matrix[0, 1] = 1; matrix[0, 2] = 0; matrix[0, 3] = 0; matrix[0, 4] = 1;
+        matrix[0][0] = 38; matrix[0][1] = 1; matrix[0][2] = 0; matrix[0][3] = 0; matrix[0][4] = 1;
         // The Office: 35 samples, 32 correct, 2 confused with Breaking Bad, 1 with Unknown
-        matrix[1, 0] = 2; matrix[1, 1] = 32; matrix[1, 2] = 0; matrix[1, 3] = 0; matrix[1, 4] = 1;
+        matrix[1][0] = 2; matrix[1][1] = 32; matrix[1][2] = 0; matrix[1][3] = 0; matrix[1][4] = 1;
         // Naruto: 45 samples, 37 correct, 0 with western, 5 with One Piece, 3 with Unknown
-        matrix[2, 0] = 0; matrix[2, 1] = 0; matrix[2, 2] = 37; matrix[2, 3] = 5; matrix[2, 4] = 3;
+        matrix[2][0] = 0; matrix[2][1] = 0; matrix[2][2] = 37; matrix[2][3] = 5; matrix[2][4] = 3;
         // One Piece: 40 samples, 30 correct, 0 with western, 7 with Naruto, 3 with Unknown
-        matrix[3, 0] = 0; matrix[3, 1] = 0; matrix[3, 2] = 7; matrix[3, 3] = 30; matrix[3, 4] = 3;
+        matrix[3][0] = 0; matrix[3][1] = 0; matrix[3][2] = 7; matrix[3][3] = 30; matrix[3][4] = 3;
         // Unknown: 40 samples, 21 correct, 4 with Breaking Bad, 3 with Office, 6 with Naruto, 6 with One Piece
-        matrix[4, 0] = 4; matrix[4, 1] = 3; matrix[4, 2] = 6; matrix[4, 3] = 6; matrix[4, 4] = 21;
+        matrix[4][0] = 4; matrix[4][1] = 3; matrix[4][2] = 6; matrix[4][3] = 6; matrix[4][4] = 21;
 
         var truePositives = new Dictionary<string, int>();
         var falsePositives = new Dictionary<string, int>();
@@ -821,20 +823,20 @@ public class ModelQualityTests
         for (int i = 0; i < categoryCount; i++)
         {
             var category = categories[i];
-            truePositives[category] = matrix[i, i];
+            truePositives[category] = matrix[i][i];
             
             // False positives: sum of column i excluding diagonal
             falsePositives[category] = 0;
             for (int j = 0; j < categoryCount; j++)
             {
-                if (j != i) falsePositives[category] += matrix[j, i];
+                if (j != i) falsePositives[category] += matrix[j][i];
             }
             
             // False negatives: sum of row i excluding diagonal
             falseNegatives[category] = 0;
             for (int j = 0; j < categoryCount; j++)
             {
-                if (j != i) falseNegatives[category] += matrix[i, j];
+                if (j != i) falseNegatives[category] += matrix[i][j];
             }
             
             // True negatives: total - TP - FP - FN

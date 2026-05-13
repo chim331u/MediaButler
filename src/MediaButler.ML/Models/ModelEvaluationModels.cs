@@ -743,7 +743,7 @@ public sealed record EvaluationConfusionMatrix
     /// <summary>
     /// Confusion matrix values [actual][predicted].
     /// </summary>
-    public required int[,] Matrix { get; init; }
+    public required int[][] Matrix { get; init; }
 
     /// <summary>
     /// Total number of predictions.
@@ -794,7 +794,7 @@ public sealed record EvaluationConfusionMatrix
             sb.Append(Categories[i].Substring(0, Math.Min(Categories[i].Length, 12)).PadRight(15));
             for (int j = 0; j < Categories.Count; j++)
             {
-                sb.Append(Matrix[i, j].ToString().PadLeft(12));
+                sb.Append(Matrix[i][j].ToString().PadLeft(12));
             }
             sb.AppendLine();
         }

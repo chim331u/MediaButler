@@ -21,6 +21,7 @@
         <!-- Class C private network (192.168.x.x) - typical home routers -->
         <domain includeSubdomains="true">192.168.0.0</domain>
         <domain includeSubdomains="true">192.168.1.0</domain>
+        <domain includeSubdomains="true">192.168.1.5</domain>
         <domain includeSubdomains="true">192.168.2.0</domain>
 
         <!-- Class A private network (10.x.x.x) - enterprise networks -->
@@ -35,11 +36,14 @@
 
     <!--
         Base configuration for all other domains
-        Uses system CA certificates only (secure for production)
+
+        DEVELOPMENT: Allows cleartext HTTP for easier local development
+        PRODUCTION: Change cleartextTrafficPermitted="false" and remove user certificates
     -->
-    <base-config cleartextTrafficPermitted="false">
+    <base-config cleartextTrafficPermitted="true">
         <trust-anchors>
             <certificates src="system" />
+            <certificates src="user" />
         </trust-anchors>
     </base-config>
 </network-security-config>

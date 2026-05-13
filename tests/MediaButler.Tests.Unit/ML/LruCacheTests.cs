@@ -346,7 +346,7 @@ public class LruCacheTests
     }
 
     [Fact]
-    public void ThreadSafety_ConcurrentAccess_NoDataCorruption()
+    public async Task ThreadSafety_ConcurrentAccess_NoDataCorruption()
     {
         // Arrange
         var cache = new LruCache<int, int>(capacity: 100);
@@ -367,7 +367,7 @@ public class LruCacheTests
             }));
         }
 
-        Task.WaitAll(tasks.ToArray());
+        await Task.WhenAll(tasks.ToArray());
 
         // Assert - No exceptions, count within capacity
         cache.Count.Should().BeLessOrEqualTo(100);

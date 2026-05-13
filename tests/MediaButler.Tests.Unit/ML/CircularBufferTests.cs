@@ -269,7 +269,7 @@ public class CircularBufferTests
     }
 
     [Fact]
-    public void ThreadSafety_ConcurrentAdds_NoDataLoss()
+    public async Task ThreadSafety_ConcurrentAdds_NoDataLoss()
     {
         // Arrange - ARM32 thread safety test
         var buffer = new CircularBuffer<int>(capacity: 1000);
@@ -286,7 +286,7 @@ public class CircularBufferTests
             })
         ).ToArray();
 
-        Task.WaitAll(tasks);
+        await Task.WhenAll(tasks);
 
         // Assert - All items should be added (some may be overwritten, but count is correct)
         buffer.Count.Should().BeLessOrEqualTo(1000);

@@ -63,7 +63,7 @@ public class FeatureEngineeringService : IFeatureEngineeringService
                 tokenizedFilename.OriginalFilename);
 
             // Extract all feature components
-            var tokenAnalysisResult = AnalyzeTokenFrequency(tokenizedFilename.SeriesTokens);
+            var tokenAnalysisResult = AnalyzeTokenFrequency(tokenizedFilename.SeriesTokens, tokenizedFilename.AllTokens);
             if (!tokenAnalysisResult.IsSuccess)
                 return Result<FeatureVector>.Failure($"Token analysis failed: {tokenAnalysisResult.Error}");
 
@@ -119,7 +119,7 @@ public class FeatureEngineeringService : IFeatureEngineeringService
         }
     }
 
-    public Result<TokenFrequencyAnalysis> AnalyzeTokenFrequency(IReadOnlyList<string> seriesTokens)
+    public Result<TokenFrequencyAnalysis> AnalyzeTokenFrequency(IReadOnlyList<string> seriesTokens, IReadOnlyList<string>? allTokens = null)
     {
         try
         {
@@ -155,8 +155,8 @@ public class FeatureEngineeringService : IFeatureEngineeringService
             var alphaNumericRatio = numericCount > 0 ? (double)alphaCount / numericCount : double.MaxValue;
             var diversityScore = CalculateDiversityScore(tokenCounts, totalTokens);
 
-            // Language indicators detection (separate method handles this correctly)
-            var languageIndicators = DetectLanguageIndicators(seriesTokens);
+            // Language indicators detection (using all tokens if available for better coverage)
+            var languageIndicators = DetectLanguageIndicators(allTokens ?? seriesTokens);
 
             // Extract top and rare tokens (single sort operation)
             var frequentTokens = tokenCounts.OrderByDescending(kvp => kvp.Value)

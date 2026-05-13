@@ -15,6 +15,11 @@ public interface IHealthApiService
     /// Pure function - same inputs produce same outputs.
     /// </summary>
     Task<Result<HealthCheckViewModel>> GetHealthStatusAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sends a ping request to the SSE endpoint to verify connectivity.
+    /// </summary>
+    Task<Result> PingSseAsync(string pingId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -61,6 +66,25 @@ public class HealthApiService : IHealthApiService
             }
 
             return Result<HealthCheckViewModel>.Failure($"Health check failed: {ex.Message}");
+        }
+    }
+
+    public async Task<Result> PingSseAsync(string pingId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            // Using generic POST to void (ignoring response body as we verify via SSE event)
+            var result = await _httpClient.PostAsync<object>("/api/sse/ping", new { PingId = pingId }, cancellationToken);
+            
+            if (result.IsSuccess)
+            {
+                return Result.Success();
+            }
+            return Result.Failure(result.Error, result.StatusCode);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure($"Ping failed: {ex.Message}");
         }
     }
 

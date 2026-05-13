@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
-using MediaButler.API.Services;
+using MediaButler.API.Modules.RealTime.Services;
 
 namespace MediaButler.API.Controllers;
 
@@ -11,11 +11,11 @@ namespace MediaButler.API.Controllers;
 [Route("api/[controller]")]
 public class NotificationTestController : ControllerBase
 {
-    private readonly ISignalRNotificationService _notificationService;
+    private readonly IRealTimeService _notificationService;
     private readonly ILogger<NotificationTestController> _logger;
 
     public NotificationTestController(
-        ISignalRNotificationService notificationService,
+        IRealTimeService notificationService,
         ILogger<NotificationTestController> logger)
     {
         _notificationService = notificationService;

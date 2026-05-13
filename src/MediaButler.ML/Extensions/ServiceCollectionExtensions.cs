@@ -60,6 +60,13 @@ public static class ServiceCollectionExtensions
         services.AddHealthChecks()
             .AddCheck<ML.HealthChecks.MLModelHealthCheck>("ml-model", tags: new[] { "ml", "model" });
 
+        // Add Singleton Kernel
+        services.AddSingleton<IMLModelManager>(sp => 
+            new ML.Services.MLModelManager(
+                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ML.Services.MLModelManager>>(),
+                Path.Combine(AppContext.BaseDirectory, "MLModels", "model.zip")
+            ));
+
         return services;
     }
 

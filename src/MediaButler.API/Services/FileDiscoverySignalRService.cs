@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using MediaButler.Services.Background;
-using MediaButler.API.Services;
+using MediaButler.API.Modules.RealTime.Services;
 
 namespace MediaButler.API.Services;
 
@@ -12,12 +12,12 @@ namespace MediaButler.API.Services;
 public class FileDiscoverySignalRService : IHostedService
 {
     private readonly IFileDiscoveryService _fileDiscoveryService;
-    private readonly ISignalRNotificationService _notificationService;
+    private readonly IRealTimeService _notificationService;
     private readonly ILogger<FileDiscoverySignalRService> _logger;
 
     public FileDiscoverySignalRService(
         IFileDiscoveryService fileDiscoveryService,
-        ISignalRNotificationService notificationService,
+        IRealTimeService notificationService,
         ILogger<FileDiscoverySignalRService> logger)
     {
         _fileDiscoveryService = fileDiscoveryService ?? throw new ArgumentNullException(nameof(fileDiscoveryService));

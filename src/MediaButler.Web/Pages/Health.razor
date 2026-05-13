@@ -3,6 +3,8 @@
 @using MediaButler.Web.Services
 @inject IHealthApiService HealthApi
 @inject NotificationService NotificationService
+@inject ISseNotificationService SseService
+
 
 <PageTitle>System Health - MediaButler</PageTitle>
 
@@ -50,6 +52,75 @@
                             <RadzenText TextStyle="TextStyle.Body2"
                                        Text="@($"Total check time: {_healthStatus.TotalDuration.TotalMilliseconds:F0}ms")" />
                         </RadzenStack>
+                    </RadzenStack>
+                </RadzenCard>
+            </RadzenColumn>
+        </RadzenRow>
+
+        <!-- SSE Connectivity Status & Details -->
+        <RadzenRow>
+            <!-- Connectivity Status -->
+            <RadzenColumn Size="12" SizeMD="6">
+                <RadzenCard Style="@GetSseCardStyle()">
+                    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem">
+                        <RadzenIcon Icon="@(SseService.IsConnected ? "wifi" : "wifi_off")" Style="@(SseService.IsConnected ? "color: var(--rz-success); font-size: 2rem;" : "color: var(--rz-danger); font-size: 2rem;")" />
+                        <RadzenStack Gap="0.25rem" style="flex: 1;">
+                            <RadzenText TextStyle="TextStyle.H5" Text="Real-time Connectivity (SSE)" />
+                            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
+                                <RadzenText TextStyle="TextStyle.Body2" Text="@(SseService.IsConnected ? "Connected" : "Disconnected")" />
+                                @if (!SseService.IsConnected)
+                                {
+                                     <RadzenButton Click="ConnectSse" Text="Connect" Size="ButtonSize.ExtraSmall" ButtonStyle="ButtonStyle.Success" />
+                                }
+                            </RadzenStack>
+
+                            @if (!string.IsNullOrEmpty(_sseError))
+                            {
+                                <RadzenText TextStyle="TextStyle.Caption" Text="@($"Error: {_sseError}")" Style="color: var(--rz-danger);" />
+                            }
+                            @if (_lastPingRtt.HasValue)
+                            {
+                                <RadzenText TextStyle="TextStyle.Caption" Text="@($"Last Ping RTT: {_lastPingRtt.Value.TotalMilliseconds:F0}ms")" Style="color: var(--rz-success);" />
+                            }
+                        </RadzenStack>
+                        <RadzenButton Click="TestSseConnection" 
+                                      Text="@(_isPinging ? "Pinging..." : "Test Ping")" 
+                                      Icon="network_check" 
+                                      ButtonStyle="ButtonStyle.Info" 
+                                      Disabled="@(!SseService.IsConnected || _isPinging)" 
+                                      IsBusy="@_isPinging" />
+                    </RadzenStack>
+                </RadzenCard>
+            </RadzenColumn>
+
+            <!-- Connection Details -->
+            <RadzenColumn Size="12" SizeMD="6">
+                <RadzenCard Style="height: 100%;">
+                    <RadzenStack Gap="0.5rem">
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                            <RadzenIcon Icon="info" Style="color: var(--rz-info);" />
+                            <RadzenText TextStyle="TextStyle.H6" Text="Connection Details" />
+                        </RadzenStack>
+                        
+                        @if (SseService.IsConnected && !string.IsNullOrEmpty(SseService.ConnectionId))
+                        {
+                            <RadzenStack Gap="0">
+                                <RadzenText TextStyle="TextStyle.Caption" Text="Connection ID" Style="color: var(--rz-text-secondary-color);" />
+                                <RadzenText TextStyle="TextStyle.Body2" Text="@SseService.ConnectionId" Style="font-family: monospace; font-weight: bold;" />
+                            </RadzenStack>
+                            
+                            @if(SseService.ConnectedAt.HasValue)
+                            {
+                                <RadzenStack Gap="0">
+                                    <RadzenText TextStyle="TextStyle.Caption" Text="Connected Since" Style="color: var(--rz-text-secondary-color);" />
+                                    <RadzenText TextStyle="TextStyle.Body2" Text="@SseService.ConnectedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")" />
+                                </RadzenStack>
+                            }
+                        }
+                        else
+                        {
+                            <RadzenText TextStyle="TextStyle.Body2" Text="No active connection details available." Style="color: var(--rz-text-secondary-color); font-style: italic;" />
+                        }
                     </RadzenStack>
                 </RadzenCard>
             </RadzenColumn>
@@ -118,11 +189,46 @@
 @code {
     private HealthCheckViewModel? _healthStatus;
     private bool _isLoading = false;
+    private bool _isPinging = false;
+    private TimeSpan? _lastPingRtt;
     private string? _errorMessage;
+    private string? _sseError;
 
     protected override async Task OnInitializedAsync()
     {
+        SseService.ConnectionStateChanged += OnSseStateChanged;
+        SseService.ErrorOccurred += OnSseError;
         await RefreshHealthStatus();
+    }
+    
+    public void Dispose()
+    {
+        SseService.ConnectionStateChanged -= OnSseStateChanged;
+        SseService.ErrorOccurred -= OnSseError;
+    }
+
+    private void OnSseStateChanged(object? sender, bool connected)
+    {
+        _sseError = null; // Clear error on state change
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnSseError(object? sender, string error)
+    {
+        _sseError = error;
+        InvokeAsync(StateHasChanged);
+    }
+    
+    private async Task ConnectSse()
+    {
+        try 
+        {
+            await SseService.StartAsync();
+        }
+        catch (Exception ex)
+        {
+            _sseError = ex.Message;
+        }
     }
 
     private async Task RefreshHealthStatus()
@@ -166,6 +272,62 @@
         finally
         {
             _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task TestSseConnection()
+    {
+        if (_isPinging) return;
+
+        _isPinging = true;
+        _lastPingRtt = null;
+        StateHasChanged();
+
+        var pingId = Guid.NewGuid().ToString();
+        var startTime = DateTime.UtcNow;
+        var tcs = new TaskCompletionSource<bool>();
+
+        // Subscribe to receive the ping back
+        using var subscription = SseService.SubscribeToHealthCheckPing((id, timestamp) =>
+        {
+            if (id == pingId)
+            {
+                var rtt = DateTime.UtcNow - startTime;
+                _lastPingRtt = rtt;
+                tcs.TrySetResult(true);
+            }
+        });
+
+        try
+        {
+            // Send ping
+            var result = await HealthApi.PingSseAsync(pingId);
+            if (!result.IsSuccess)
+            {
+                NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Error, Summary = "Ping Failed", Detail = result.Error });
+                _isPinging = false;
+                return;
+            }
+
+            // Wait for response with timeout
+            var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(5000));
+            if (completedTask == tcs.Task && await tcs.Task)
+            {
+                NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Success, Summary = "Ping Success", Detail = $"RTT: {_lastPingRtt?.TotalMilliseconds:F0}ms" });
+            }
+            else
+            {
+                NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Warning, Summary = "Ping Timeout", Detail = "Event not received within 5s" });
+            }
+        }
+        catch (Exception ex)
+        {
+             NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Error, Summary = "Error", Detail = ex.Message });
+        }
+        finally
+        {
+            _isPinging = false;
             StateHasChanged();
         }
     }
@@ -227,4 +389,8 @@
         HealthStatus.Unhealthy => "border-left: 3px solid var(--rz-danger);",
         _ => "border-left: 3px solid var(--rz-text-secondary-color);"
     };
+
+    private string GetSseCardStyle() => SseService.IsConnected 
+        ? "border-left: 4px solid var(--rz-success);" 
+        : "border-left: 4px solid var(--rz-danger);";
 }

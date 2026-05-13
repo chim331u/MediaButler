@@ -640,7 +640,7 @@ public partial class TokenizerService : ITokenizerService
     //         "2160P" or "4K" or "UHD" => QualityTier.Premium,
     //         "1080P" or "FHD" => source?.ToUpperInvariant() switch
     //         {
-    //             "BLURAY" or "BDRIP" => QualityTier.UltraHigh,
+    //             "BLURAY" or "BDRip" => QualityTier.UltraHigh,
     //             "WEBMUX" or "WEB-DL" or "WEBDL" or "WEB-DLMUX" => QualityTier.High,
     //             _ => QualityTier.High
     //         },
@@ -668,10 +668,15 @@ public partial class TokenizerService : ITokenizerService
             var afterEpisode = nameWithoutExtension.Substring(episodeMatch.Index + episodeMatch.Length);
             
             // Clean up the potential title
-            var titlePart = afterEpisode.Split(new[] { '.', '_', '-' }, StringSplitOptions.RemoveEmptyEntries)
-                .FirstOrDefault(part => part.Length > 2 && !IsQualityOrLanguageIndicator(part));
+            var tokens = afterEpisode.Split(new[] { '.', '_', '-' }, StringSplitOptions.RemoveEmptyEntries);
+            
+            // Simple heuristic: title parts are usually tokens that are not quality/language indicators
+            var titleParts = tokens.Where(t => t.Length >= 1 && !IsQualityOrLanguageIndicator(t)).ToList();
 
-            return string.IsNullOrWhiteSpace(titlePart) ? null : titlePart.Trim();
+            if (titleParts.Count == 0) return null;
+
+            var title = string.Join(" ", titleParts.Select(CapitalizeWord)).Trim();
+            return string.IsNullOrWhiteSpace(title) ? null : title;
         }
         catch
         {

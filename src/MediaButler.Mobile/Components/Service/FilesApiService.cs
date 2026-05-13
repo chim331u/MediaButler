@@ -455,7 +455,7 @@ public class FilesApiService : IFilesApiService
             CreatedDate = file.CreatedAt,
             ClassifiedAt = file.ClassifiedAt,
             Confidence = (decimal)(file.ConfidencePercentage ?? 0),
-            Status = file.StatusDescription ?? $"Status {file.Status}"
+            Status = !string.IsNullOrWhiteSpace(file.StatusDescription) ? file.StatusDescription : file.Status
         };
     }
 
@@ -538,7 +538,7 @@ internal class TrackedFileResponse
     public required string OriginalPath { get; set; }
     public long FileSize { get; set; }
     public string? FormattedFileSize { get; set; }
-    public int Status { get; set; }
+    public string Status { get; set; } = string.Empty;
     public string? StatusDescription { get; set; }
     public string? SuggestedCategory { get; set; }
     public double? ConfidencePercentage { get; set; }

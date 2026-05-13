@@ -100,7 +100,12 @@ public class ModelEvaluationService : IModelEvaluationService
             var categoryToIndex = categories.Select((cat, idx) => new { cat, idx })
                                            .ToDictionary(x => x.cat, x => x.idx);
 
-            var matrix = new int[categories.Count, categories.Count];
+            var matrix = new int[categories.Count][];
+            for (int i = 0; i < categories.Count; i++)
+            {
+                matrix[i] = new int[categories.Count];
+            }
+
             var truePositives = new Dictionary<string, int>();
             var falsePositives = new Dictionary<string, int>();
             var falseNegatives = new Dictionary<string, int>();
@@ -120,25 +125,25 @@ public class ModelEvaluationService : IModelEvaluationService
             {
                 var actualIdx = categoryToIndex[testCase.ExpectedCategory];
                 var predictedIdx = categoryToIndex[testCase.PredictedCategory!];
-                matrix[actualIdx, predictedIdx]++;
+                matrix[actualIdx][predictedIdx]++;
             }
 
             // Calculate TP, FP, FN, TN for each category
             for (int i = 0; i < categories.Count; i++)
             {
                 var category = categories[i];
-                truePositives[category] = matrix[i, i];
+                truePositives[category] = matrix[i][i];
 
                 // False positives: sum of column i, excluding diagonal
                 for (int j = 0; j < categories.Count; j++)
                 {
-                    if (j != i) falsePositives[category] += matrix[j, i];
+                    if (j != i) falsePositives[category] += matrix[j][i];
                 }
 
                 // False negatives: sum of row i, excluding diagonal
                 for (int j = 0; j < categories.Count; j++)
                 {
-                    if (j != i) falseNegatives[category] += matrix[i, j];
+                    if (j != i) falseNegatives[category] += matrix[i][j];
                 }
 
                 // True negatives: total - TP - FP - FN

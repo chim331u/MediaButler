@@ -2,11 +2,10 @@
 @using MediaButler.Web.Models
 @using MediaButler.Web.Services
 @using MediaButler.Core.Enums
-@using Microsoft.AspNetCore.SignalR.Client
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @inject IFilesApiService FilesApiService
-@inject ISignalRNotificationService SignalRService
+@inject ISseNotificationService SseService
 @inject TooltipService TooltipService
 @inject NotificationService NotificationService
 @implements IAsyncDisposable
@@ -489,7 +488,7 @@
     protected override async Task OnInitializedAsync()
     {
         await LoadData();
-        SetupSignalRSubscriptions();
+        SetupSseSubscriptions();
     }
 
     private async Task LoadData()
@@ -791,26 +790,36 @@
             {
                 Severity = NotificationSeverity.Error,
                 Summary = "Error",
-                Detail = $"Failed to ignore file: {ex.Message}",
                 Duration = 5000
             });
         }
     }
 
-    private void SetupSignalRSubscriptions()
+    private void SetupSseSubscriptions()
     {
-        // Subscribe to file move notifications to refresh the view
-        _notificationSubscriptions.Add(SignalRService.SubscribeToJobProgress((jobType, message, progress) =>
+        try
         {
-            if (jobType.Contains("move") && progress >= 100)
+            // Subscribe to file processing notifications for real-time updates
+            var fileProcessingSubscription = SseService.SubscribeToFileProcessing((fileHash, status, details) =>
             {
-                _ = InvokeAsync(async () =>
+                // Refresh list on batch completion or file move completion
+                if (status == "BatchCompleted" || status == "Completed")
                 {
-                    await LoadData();
-                    StateHasChanged();
-                });
+                    InvokeAsync(LoadData);
+                }
+            });
+            _notificationSubscriptions.Add(fileProcessingSubscription);
+
+            // Connect if not already connected (Files page might have started it)
+            if (!SseService.IsConnected)
+            {
+                 _ = SseService.StartAsync();
             }
-        }));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error setting up SSE: {ex.Message}");
+        }
     }
 
     private static string FormatFileSize(long bytes)
@@ -870,8 +879,10 @@
     {
         foreach (var subscription in _notificationSubscriptions)
         {
-            subscription?.Dispose();
+            subscription.Dispose();
         }
         _notificationSubscriptions.Clear();
+        
+        await Task.CompletedTask;
     }
 }

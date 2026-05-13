@@ -15,7 +15,7 @@ namespace MediaButler.Data.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "8.0.0");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.0");
 
             modelBuilder.Entity("MediaButler.Core.Entities.FileOrganizationStateEntity", b =>
                 {
@@ -97,6 +97,43 @@ namespace MediaButler.Data.Migrations
                         .HasFilter("[State] = 1 AND [IsActive] = 1");
 
                     b.ToTable("FileOrganizationStates", (string)null);
+                });
+
+            modelBuilder.Entity("MediaButler.Core.Entities.ModelVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsCurrent")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("LastUpdateDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Metrics")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RelativePath")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Version")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ModelVersions");
                 });
 
             modelBuilder.Entity("MediaButler.Core.Entities.ProcessingLog", b =>
@@ -380,6 +417,51 @@ namespace MediaButler.Data.Migrations
                         .HasFilter("[Status] IN (6, 7)");
 
                     b.ToTable("TrackedFiles", (string)null);
+                });
+
+            modelBuilder.Entity("MediaButler.Core.Entities.TrainingSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("EndTime")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("GeneratedModelVersion")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("LastUpdateDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Log")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Metrics")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SampleCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("StartTime")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("TrainingSessions");
                 });
 
             modelBuilder.Entity("MediaButler.Core.Entities.UserPreference", b =>

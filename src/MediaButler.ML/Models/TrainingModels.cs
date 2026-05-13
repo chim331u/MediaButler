@@ -432,7 +432,7 @@ public sealed record ConfusionMatrix
     /// <summary>
     /// Confusion matrix values [actual][predicted].
     /// </summary>
-    public required int[,] Matrix { get; init; }
+    public required int[][] Matrix { get; init; }
 
     /// <summary>
     /// Total number of predictions in the matrix.
