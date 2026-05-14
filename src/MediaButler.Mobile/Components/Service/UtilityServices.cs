@@ -1,6 +1,6 @@
 ﻿using System.Globalization;
 using System.Text.Json;
-using MediaButler.Mobile.Components.Interface;
+using MediaButler.Mobile.Components.Interfaces;
 using MediaButler.Mobile.Data.Setting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;

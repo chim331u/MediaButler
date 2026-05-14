@@ -1,6 +1,6 @@
-﻿using MediaButler.Mobile.Data.Setting;
+using MediaButler.Mobile.Data.Setting;
 
-namespace MediaButler.Mobile.Components.Interface
+namespace MediaButler.Mobile.Components.Interfaces
 {
     public interface IUtilityServices
     {

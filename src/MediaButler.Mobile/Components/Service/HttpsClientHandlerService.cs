@@ -1,6 +1,6 @@
 using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
-using MediaButler.Mobile.Components.Interface;
+using MediaButler.Mobile.Components.Interfaces;
 using Microsoft.Extensions.Logging;
 
 namespace MediaButler.Mobile.Components.Service;

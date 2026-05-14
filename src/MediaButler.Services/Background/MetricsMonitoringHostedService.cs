@@ -3,7 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-namespace MediaButler.Services.BackgroundServices;
+namespace MediaButler.Services.Background;
 
 /// <summary>
 /// Background service for periodic metrics collection and system health monitoring.

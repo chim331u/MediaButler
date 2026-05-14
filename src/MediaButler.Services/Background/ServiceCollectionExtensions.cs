@@ -1,7 +1,7 @@
 using MediaButler.Core.Common;
 using MediaButler.Core.Services;
 using MediaButler.Data.Repositories;
-using MediaButler.Services.BackgroundServices;
+
 using MediaButler.Services.Domain;
 using MediaButler.Services.EventHandlers;
 using MediaButler.Services.Monitoring;

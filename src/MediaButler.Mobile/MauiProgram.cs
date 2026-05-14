@@ -1,4 +1,4 @@
-﻿using MediaButler.Mobile.Components.Interface;
+﻿using MediaButler.Mobile.Components.Interfaces;
 using MediaButler.Mobile.Components.Interfaces;
 using MediaButler.Mobile.Components.Service;
 using MediaButler.Mobile.Models;

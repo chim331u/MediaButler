@@ -4,7 +4,7 @@ using MediaButler.ML.Models;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 
-namespace MediaButler.ML.Services;
+namespace MediaButler.Tests.Integration.Services;
 
 /// <summary>
 /// Simple implementation of ML-powered file classification service.
