@@ -3,10 +3,17 @@ using MediaButler.Core.Entities;
 using MediaButler.Core.Enums;
 using MediaButler.Data;
 using MediaButler.Services.FileOperations;
-using MediaButler.Services.Interfaces;
+using MediaButler.Core.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
+using MediaButler.Data.Repositories;
+using MediaButler.Data.UnitOfWork;
+using UnitOfWorkImpl = MediaButler.Data.UnitOfWork.UnitOfWork;
+using MediaButler.Core.Services;
+using MediaButler.Services.Interfaces;
+using MediaButler.Services;
 using Xunit;
 
 namespace MediaButler.Tests.Integration.Services;
@@ -15,12 +22,14 @@ namespace MediaButler.Tests.Integration.Services;
 /// Integration tests for file move operations with existing destination files.
 /// Validates the fix for Priority 3 (v1.0.7) - File Already Exists During Move.
 /// </summary>
+[Collection("Database Tests")]
 public class FileMoveExistingDestinationTests : IDisposable
 {
     private readonly ServiceProvider _serviceProvider;
     private readonly MediaButlerDbContext _context;
     private readonly string _testSourceDir;
     private readonly string _testTargetDir;
+    private readonly IFileOperationService _fileOperationService;
 
     public FileMoveExistingDestinationTests()
     {
@@ -32,10 +41,32 @@ public class FileMoveExistingDestinationTests : IDisposable
 
         // Register services
         services.AddScoped<IFileOperationService, FileOperationService>();
+        services.AddScoped<IFileService, FileService>();
+        services.AddScoped<IStatsService, StatsService>();
+        services.AddScoped<IRollbackService, RollbackService>();
+        services.AddScoped<IErrorClassificationService, ErrorClassificationService>();
+        services.AddScoped<IOrganizationStateService, OrganizationStateService>();
+        services.AddScoped<IOrganizationValidator, MediaButler.Services.Validation.OrganizationValidator>();
+        services.AddScoped<INotificationService, NotificationService>();
+        services.AddScoped<ITrackedFileRepository, TrackedFileRepository>();
+        services.AddScoped<IFileOrganizationStateRepository, FileOrganizationStateRepository>();
+        services.AddScoped<IUnitOfWork, UnitOfWorkImpl>();
+        
+        // Add minimal configuration
+        var configDict = new Dictionary<string, string?>
+        {
+            ["MediaButler:FileDiscovery:WatchFolders:0"] = "/tmp/test",
+            ["MediaButler:ML:ActiveModelVersion"] = "1.0.0"
+        };
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(configDict).Build();
+        services.AddSingleton<IConfiguration>(configuration);
+        services.AddSingleton<MediaButler.Core.Configuration.IMediaButlerConfiguration, MediaButler.Services.Configuration.MediaButlerConfiguration>();
+
         services.AddLogging(builder => builder.AddDebug());
 
         _serviceProvider = services.BuildServiceProvider();
         _context = _serviceProvider.GetRequiredService<MediaButlerDbContext>();
+        _fileOperationService = _serviceProvider.GetRequiredService<IFileOperationService>();
 
         // Create temporary test directories
         _testSourceDir = Path.Combine(Path.GetTempPath(), $"MediaButler_Source_{Guid.NewGuid()}");
@@ -55,11 +86,21 @@ public class FileMoveExistingDestinationTests : IDisposable
         await File.WriteAllTextAsync(sourceFile, identicalContent);
         await File.WriteAllTextAsync(targetFile, identicalContent);
 
-        using var scope = _serviceProvider.CreateScope();
-        var fileOperationService = scope.ServiceProvider.GetRequiredService<IFileOperationService>();
+        // Calculate hash and register in database
+        var hash = await CalculateHashAsync(sourceFile);
+        var trackedFileEntity = new TrackedFile
+        {
+            Hash = hash,
+            FileName = Path.GetFileName(sourceFile),
+            OriginalPath = sourceFile,
+            Status = FileStatus.New
+        };
+        _context.TrackedFiles.Add(trackedFileEntity);
+        await _context.SaveChangesAsync();
 
-        // Act - Move file to existing destination
-        var result = await fileOperationService.MoveFileAsync(sourceFile, _testTargetDir);
+        // Act - Move
+        var targetFilePath = Path.Combine(_testTargetDir, Path.GetFileName(sourceFile));
+        var result = await _fileOperationService.MoveFileAsync(hash, targetFilePath);
 
         // Assert - Source deleted, target preserved
         result.IsSuccess.Should().BeTrue();
@@ -80,11 +121,21 @@ public class FileMoveExistingDestinationTests : IDisposable
         await File.WriteAllTextAsync(sourceFile, "Source video content - different from target");
         await File.WriteAllTextAsync(targetFile, "Target video content - different from source");
 
-        using var scope = _serviceProvider.CreateScope();
-        var fileOperationService = scope.ServiceProvider.GetRequiredService<IFileOperationService>();
+        // Calculate hash and register in database
+        var hash = await CalculateHashAsync(sourceFile);
+        var trackedFileEntity = new TrackedFile
+        {
+            Hash = hash,
+            FileName = Path.GetFileName(sourceFile),
+            OriginalPath = sourceFile,
+            Status = FileStatus.New
+        };
+        _context.TrackedFiles.Add(trackedFileEntity);
+        await _context.SaveChangesAsync();
 
-        // Act - Move file to existing destination
-        var result = await fileOperationService.MoveFileAsync(sourceFile, _testTargetDir);
+        // Act - Move
+        var targetFilePath = Path.Combine(_testTargetDir, Path.GetFileName(sourceFile));
+        var result = await _fileOperationService.MoveFileAsync(hash, targetFilePath);
 
         // Assert - Source moved with renamed target
         result.IsSuccess.Should().BeTrue();
@@ -113,11 +164,21 @@ public class FileMoveExistingDestinationTests : IDisposable
         await File.WriteAllTextAsync(targetFile1, "Target content - version 2");
         await File.WriteAllTextAsync(targetFile2, "Target content - version 3");
 
-        using var scope = _serviceProvider.CreateScope();
-        var fileOperationService = scope.ServiceProvider.GetRequiredService<IFileOperationService>();
+        // Calculate hash and register in database
+        var hash = await CalculateHashAsync(sourceFile);
+        var trackedFileEntity = new TrackedFile
+        {
+            Hash = hash,
+            FileName = Path.GetFileName(sourceFile),
+            OriginalPath = sourceFile,
+            Status = FileStatus.New
+        };
+        _context.TrackedFiles.Add(trackedFileEntity);
+        await _context.SaveChangesAsync();
 
         // Act - Move file with multiple existing versions
-        var result = await fileOperationService.MoveFileAsync(sourceFile, _testTargetDir);
+        var targetFilePath = Path.Combine(_testTargetDir, Path.GetFileName(sourceFile));
+        var result = await _fileOperationService.MoveFileAsync(hash, targetFilePath);
 
         // Assert - Source moved with _3 suffix
         result.IsSuccess.Should().BeTrue();
@@ -145,11 +206,21 @@ public class FileMoveExistingDestinationTests : IDisposable
         await File.WriteAllTextAsync(sourceMetadata, "Metadata content");
         await File.WriteAllTextAsync(targetVideo, "Different video content");
 
-        using var scope = _serviceProvider.CreateScope();
-        var fileOperationService = scope.ServiceProvider.GetRequiredService<IFileOperationService>();
+        // Calculate hash and register in database
+        var hash = await CalculateHashAsync(sourceVideo);
+        var trackedFileEntity = new TrackedFile
+        {
+            Hash = hash,
+            FileName = Path.GetFileName(sourceVideo),
+            OriginalPath = sourceVideo,
+            Status = FileStatus.New
+        };
+        _context.TrackedFiles.Add(trackedFileEntity);
+        await _context.SaveChangesAsync();
 
         // Act - Move video file (should also move related files)
-        var result = await fileOperationService.MoveFileAsync(sourceVideo, _testTargetDir);
+        var targetFilePath = Path.Combine(_testTargetDir, Path.GetFileName(sourceVideo));
+        var result = await _fileOperationService.MoveFileAsync(hash, targetFilePath);
 
         // Assert - All files moved with correct suffix
         result.IsSuccess.Should().BeTrue();
@@ -180,11 +251,29 @@ public class FileMoveExistingDestinationTests : IDisposable
         }
 
         // Act - Move all files concurrently to same target directory
-        var moveTasks = sourcePaths.Select(async sourcePath =>
+        var moveTasks = sourcePaths.Select(async (sourcePath, index) =>
         {
+            // Stagger starts to prevent SQLite locking
+            await Task.Delay(index * 30);
+
             using var scope = _serviceProvider.CreateScope();
             var fileOperationService = scope.ServiceProvider.GetRequiredService<IFileOperationService>();
-            return await fileOperationService.MoveFileAsync(sourcePath, _testTargetDir);
+            var context = scope.ServiceProvider.GetRequiredService<MediaButlerDbContext>();
+            
+            // Calculate hash and register in database
+            var hash = await CalculateHashAsync(sourcePath);
+            var trackedFileEntity = new TrackedFile
+            {
+                Hash = hash,
+                FileName = Path.GetFileName(sourcePath),
+                OriginalPath = sourcePath,
+                Status = FileStatus.New
+            };
+            context.TrackedFiles.Add(trackedFileEntity);
+            await context.SaveChangesAsync();
+
+            var targetFilePath = Path.Combine(_testTargetDir, Path.GetFileName(sourcePath));
+            return await fileOperationService.MoveFileAsync(hash, targetFilePath);
         }).ToList();
 
         var results = await Task.WhenAll(moveTasks);
@@ -217,16 +306,34 @@ public class FileMoveExistingDestinationTests : IDisposable
             await File.WriteAllTextAsync(targetFile, $"Different content {i}");
         }
 
-        using var scope = _serviceProvider.CreateScope();
-        var fileOperationService = scope.ServiceProvider.GetRequiredService<IFileOperationService>();
+        // Calculate hash and register in database
+        var hash = await CalculateHashAsync(sourceFile);
+        var trackedFileEntity = new TrackedFile
+        {
+            Hash = hash,
+            FileName = Path.GetFileName(sourceFile),
+            OriginalPath = sourceFile,
+            Status = FileStatus.New
+        };
+        _context.TrackedFiles.Add(trackedFileEntity);
+        await _context.SaveChangesAsync();
 
         // Act - Try to move file when suffix limit reached
-        var result = await fileOperationService.MoveFileAsync(sourceFile, _testTargetDir);
+        var targetFilePath = Path.Combine(_testTargetDir, Path.GetFileName(sourceFile));
+        var result = await _fileOperationService.MoveFileAsync(hash, targetFilePath);
 
         // Assert - Should fail gracefully
         result.IsSuccess.Should().BeFalse("Should fail when suffix limit (100) is reached");
         result.Error.Should().Contain("suffix", "Error message should mention suffix limit");
         File.Exists(sourceFile).Should().BeTrue("Source file should remain when move fails");
+    }
+
+    private async Task<string> CalculateHashAsync(string filePath)
+    {
+        using var stream = File.OpenRead(filePath);
+        using var sha256 = System.Security.Cryptography.SHA256.Create();
+        var hashBytes = await sha256.ComputeHashAsync(stream);
+        return Convert.ToHexString(hashBytes).ToLowerInvariant();
     }
 
     public void Dispose()

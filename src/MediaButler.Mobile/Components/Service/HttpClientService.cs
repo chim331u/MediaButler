@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using MediaButler.Mobile.Components.Interfaces;
 using MediaButler.Mobile.Models;
+using MediaButler.Shared.UI.Models;
 
 namespace MediaButler.Mobile.Components.Service;
 

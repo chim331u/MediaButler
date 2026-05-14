@@ -29,6 +29,7 @@ public abstract class ApiTestBase : IClassFixture<MediaButlerWebApplicationFacto
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
             WriteIndented = true
         };
+        JsonOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
     }
 
     /// <summary>

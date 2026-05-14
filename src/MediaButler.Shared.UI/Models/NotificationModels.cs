@@ -1,4 +1,7 @@
-namespace MediaButler.Web.Models;
+using System;
+using System.Collections.Generic;
+
+namespace MediaButler.Shared.UI.Models;
 
 /// <summary>
 /// File discovery notification data

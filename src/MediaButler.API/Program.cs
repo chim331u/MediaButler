@@ -270,8 +270,16 @@ using (var scope = app.Services.CreateScope())
     var context = scope.ServiceProvider.GetRequiredService<MediaButlerDbContext>();
     try
     {
-        await context.Database.MigrateAsync();
-        Log.Information("Database migration completed successfully");
+        if (context.Database.IsRelational())
+        {
+            await context.Database.MigrateAsync();
+            Log.Information("Database migration completed successfully");
+        }
+        else
+        {
+            await context.Database.EnsureCreatedAsync();
+            Log.Information("Database created successfully (non-relational)");
+        }
     }
     catch (Exception ex)
     {

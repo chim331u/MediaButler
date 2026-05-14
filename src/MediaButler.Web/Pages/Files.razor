@@ -1120,9 +1120,9 @@
         try
         {
             // Create the batch organize request
-            var batchRequest = new MediaButler.Web.Services.BatchOrganizeRequestDto
+            var batchRequest = new MediaButler.Shared.UI.Models.BatchOrganizeRequestDto
             {
-                Files = filesToMove.Select(f => new MediaButler.Web.Services.FileActionDto
+                Files = filesToMove.Select(f => new MediaButler.Shared.UI.Models.FileActionDto
                 {
                     Hash = f.Hash!,
                     ConfirmedCategory = f.FileCategory!,

@@ -1,19 +1,14 @@
 using MediaButler.Core.Enums;
-using MediaButler.Mobile.Components.Interfaces;
 using MediaButler.Mobile.Models;
+using MediaButler.Shared.UI.Models;
+using MediaButler.Shared.UI.Models;
+using MediaButler.Shared.UI.Services;
+using MediaButler.Mobile.Components.Interfaces;
 
 namespace MediaButler.Mobile.Components.Service;
 
 /// <summary>
-/// Files API service following "Simple Made Easy" principles.
-/// Single responsibility: File management operations only.
-/// Composes with IHttpClientService without braiding concerns.
-/// </summary>
-
-/// <summary>
-/// Implementation of Files API service.
-/// No state - each request is independent.
-/// Values over exceptions - returns explicit Results.
+/// Implementation of Files API service for Mobile.
 /// </summary>
 public class FilesApiService : IFilesApiService
 {
@@ -50,7 +45,7 @@ public class FilesApiService : IFilesApiService
 
             if (!result.IsSuccess)
             {
-                return Result<IReadOnlyList<FileManagementDto>>.Failure(result.Error, result.StatusCode ?? 0);
+                return Result<IReadOnlyList<FileManagementDto>>.Failure(result.Error, result.StatusCode);
             }
 
             var files = result.Value?.Select(MapToFileManagementDto).ToList() ?? new List<FileManagementDto>();
@@ -103,7 +98,7 @@ public class FilesApiService : IFilesApiService
 
             if (!result.IsSuccess)
             {
-                return Result<PaginatedFilesDto>.Failure(result.Error, result.StatusCode ?? 0);
+                return Result<PaginatedFilesDto>.Failure(result.Error, result.StatusCode);
             }
 
             var response = result.Value;
@@ -138,7 +133,7 @@ public class FilesApiService : IFilesApiService
 
             if (!result.IsSuccess)
             {
-                return Result<FileManagementDto>.Failure(result.Error, result.StatusCode ?? 0);
+                return Result<FileManagementDto>.Failure(result.Error, result.StatusCode);
             }
 
             var file = MapToFileManagementDto(result.Value!);
@@ -159,7 +154,7 @@ public class FilesApiService : IFilesApiService
 
             if (!result.IsSuccess)
             {
-                return Result<IReadOnlyList<FileManagementDto>>.Failure(result.Error, result.StatusCode ?? 0);
+                return Result<IReadOnlyList<FileManagementDto>>.Failure(result.Error, result.StatusCode);
             }
 
             var files = result.Value?.Select(MapToFileManagementDto).ToList() ?? new List<FileManagementDto>();
@@ -181,7 +176,7 @@ public class FilesApiService : IFilesApiService
 
             if (!result.IsSuccess)
             {
-                return Result<IReadOnlyList<FileManagementDto>>.Failure(result.Error, result.StatusCode ?? 0);
+                return Result<IReadOnlyList<FileManagementDto>>.Failure(result.Error, result.StatusCode);
             }
 
             var files = result.Value?.Select(MapToFileManagementDto).ToList() ?? new List<FileManagementDto>();
@@ -205,7 +200,7 @@ public class FilesApiService : IFilesApiService
 
             if (!result.IsSuccess)
             {
-                return Result<FileManagementDto>.Failure(result.Error, result.StatusCode ?? 0);
+                return Result<FileManagementDto>.Failure(result.Error, result.StatusCode);
             }
 
             var file = MapToFileManagementDto(result.Value!);
@@ -229,7 +224,7 @@ public class FilesApiService : IFilesApiService
 
             if (!result.IsSuccess)
             {
-                return Result<FileManagementDto>.Failure(result.Error, result.StatusCode ?? 0);
+                return Result<FileManagementDto>.Failure(result.Error, result.StatusCode);
             }
 
             var file = MapToFileManagementDto(result.Value!);
@@ -248,17 +243,11 @@ public class FilesApiService : IFilesApiService
     {
         try
         {
-            object? request = null;
-            if (!string.IsNullOrWhiteSpace(reason))
-            {
-                request = new { Reason = reason };
-            }
-
             var result = await _httpClient.DeleteAsync($"/api/files/{hash}", cancellationToken);
 
             if (!result.IsSuccess)
             {
-                return Result.Failure(result.Error, result.StatusCode ?? 0);
+                return Result.Failure(result.Error, result.StatusCode);
             }
 
             return Result.Success();
@@ -278,7 +267,7 @@ public class FilesApiService : IFilesApiService
 
             if (!result.IsSuccess)
             {
-                return Result<ScanResultDto>.Failure(result.Error, result.StatusCode ?? 0);
+                return Result<ScanResultDto>.Failure(result.Error, result.StatusCode);
             }
 
             var scanResult = MapToScanResultDto(result.Value!);
@@ -301,7 +290,7 @@ public class FilesApiService : IFilesApiService
 
             if (!result.IsSuccess)
             {
-                return Result<ScanResultDto>.Failure(result.Error, result.StatusCode ?? 0);
+                return Result<ScanResultDto>.Failure(result.Error, result.StatusCode);
             }
 
             var scanResult = MapToScanResultDto(result.Value!);
@@ -323,7 +312,7 @@ public class FilesApiService : IFilesApiService
 
             if (!result.IsSuccess)
             {
-                return Result<BatchJobResponseDto>.Failure(result.Error, result.StatusCode ?? 0);
+                return Result<BatchJobResponseDto>.Failure(result.Error, result.StatusCode);
             }
 
             var batchJob = MapToBatchJobResponseDto(result.Value!);
@@ -347,7 +336,7 @@ public class FilesApiService : IFilesApiService
 
             if (!result.IsSuccess)
             {
-                return Result<BatchJobResponseDto>.Failure(result.Error, result.StatusCode ?? 0);
+                return Result<BatchJobResponseDto>.Failure(result.Error, result.StatusCode);
             }
 
             var batchJob = MapToBatchJobResponseDto(result.Value!);
@@ -368,7 +357,7 @@ public class FilesApiService : IFilesApiService
 
             if (!result.IsSuccess)
             {
-                return Result<IReadOnlyList<string>>.Failure(result.Error, result.StatusCode ?? 0);
+                return Result<IReadOnlyList<string>>.Failure(result.Error, result.StatusCode);
             }
 
             var categories = result.Value?.ToList() ?? new List<string>();
@@ -395,7 +384,7 @@ public class FilesApiService : IFilesApiService
 
             if (!result.IsSuccess)
             {
-                return Result<object>.Failure(result.Error, result.StatusCode ?? 0);
+                return Result<object>.Failure(result.Error, result.StatusCode);
             }
 
             return Result<object>.Success(result.Value ?? new object());
@@ -426,7 +415,7 @@ public class FilesApiService : IFilesApiService
 
             if (!result.IsSuccess)
             {
-                return Result<MlEvaluationResponse>.Failure(result.Error, result.StatusCode ?? 0);
+                return Result<MlEvaluationResponse>.Failure(result.Error, result.StatusCode);
             }
 
             return Result<MlEvaluationResponse>.Success(result.Value!);
@@ -437,15 +426,11 @@ public class FilesApiService : IFilesApiService
         }
     }
 
-    /// <summary>
-    /// Maps API response to FileManagementDto.
-    /// Pure function - deterministic mapping logic.
-    /// </summary>
     private static FileManagementDto MapToFileManagementDto(TrackedFileResponse file)
     {
         return new FileManagementDto
         {
-            Id = file.Hash.GetHashCode(), // Generate ID from hash since API doesn't return numeric ID
+            Id = file.Hash.GetHashCode(),
             Name = file.FileName,
             FileSize = file.FileSize,
             FileCategory = file.Category ?? file.SuggestedCategory,
@@ -459,10 +444,6 @@ public class FilesApiService : IFilesApiService
         };
     }
 
-    /// <summary>
-    /// Maps API response to ScanResultDto.
-    /// Pure function - deterministic mapping logic.
-    /// </summary>
     private static ScanResultDto MapToScanResultDto(ScanResult scanResult)
     {
         return new ScanResultDto
@@ -477,10 +458,6 @@ public class FilesApiService : IFilesApiService
         };
     }
 
-    /// <summary>
-    /// Maps API response to BatchJobResponseDto.
-    /// Pure function - deterministic mapping logic.
-    /// </summary>
     private static BatchJobResponseDto MapToBatchJobResponseDto(BatchJobResponse batchJob)
     {
         return new BatchJobResponseDto
@@ -502,10 +479,6 @@ public class FilesApiService : IFilesApiService
         };
     }
 
-    /// <summary>
-    /// Maps API response to FileProcessingResultDto.
-    /// Pure function - deterministic mapping logic.
-    /// </summary>
     private static FileProcessingResultDto MapToFileProcessingResultDto(FileProcessingResult result)
     {
         return new FileProcessingResultDto
@@ -524,41 +497,22 @@ public class FilesApiService : IFilesApiService
     }
 }
 
-// ============================================================================
-// API Response Models (for deserialization only - not exposed in public API)
-// ============================================================================
-
-/// <summary>
-/// API response model for TrackedFile (used for deserialization only).
-/// </summary>
 internal class TrackedFileResponse
 {
     public required string Hash { get; set; }
     public required string FileName { get; set; }
     public required string OriginalPath { get; set; }
     public long FileSize { get; set; }
-    public string? FormattedFileSize { get; set; }
     public string Status { get; set; } = string.Empty;
     public string? StatusDescription { get; set; }
     public string? SuggestedCategory { get; set; }
     public double? ConfidencePercentage { get; set; }
-    public string? ConfidenceLevel { get; set; }
     public string? Category { get; set; }
     public string? TargetPath { get; set; }
     public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
     public DateTime? ClassifiedAt { get; set; }
-    public DateTime? MovedAt { get; set; }
-    public string? LastError { get; set; }
-    public DateTime? LastErrorAt { get; set; }
-    public int RetryCount { get; set; }
-    public bool RequiresAttention { get; set; }
-    public double? ProcessingDurationMs { get; set; }
 }
 
-/// <summary>
-/// API response model for ScanResult (used for deserialization only).
-/// </summary>
 internal class ScanResult
 {
     public int FilesDiscovered { get; set; }
@@ -570,14 +524,11 @@ internal class ScanResult
     public double ScanDurationMs { get; set; }
 }
 
-/// <summary>
-/// API response model for BatchJobResponse (used for deserialization only).
-/// </summary>
 internal class BatchJobResponse
 {
     public required string JobId { get; set; }
-    public required string Status { get; set; } = "Queued";
-    public DateTime QueuedAt { get; set; } = DateTime.UtcNow;
+    public required string Status { get; set; }
+    public DateTime QueuedAt { get; set; }
     public DateTime? StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
     public int TotalFiles { get; set; }
@@ -591,9 +542,6 @@ internal class BatchJobResponse
     public List<FileProcessingResult>? DetailedResults { get; set; }
 }
 
-/// <summary>
-/// API response model for PaginatedFilesResponse (used for deserialization only).
-/// </summary>
 internal class PaginatedFilesResponse
 {
     public List<TrackedFileResponse> Items { get; set; } = new();
@@ -602,9 +550,6 @@ internal class PaginatedFilesResponse
     public int Take { get; set; }
 }
 
-/// <summary>
-/// API response model for FileProcessingResult (used for deserialization only).
-/// </summary>
 internal class FileProcessingResult
 {
     public required string FileHash { get; set; }
@@ -615,6 +560,6 @@ internal class FileProcessingResult
     public string? Error { get; set; }
     public TimeSpan? ProcessingTime { get; set; }
     public bool IsDryRun { get; set; }
-    public DateTime ProcessedAt { get; set; } = DateTime.UtcNow;
+    public DateTime ProcessedAt { get; set; }
     public Dictionary<string, object>? Metadata { get; set; }
 }

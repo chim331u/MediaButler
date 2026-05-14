@@ -1,5 +1,6 @@
 using MediaButler.Web.Interfaces;
 using MediaButler.Web.Models;
+using MediaButler.Shared.UI.Models;
 using System.Text.Json.Serialization;
 
 namespace MediaButler.Web.Services;

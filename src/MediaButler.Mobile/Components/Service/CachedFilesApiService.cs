@@ -1,5 +1,7 @@
 using MediaButler.Mobile.Components.Interfaces;
 using MediaButler.Mobile.Models;
+using MediaButler.Shared.UI.Models;
+using MediaButler.Shared.UI.Services;
 using MediaButler.Core.Enums;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;

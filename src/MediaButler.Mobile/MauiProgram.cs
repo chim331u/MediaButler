@@ -1,7 +1,8 @@
-﻿using MediaButler.Mobile.Components.Interfaces;
 using MediaButler.Mobile.Components.Interfaces;
 using MediaButler.Mobile.Components.Service;
+using MediaButler.Shared.UI.Services;
 using MediaButler.Mobile.Models;
+using MediaButler.Shared.UI.Models;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;

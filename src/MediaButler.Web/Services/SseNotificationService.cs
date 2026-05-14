@@ -1,6 +1,9 @@
 using Microsoft.Extensions.Options;
 using Microsoft.JSInterop;
 using MediaButler.Web.Models;
+using MediaButler.Shared.UI.Models;
+using MediaButler.Shared.UI.Services;
+using Microsoft.Extensions.Logging;
 using System.Text.Json;
 using System.Collections.Concurrent;
 
@@ -35,7 +38,7 @@ public class SseNotificationService : ISseNotificationService, IAsyncDisposable
         _apiSettings = apiSettings.Value;
     }
 
-    public async Task StartAsync()
+    public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         if (_dotnetRef == null)
         {
@@ -187,14 +190,22 @@ public class SseNotificationService : ISseNotificationService, IAsyncDisposable
         }
     }
 
+    // ISseNotificationService implementation
+    private Action<int, string, MoveFilesResults>? _onFileProcessed;
+    private Action<string, MoveFilesResults>? _onJobCompleted;
+    private Action<string, decimal>? _onNotification;
+
+    public void OnFileProcessed(Action<int, string, MoveFilesResults> handler) => _onFileProcessed = handler;
+    public void OnJobCompleted(Action<string, MoveFilesResults> handler) => _onJobCompleted = handler;
+    public void OnNotification(Action<string, decimal> handler) => _onNotification = handler;
+
     private void NotifyFileProcessing(string eventName, string json)
     {
+         // Generic processing
          if (_handlers.TryGetValue("FileProcessing", out var handlers))
          {
-             // Map various events to the generic (status, details) signature expected by UI
              string status = eventName;
-             string details = json; // Default to raw JSON for details
-
+             string details = json;
              try 
              {
                  using var doc = JsonDocument.Parse(json);
@@ -202,40 +213,67 @@ public class SseNotificationService : ISseNotificationService, IAsyncDisposable
                  {
                      details = msgProp.GetString() ?? "";
                  }
-                 else if (doc.RootElement.TryGetProperty("status", out var statusProp))
-                 {
-                    // MoveFileNotification case
-                     status = statusProp.GetString() ?? status;
-                 }
              }
              catch {}
 
              foreach (var handler in handlers)
              {
-                 // Signature: hash(fake), status, details
                  ((Action<string, string, string>)handler)("", status, details);
              }
+         }
+
+         // New interface processing
+         try 
+         {
+             using var doc = JsonDocument.Parse(json);
+             var root = doc.RootElement;
+             
+             if (eventName == "MoveFileNotification")
+             {
+                 var fileId = root.TryGetProperty("fileId", out var idProp) ? idProp.GetInt32() : 0;
+                 var resultText = root.TryGetProperty("message", out var msgProp) ? msgProp.GetString() ?? "" : "";
+                 var result = root.TryGetProperty("status", out var statusProp) && statusProp.GetString() == "Success" 
+                     ? MoveFilesResults.Moved : MoveFilesResults.Failed;
+                 
+                 _onFileProcessed?.Invoke(fileId, resultText, result);
+             }
+             else if (eventName == "BatchCompleted")
+             {
+                 var resultText = root.TryGetProperty("message", out var msgProp) ? msgProp.GetString() ?? "" : "Batch completed";
+                 _onJobCompleted?.Invoke(resultText, MoveFilesResults.Completed);
+             }
+             else if (eventName == "BatchFailed")
+             {
+                 var resultText = root.TryGetProperty("message", out var msgProp) ? msgProp.GetString() ?? "" : "Batch failed";
+                 _onJobCompleted?.Invoke(resultText, MoveFilesResults.Failed);
+             }
+         }
+         catch (Exception ex)
+         {
+             _logger.LogError(ex, "Error parsing SSE for shared interface");
          }
     }
 
     private void NotifyJobProgress(string json)
     {
-        if (_handlers.TryGetValue("JobProgress", out var handlers))
+        try
         {
-            try
-            {
-                var data = JsonSerializer.Deserialize<JsonElement>(json);
-                var jobType = data.GetProperty("jobType").GetString() ?? "";
-                var message = data.GetProperty("message").GetString() ?? "";
-                var progress = data.GetProperty("progress").GetInt32();
+            var data = JsonSerializer.Deserialize<JsonElement>(json);
+            var message = data.TryGetProperty("message", out var msgProp) ? msgProp.GetString() ?? "" : "";
+            var progress = data.TryGetProperty("progress", out var progProp) ? progProp.GetDecimal() : 0;
 
+            _onNotification?.Invoke(message, progress);
+
+            if (_handlers.TryGetValue("JobProgress", out var handlers))
+            {
+                var jobType = data.TryGetProperty("jobType", out var typeProp) ? typeProp.GetString() ?? "" : "";
                 foreach (var handler in handlers)
                 {
-                    ((Action<string, string, int>)handler)(jobType, message, progress);
+                    ((Action<string, string, int>)handler)(jobType, message, (int)progress);
                 }
             }
-            catch {}
         }
+        catch {}
     }
 
     private void NotifySystemStatus(string json)

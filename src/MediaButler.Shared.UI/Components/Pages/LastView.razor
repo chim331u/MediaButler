@@ -1,0 +1,304 @@
+@page "/lastview"
+@using MediaButler.Shared.UI.Models
+@using MediaButler.Shared.UI.Services
+@using MediaButler.Core.Enums
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@inject IFilesApiService FilesApiService
+@inject ISseNotificationService SseService
+@inject TooltipService TooltipService
+@inject NotificationService NotificationService
+@implements IAsyncDisposable
+
+<PageTitle>Last Moved Files - MediaButler</PageTitle>
+
+<style>
+    /* Shared Last View Styling - Responsive for Web and Mobile */
+    .last-view-container {
+        padding: 1rem;
+        max-width: 1400px;
+        margin: 0 auto;
+    }
+
+    .last-view-header {
+        background: linear-gradient(135deg, var(--rz-base) 0%, var(--rz-base-darker) 100%);
+        color: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        margin-bottom: 1rem;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+
+    .last-view-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .search-section {
+        background: var(--rz-background-color-alt);
+        padding: 1rem;
+        border: 1px solid var(--rz-border-color);
+        border-radius: 12px;
+        margin-bottom: 1rem;
+    }
+
+    .category-group {
+        background: var(--rz-background-color);
+        border: 1px solid var(--rz-border-color);
+        border-radius: 12px;
+        margin-bottom: 1rem;
+        overflow: hidden;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    }
+
+    .category-header {
+        background: var(--rz-base-lighter);
+        color: var(--rz-text-color);
+        padding: 1rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-weight: 600;
+    }
+
+    .file-row {
+        padding: 1rem;
+        border-top: 1px solid var(--rz-border-color-light);
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    @@media (min-width: 768px) {
+        .file-row {
+            flex-direction: row;
+            align-items: center;
+            gap: 1rem;
+        }
+    }
+
+    .file-info {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .file-name {
+        font-size: 0.95rem;
+        font-weight: 500;
+        word-break: break-word;
+    }
+
+    .file-path {
+        font-size: 0.75rem;
+        color: var(--rz-text-color-secondary);
+        font-family: monospace;
+    }
+
+    .file-actions {
+        display: flex;
+        gap: 8px;
+    }
+</style>
+
+<div class="last-view-container">
+    <div class="last-view-header">
+        <h1 class="last-view-title">
+            <RadzenIcon Icon="history" />
+            Recently Moved Files
+        </h1>
+    </div>
+
+    <div class="search-section">
+        <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
+            <RadzenTextBox Placeholder="Search..." @bind-Value="@_searchText" @oninput="OnSearchInput" Style="width: 100%;" />
+            <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center">
+                <RadzenText Text="@($"{_totalFiles} items in {_categoryGroups.Count} categories")" TextStyle="TextStyle.Caption" />
+                <RadzenButton Icon="refresh" Click="RefreshData" Disabled="@_isLoading" ButtonStyle="ButtonStyle.Secondary" Variant="Variant.Flat" Size="ButtonSize.Small" />
+            </RadzenStack>
+        </RadzenStack>
+    </div>
+
+    @if (_isLoading)
+    {
+        <RadzenStack AlignItems="AlignItems.Center" Class="rz-p-12">
+            <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+        </RadzenStack>
+    }
+    else if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true">@_errorMessage</RadzenAlert>
+    }
+    else if (!_filteredGroups.Any())
+    {
+        <RadzenStack AlignItems="AlignItems.Center" Class="rz-p-12">
+            <RadzenIcon Icon="folder_open" Style="font-size: 3rem; opacity: 0.2;" />
+            <RadzenText Text="No files found" TextStyle="TextStyle.H6" />
+        </RadzenStack>
+    }
+    else
+    {
+        @foreach (var group in _filteredGroups.Take(20))
+        {
+            <div class="category-group">
+                <div class="category-header" @onclick="() => ToggleCategoryExpansion(group.Key)">
+                    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                        <RadzenText Text="@group.Key" TextStyle="TextStyle.Subtitle1" Style="margin: 0; font-weight: bold;" />
+                        <RadzenBadge BadgeStyle="BadgeStyle.Secondary" Text="@group.Value.Count.ToString()" />
+                    </RadzenStack>
+                    <RadzenIcon Icon="@(IsCategoryExpanded(group.Key) ? "expand_less" : "expand_more")" />
+                </div>
+
+                @if (IsCategoryExpanded(group.Key))
+                {
+                    <div class="category-files">
+                        @foreach (var file in group.Value)
+                        {
+                            <div class="file-row">
+                                <div class="file-info">
+                                    <div class="file-name">@file.Name</div>
+                                    <div class="file-path">@file.TargetPath</div>
+                                </div>
+                                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem" JustifyContent="JustifyContent.End">
+                                    <RadzenText Text="@FormatFileSize(file.FileSize)" TextStyle="TextStyle.Caption" />
+                                    <div class="file-actions">
+                                        <RadzenButton Icon="folder_open" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="() => OpenFileLocation(file)" />
+                                        <RadzenButton Icon="visibility_off" ButtonStyle="ButtonStyle.Secondary" Size="ButtonSize.Small" Click="() => IgnoreFile(file)" />
+                                    </div>
+                                </RadzenStack>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private Dictionary<string, List<FileManagementDto>> _categoryGroups = new();
+    private Dictionary<string, List<FileManagementDto>> _filteredGroups = new();
+    private HashSet<string> _expandedCategories = new();
+    private string _searchText = string.Empty;
+    private bool _isLoading = true;
+    private string? _errorMessage;
+    private int _totalFiles;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+        SseService.OnNotification((msg, prog) => InvokeAsync(StateHasChanged));
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            _isLoading = true;
+            _errorMessage = null;
+            StateHasChanged();
+
+            var result = await FilesApiService.GetFilesByStatusesAsync(
+                skip: 0,
+                take: 100,
+                statuses: new[] { FileStatus.Moved });
+
+            if (result.IsSuccess && result.Value != null)
+            {
+                _categoryGroups = result.Value.Items
+                    .GroupBy(f => f.FileCategory ?? "Uncategorized")
+                    .ToDictionary(g => g.Key, g => g.ToList());
+                
+                _totalFiles = result.Value.Items.Count;
+                ApplySearchFilter();
+            }
+            else
+            {
+                _errorMessage = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ApplySearchFilter()
+    {
+        if (string.IsNullOrWhiteSpace(_searchText))
+        {
+            _filteredGroups = new Dictionary<string, List<FileManagementDto>>(_categoryGroups);
+        }
+        else
+        {
+            var search = _searchText.ToLowerInvariant();
+            _filteredGroups = _categoryGroups
+                .Select(g => new { g.Key, Files = g.Value.Where(f => f.Name.ToLowerInvariant().Contains(search) || g.Key.ToLowerInvariant().Contains(search)).ToList() })
+                .Where(g => g.Files.Any())
+                .ToDictionary(g => g.Key, g => g.Files);
+        }
+    }
+
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        _searchText = e.Value?.ToString() ?? string.Empty;
+        ApplySearchFilter();
+    }
+
+    private void ToggleCategoryExpansion(string category)
+    {
+        if (_expandedCategories.Contains(category))
+            _expandedCategories.Remove(category);
+        else
+            _expandedCategories.Add(category);
+    }
+
+    private bool IsCategoryExpanded(string category) => _expandedCategories.Contains(category);
+
+    private async Task RefreshData() => await LoadData();
+
+    private string FormatFileSize(long bytes)
+    {
+        string[] units = { "B", "KB", "MB", "GB", "TB" };
+        int unitIndex = 0;
+        double size = bytes;
+        while (size >= 1024 && unitIndex < units.Length - 1)
+        {
+            size /= 1024;
+            unitIndex++;
+        }
+        return $"{size:F1} {units[unitIndex]}";
+    }
+
+    private async Task OpenFileLocation(FileManagementDto file)
+    {
+        NotificationService.Notify(new NotificationMessage { Summary = "Location", Detail = file.TargetPath });
+        if (!string.IsNullOrEmpty(file.TargetPath))
+        {
+            var dir = Path.GetDirectoryName(file.TargetPath);
+            if (!string.IsNullOrEmpty(dir))
+                await JSRuntime.InvokeVoidAsync("open", dir);
+        }
+    }
+
+    private async Task IgnoreFile(FileManagementDto file)
+    {
+        var result = await FilesApiService.IgnoreFileAsync(file.Hash ?? "");
+        if (result.IsSuccess)
+        {
+            NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Success, Summary = "Ignored" });
+            await LoadData();
+        }
+    }
+
+    public async ValueTask DisposeAsync() { await Task.CompletedTask; }
+}

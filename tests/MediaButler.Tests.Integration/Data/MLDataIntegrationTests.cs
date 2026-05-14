@@ -147,8 +147,8 @@ public class MLDataIntegrationTests : IntegrationTestBase
         var processLog = ProcessingLog.Info(
             testFile.Hash,
             "ML_Classification",
+            "Processing completed successfully",
             $"Classified as '{result.PredictedCategory}' with confidence {result.Confidence:F2}",
-            $"Processing completed successfully",
             150
         );
         
@@ -259,6 +259,11 @@ public class MLDataIntegrationTests : IntegrationTestBase
                     file.Confidence = (decimal)result.Confidence;
                     file.Status = FileStatus.Classified;
                     file.MarkAsModified();
+                }
+                else
+                {
+                    // For debugging: show why it failed
+                    throw new InvalidOperationException($"Classification failed for {file.FileName}: {classifyResult.Error}");
                 }
             }
             await Context.SaveChangesAsync();

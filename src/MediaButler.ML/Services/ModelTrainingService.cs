@@ -186,7 +186,7 @@ public class ModelTrainingService : IModelTrainingService
                 TrainingCompletedAt = DateTime.UtcNow,
                 TrainingDuration = stopwatch.Elapsed,
                 TrainingSampleCount = trainingData.Count(),
-                ModelVersion = 0
+                ModelVersion = 1
             };
 
             // Store the trained model with schema for later saving

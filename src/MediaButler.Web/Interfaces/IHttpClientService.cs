@@ -1,4 +1,5 @@
 using MediaButler.Web.Models;
+using MediaButler.Shared.UI.Models;
 
 namespace MediaButler.Web.Interfaces;
 

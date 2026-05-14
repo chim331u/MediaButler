@@ -78,7 +78,7 @@ public class FilesEndpointTests : ApiTestBase
         file.GetProperty("hash").GetString().Should().Be(seededFile.Hash);
         file.GetProperty("fileName").GetString().Should().Be(seededFile.FileName);
         // Status is returned as numeric enum value, 0 = New
-        file.GetProperty("status").GetInt32().Should().Be(0);
+        file.GetProperty("status").GetString().Should().Be("New");
     }
 
     [Fact]
@@ -138,7 +138,7 @@ public class FilesEndpointTests : ApiTestBase
         
         var pendingFile = files.First();
         // Status is returned as numeric enum value, 2 = Classified
-        pendingFile.GetProperty("status").GetInt32().Should().Be(2);
+        pendingFile.GetProperty("status").GetString().Should().Be("Classified");
     }
 
     [Fact]
@@ -160,7 +160,7 @@ public class FilesEndpointTests : ApiTestBase
         foreach (var file in files)
         {
             // Status is returned as numeric enum value, 0 = New
-            file.GetProperty("status").GetInt32().Should().Be(0);
+            file.GetProperty("status").GetString().Should().Be("New");
         }
     }
 
@@ -209,7 +209,7 @@ public class FilesEndpointTests : ApiTestBase
         var file = JsonSerializer.Deserialize<JsonElement>(content, JsonOptions);
         
         // Status is returned as numeric enum value, 3 = ReadyToMove
-        file.GetProperty("status").GetInt32().Should().Be(3);
+        file.GetProperty("status").GetString().Should().Be("ReadyToMove");
         file.GetProperty("category").GetString().Should().Be("CONFIRMED SERIES");
     }
 
@@ -258,7 +258,7 @@ public class FilesEndpointTests : ApiTestBase
         var file = JsonSerializer.Deserialize<JsonElement>(content, JsonOptions);
         
         // Status is returned as numeric enum value, 5 = Moved
-        file.GetProperty("status").GetInt32().Should().Be(5);
+        file.GetProperty("status").GetString().Should().Be("Moved");
         file.GetProperty("targetPath").GetString().Should().Be("/library/TEST_SERIES/Ready.To.Move.2023.1080p.mkv");
     }
 
@@ -330,7 +330,7 @@ public class FilesEndpointTests : ApiTestBase
         foreach (var file in files)
         {
             // Status is returned as numeric enum value, 0 = New
-            file.GetProperty("status").GetInt32().Should().Be(0);
+            file.GetProperty("status").GetString().Should().Be("New");
         }
     }
 
@@ -517,7 +517,7 @@ public class FilesEndpointTests : ApiTestBase
         var file = JsonSerializer.Deserialize<JsonElement>(content, JsonOptions);
 
         // Status is returned as numeric enum value, 8 = Ignored
-        file.GetProperty("status").GetInt32().Should().Be((int)FileStatus.Ignored);
+        file.GetProperty("status").GetString().Should().Be("Ignored");
     }
 
     [Fact]
@@ -540,7 +540,7 @@ public class FilesEndpointTests : ApiTestBase
         files.Should().HaveCountGreaterOrEqualTo(1);
         var ignoredFile = files.FirstOrDefault(f => f.GetProperty("hash").GetString() == seededFile.Hash);
         ignoredFile.ValueKind.Should().NotBe(JsonValueKind.Undefined);
-        ignoredFile.GetProperty("status").GetInt32().Should().Be((int)FileStatus.Ignored);
+        ignoredFile.GetProperty("status").GetString().Should().Be("Ignored");
     }
 
     #endregion

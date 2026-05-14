@@ -31,7 +31,7 @@ public class WorkflowTests : ApiTestBase
         
         var getContent = await getResponse.Content.ReadAsStringAsync();
         var retrievedFile = JsonSerializer.Deserialize<JsonElement>(getContent, JsonOptions);
-        retrievedFile.GetProperty("status").GetInt32().Should().Be(0); // 0 = New
+        retrievedFile.GetProperty("status").GetString().Should().Be("New");
 
         // Act & Assert - Step 2: Simulate classification by updating file status
         await Factory.SeedDatabaseAsync(context =>
@@ -52,7 +52,7 @@ public class WorkflowTests : ApiTestBase
         
         var confirmContent = await confirmResponse.Content.ReadAsStringAsync();
         var confirmedFile = JsonSerializer.Deserialize<JsonElement>(confirmContent, JsonOptions);
-        confirmedFile.GetProperty("status").GetInt32().Should().Be(3); // 3 = ReadyToMove
+        confirmedFile.GetProperty("status").GetString().Should().Be("ReadyToMove");
         confirmedFile.GetProperty("category").GetString().Should().Be("CONFIRMED MOVIES");
 
         // Act & Assert - Step 4: Mark as moved
@@ -62,7 +62,7 @@ public class WorkflowTests : ApiTestBase
         
         var moveContent = await moveResponse.Content.ReadAsStringAsync();
         var movedFile = JsonSerializer.Deserialize<JsonElement>(moveContent, JsonOptions);
-        movedFile.GetProperty("status").GetInt32().Should().Be(5); // 5 = Moved
+        movedFile.GetProperty("status").GetString().Should().Be("Moved");
         movedFile.GetProperty("targetPath").GetString().Should().Be("/library/CONFIRMED_MOVIES/Complete.Workflow.Test.2023.1080p.mkv");
 
         // Act & Assert - Step 5: Verify final state
@@ -71,7 +71,7 @@ public class WorkflowTests : ApiTestBase
         
         var finalContent = await finalResponse.Content.ReadAsStringAsync();
         var finalFile = JsonSerializer.Deserialize<JsonElement>(finalContent, JsonOptions);
-        finalFile.GetProperty("status").GetInt32().Should().Be(5); // 5 = Moved
+        finalFile.GetProperty("status").GetString().Should().Be("Moved");
         finalFile.GetProperty("category").GetString().Should().Be("CONFIRMED MOVIES");
     }
 
@@ -100,7 +100,7 @@ public class WorkflowTests : ApiTestBase
         var correctContent = await correctResponse.Content.ReadAsStringAsync();
         var correctedFile = JsonSerializer.Deserialize<JsonElement>(correctContent, JsonOptions);
         correctedFile.GetProperty("category").GetString().Should().Be("CORRECT SERIES");
-        correctedFile.GetProperty("status").GetInt32().Should().Be(3); // 3 = ReadyToMove
+        correctedFile.GetProperty("status").GetString().Should().Be("ReadyToMove");
     }
 
     [Fact]
@@ -369,7 +369,7 @@ public class WorkflowTests : ApiTestBase
         tasks.Add(Client.GetAsync("/api/health"));
         tasks.Add(Client.GetAsync("/api/files"));
         tasks.Add(Client.GetAsync("/api/stats/performance"));
-        tasks.Add(Client.GetAsync("/api/config/export"));
+        tasks.Add(Client.GetAsync("/api/system/memory"));
         
         // Act - Execute concurrent requests
         var responses = await Task.WhenAll(tasks);

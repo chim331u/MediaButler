@@ -4,6 +4,8 @@ using MediaButler.Web;
 using MediaButler.Web.Interfaces;
 using MediaButler.Web.Services;
 using MediaButler.Web.Models;
+using MediaButler.Shared.UI.Models;
+using MediaButler.Shared.UI.Services;
 using Radzen;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);

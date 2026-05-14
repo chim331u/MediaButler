@@ -26,7 +26,7 @@ public class ModelTrainingIntegrationTests : IntegrationTestBase
         var modelTrainingService = scope.ServiceProvider.GetRequiredService<IModelTrainingService>();
         var classificationService = scope.ServiceProvider.GetRequiredService<IClassificationService>();
 
-        var csvPath = Path.Combine(Directory.GetCurrentDirectory(), "../../../../data/training/tv-series-training-data.csv");
+        var csvPath = Path.Combine(Directory.GetCurrentDirectory(), "../../../../../data/training/tv-series-training-data.csv");
         var tempModelPath = Path.Combine(Path.GetTempPath(), $"test-model-{Guid.NewGuid()}.zip");
         var tempMetadataPath = Path.ChangeExtension(tempModelPath, ".meta.json");
 
@@ -46,13 +46,13 @@ public class ModelTrainingIntegrationTests : IntegrationTestBase
             };
 
             var importResult = await importer.ImportFromCsvAsync(csvPath, csvConfig);
-            importResult.IsSuccess.Should().BeTrue($"CSV import should succeed: {importResult.Error}");
+            importResult.IsSuccess.Should().BeTrue($"CSV import should succeed: {(importResult.IsSuccess ? "" : importResult.Error)}");
             importResult.Value.ImportedSamples.Should().HaveCountGreaterThan(50, "Should have sufficient training data");
 
             // Step 2: Train model with imported data
             var trainingConfig = TrainingConfig.CreateFast(); // Fast config for integration tests
             var trainResult = await modelTrainingService.TrainModelAsync(importResult.Value.ImportedSamples, trainingConfig);
-            trainResult.IsSuccess.Should().BeTrue($"Model training should succeed: {trainResult.Error}");
+            trainResult.IsSuccess.Should().BeTrue($"Model training should succeed: {(trainResult.IsSuccess ? "" : trainResult.Error)}");
 
             var trainedModelInfo = trainResult.Value;
             trainedModelInfo.Should().NotBeNull();
@@ -74,7 +74,7 @@ public class ModelTrainingIntegrationTests : IntegrationTestBase
                 }
             };
             var saveResult = await modelTrainingService.SaveModelAsync(trainedModelInfo, tempModelPath, metadata);
-            saveResult.IsSuccess.Should().BeTrue($"Model save should succeed: {saveResult.Error}");
+            saveResult.IsSuccess.Should().BeTrue($"Model save should succeed: {(saveResult.IsSuccess ? "" : saveResult.Error)}");
 
             var persistenceInfo = saveResult.Value;
             persistenceInfo.ModelPath.Should().Be(tempModelPath);
@@ -84,7 +84,7 @@ public class ModelTrainingIntegrationTests : IntegrationTestBase
 
             // Step 4: Load model from disk
             var loadResult = await modelTrainingService.LoadModelAsync(tempModelPath);
-            loadResult.IsSuccess.Should().BeTrue($"Model load should succeed: {loadResult.Error}");
+            loadResult.IsSuccess.Should().BeTrue($"Model load should succeed: {(loadResult.IsSuccess ? "" : loadResult.Error)}");
 
             var loadedModelInfo = loadResult.Value;
             loadedModelInfo.Should().NotBeNull();
@@ -124,7 +124,7 @@ public class ModelTrainingIntegrationTests : IntegrationTestBase
         using var scope = CreateScope();
         var modelTrainingService = scope.ServiceProvider.GetRequiredService<IModelTrainingService>();
 
-        var csvPath = Path.Combine(Directory.GetCurrentDirectory(), "../../../../data/training/tv-series-training-data.csv");
+        var csvPath = Path.Combine(Directory.GetCurrentDirectory(), "../../../../../data/training/tv-series-training-data.csv");
 
         // When - Import and train with real data
         var importerLogger = scope.ServiceProvider.GetRequiredService<ILogger<CsvTrainingDataImporter>>();

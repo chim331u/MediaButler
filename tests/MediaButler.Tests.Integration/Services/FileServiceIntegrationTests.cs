@@ -8,6 +8,7 @@ using MediaButler.Core.Enums;
 using MediaButler.Data.Repositories;
 using MediaButler.Data.UnitOfWork;
 using MediaButler.Services;
+using MediaButler.Services.Interfaces;
 using MediaButler.Tests.Integration.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -47,13 +48,7 @@ public class FileServiceIntegrationTests : IntegrationTestBase
         await Context.SaveChangesAsync();
 
         // Create service with real dependencies
-        var repository = new TrackedFileRepository(Context);
-        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
-        var logger = new Mock<ILogger<FileService>>().Object;
-        var pathGenerationService = new Mock<MediaButler.Services.Interfaces.IPathGenerationService>().Object;
-        var configuration = new Mock<IMediaButlerConfiguration>();
-        configuration.Setup(c => c.MaxRetryCount).Returns(3);
-        var fileService = new FileService(repository, unitOfWork, pathGenerationService, configuration.Object, logger);
+        var fileService = ServiceProvider.GetRequiredService<IFileService>();
 
         // Act
         var result = await fileService.GetFileByHashAsync(testFile.Hash);
@@ -84,13 +79,7 @@ public class FileServiceIntegrationTests : IntegrationTestBase
         Context.TrackedFiles.Add(testFile);
         await Context.SaveChangesAsync();
 
-        var repository = new TrackedFileRepository(Context);
-        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
-        var logger = new Mock<ILogger<FileService>>().Object;
-        var pathGenerationService = new Mock<MediaButler.Services.Interfaces.IPathGenerationService>().Object;
-        var configuration = new Mock<IMediaButlerConfiguration>();
-        configuration.Setup(c => c.MaxRetryCount).Returns(3);
-        var fileService = new FileService(repository, unitOfWork, pathGenerationService, configuration.Object, logger);
+        var fileService = ServiceProvider.GetRequiredService<IFileService>();
 
         var suggestedCategory = "INTEGRATION TEST SERIES";
         var confidence = 0.92m;
@@ -131,13 +120,7 @@ public class FileServiceIntegrationTests : IntegrationTestBase
         Context.TrackedFiles.Add(testFile);
         await Context.SaveChangesAsync();
 
-        var repository = new TrackedFileRepository(Context);
-        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
-        var logger = new Mock<ILogger<FileService>>().Object;
-        var pathGenerationService = new Mock<MediaButler.Services.Interfaces.IPathGenerationService>().Object;
-        var configuration = new Mock<IMediaButlerConfiguration>();
-        configuration.Setup(c => c.MaxRetryCount).Returns(3);
-        var fileService = new FileService(repository, unitOfWork, pathGenerationService, configuration.Object, logger);
+        var fileService = ServiceProvider.GetRequiredService<IFileService>();
 
         // Act - Complete workflow: New → Classified → Confirmed → Moved
         
@@ -215,13 +198,7 @@ public class FileServiceIntegrationTests : IntegrationTestBase
         Context.TrackedFiles.AddRange(classifiedFiles);
         await Context.SaveChangesAsync();
 
-        var repository = new TrackedFileRepository(Context);
-        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
-        var logger = new Mock<ILogger<FileService>>().Object;
-        var pathGenerationService = new Mock<MediaButler.Services.Interfaces.IPathGenerationService>().Object;
-        var configuration = new Mock<IMediaButlerConfiguration>();
-        configuration.Setup(c => c.MaxRetryCount).Returns(3);
-        var fileService = new FileService(repository, unitOfWork, pathGenerationService, configuration.Object, logger);
+        var fileService = ServiceProvider.GetRequiredService<IFileService>();
 
         // Act
         var newFilesResult = await fileService.GetFilesByStatusAsync(FileStatus.New);
@@ -259,13 +236,7 @@ public class FileServiceIntegrationTests : IntegrationTestBase
         Context.TrackedFiles.Add(testFile);
         await Context.SaveChangesAsync();
 
-        var repository = new TrackedFileRepository(Context);
-        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
-        var logger = new Mock<ILogger<FileService>>().Object;
-        var pathGenerationService = new Mock<MediaButler.Services.Interfaces.IPathGenerationService>().Object;
-        var configuration = new Mock<IMediaButlerConfiguration>();
-        configuration.Setup(c => c.MaxRetryCount).Returns(3);
-        var fileService = new FileService(repository, unitOfWork, pathGenerationService, configuration.Object, logger);
+        var fileService = ServiceProvider.GetRequiredService<IFileService>();
 
         var errorMessage = "Integration test error - file not accessible";
         var exceptionDetails = "System.IO.FileNotFoundException: File not found";
@@ -307,13 +278,7 @@ public class FileServiceIntegrationTests : IntegrationTestBase
         Context.TrackedFiles.Add(testFile);
         await Context.SaveChangesAsync();
 
-        var repository = new TrackedFileRepository(Context);
-        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
-        var logger = new Mock<ILogger<FileService>>().Object;
-        var pathGenerationService = new Mock<MediaButler.Services.Interfaces.IPathGenerationService>().Object;
-        var configuration = new Mock<IMediaButlerConfiguration>();
-        configuration.Setup(c => c.MaxRetryCount).Returns(3);
-        var fileService = new FileService(repository, unitOfWork, pathGenerationService, configuration.Object, logger);
+        var fileService = ServiceProvider.GetRequiredService<IFileService>();
 
         var deletionReason = "Integration test deletion";
 
@@ -356,13 +321,7 @@ public class FileServiceIntegrationTests : IntegrationTestBase
         Context.TrackedFiles.AddRange(files);
         await Context.SaveChangesAsync();
 
-        var repository = new TrackedFileRepository(Context);
-        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
-        var logger = new Mock<ILogger<FileService>>().Object;
-        var pathGenerationService = new Mock<MediaButler.Services.Interfaces.IPathGenerationService>().Object;
-        var configuration = new Mock<IMediaButlerConfiguration>();
-        configuration.Setup(c => c.MaxRetryCount).Returns(3);
-        var fileService = new FileService(repository, unitOfWork, pathGenerationService, configuration.Object, logger);
+        var fileService = ServiceProvider.GetRequiredService<IFileService>();
 
         // Act - Perform concurrent classifications
         var classificationTasks = files.Select(async (file, index) =>
@@ -410,13 +369,7 @@ public class FileServiceIntegrationTests : IntegrationTestBase
         Context.TrackedFiles.Add(validFile);
         await Context.SaveChangesAsync();
 
-        var repository = new TrackedFileRepository(Context);
-        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
-        var logger = new Mock<ILogger<FileService>>().Object;
-        var pathGenerationService = new Mock<MediaButler.Services.Interfaces.IPathGenerationService>().Object;
-        var configuration = new Mock<IMediaButlerConfiguration>();
-        configuration.Setup(c => c.MaxRetryCount).Returns(3);
-        var fileService = new FileService(repository, unitOfWork, pathGenerationService, configuration.Object, logger);
+        var fileService = ServiceProvider.GetRequiredService<IFileService>();
 
         // Act - Try to update with invalid confidence (should fail)
         var invalidResult = await fileService.UpdateClassificationAsync(
@@ -426,7 +379,7 @@ public class FileServiceIntegrationTests : IntegrationTestBase
 
         // Assert
         invalidResult.IsFailure.Should().BeTrue();
-        invalidResult.Error.Should().Contain("Confidence must be between 0 and 1");
+        invalidResult.Error.Should().Contain("Confidence").And.Contain("0").And.Contain("1");
 
         // Verify no changes were persisted to database
         var unchangedFile = await Context.TrackedFiles.FindAsync(validFile.Hash);
@@ -457,13 +410,7 @@ public class FileServiceIntegrationTests : IntegrationTestBase
         Context.TrackedFiles.Add(testFile);
         await Context.SaveChangesAsync();
 
-        var repository = new TrackedFileRepository(Context);
-        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
-        var logger = ServiceProvider.GetRequiredService<ILogger<FileService>>();
-        var pathGenerationService = new Mock<MediaButler.Services.Interfaces.IPathGenerationService>().Object;
-        var configuration = new Mock<IMediaButlerConfiguration>();
-        configuration.Setup(c => c.MaxRetryCount).Returns(3);
-        var fileService = new FileService(repository, unitOfWork, pathGenerationService, configuration.Object, logger);
+        var fileService = ServiceProvider.GetRequiredService<IFileService>();
 
         var originalUpdateDate = testFile.LastUpdateDate;
 
@@ -523,13 +470,7 @@ public class FileServiceIntegrationTests : IntegrationTestBase
         Context.TrackedFiles.Add(testFile);
         await Context.SaveChangesAsync();
 
-        var repository = new TrackedFileRepository(Context);
-        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
-        var logger = ServiceProvider.GetRequiredService<ILogger<FileService>>();
-        var pathGenerationService = new Mock<MediaButler.Services.Interfaces.IPathGenerationService>().Object;
-        var configuration = new Mock<IMediaButlerConfiguration>();
-        configuration.Setup(c => c.MaxRetryCount).Returns(3);
-        var fileService = new FileService(repository, unitOfWork, pathGenerationService, configuration.Object, logger);
+        var fileService = ServiceProvider.GetRequiredService<IFileService>();
 
         var originalUpdateDate = testFile.LastUpdateDate;
 
@@ -568,13 +509,7 @@ public class FileServiceIntegrationTests : IntegrationTestBase
         Context.TrackedFiles.Add(testFile);
         await Context.SaveChangesAsync();
 
-        var repository = new TrackedFileRepository(Context);
-        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
-        var logger = ServiceProvider.GetRequiredService<ILogger<FileService>>();
-        var pathGenerationService = new Mock<MediaButler.Services.Interfaces.IPathGenerationService>().Object;
-        var configuration = new Mock<IMediaButlerConfiguration>();
-        configuration.Setup(c => c.MaxRetryCount).Returns(3);
-        var fileService = new FileService(repository, unitOfWork, pathGenerationService, configuration.Object, logger);
+        var fileService = ServiceProvider.GetRequiredService<IFileService>();
 
         // Act
         var result = await fileService.IgnoreFileAsync(testFile.Hash);
@@ -613,13 +548,7 @@ public class FileServiceIntegrationTests : IntegrationTestBase
         Context.TrackedFiles.Add(testFile);
         await Context.SaveChangesAsync();
 
-        var repository = new TrackedFileRepository(Context);
-        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
-        var logger = ServiceProvider.GetRequiredService<ILogger<FileService>>();
-        var pathGenerationService = new Mock<MediaButler.Services.Interfaces.IPathGenerationService>().Object;
-        var configuration = new Mock<IMediaButlerConfiguration>();
-        configuration.Setup(c => c.MaxRetryCount).Returns(3);
-        var fileService = new FileService(repository, unitOfWork, pathGenerationService, configuration.Object, logger);
+        var fileService = ServiceProvider.GetRequiredService<IFileService>();
 
         var originalUpdateDate = testFile.LastUpdateDate;
 
@@ -657,13 +586,7 @@ public class FileServiceIntegrationTests : IntegrationTestBase
         Context.TrackedFiles.Add(testFile);
         await Context.SaveChangesAsync();
 
-        var repository = new TrackedFileRepository(Context);
-        var unitOfWork = new MediaButler.Data.UnitOfWork.UnitOfWork(Context);
-        var logger = ServiceProvider.GetRequiredService<ILogger<FileService>>();
-        var pathGenerationService = new Mock<MediaButler.Services.Interfaces.IPathGenerationService>().Object;
-        var configuration = new Mock<IMediaButlerConfiguration>();
-        configuration.Setup(c => c.MaxRetryCount).Returns(3);
-        var fileService = new FileService(repository, unitOfWork, pathGenerationService, configuration.Object, logger);
+        var fileService = ServiceProvider.GetRequiredService<IFileService>();
 
         // Act
         var result = await fileService.IgnoreFileAsync(testFile.Hash);

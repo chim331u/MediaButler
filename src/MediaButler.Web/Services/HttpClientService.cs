@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using MediaButler.Web.Interfaces;
 using MediaButler.Web.Models;
+using MediaButler.Shared.UI.Models;
 
 namespace MediaButler.Web.Services;
 

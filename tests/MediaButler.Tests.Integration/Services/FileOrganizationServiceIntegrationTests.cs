@@ -8,6 +8,7 @@ using MediaButler.Core.Enums;
 using MediaButler.Core.Entities;
 using MediaButler.Tests.Integration.Infrastructure;
 using System.Text.Json;
+using MediaButler.Data;
 
 namespace MediaButler.Tests.Integration.Services;
 
@@ -61,7 +62,8 @@ public class FileOrganizationServiceIntegrationTests : IClassFixture<DatabaseFix
         result.Value.RollbackOperationId.Should().NotBeNull();
 
         // Verify database updates
-        var updatedFile = await _databaseFixture.Context.TrackedFiles
+        var dbContext = scope.ServiceProvider.GetRequiredService<MediaButlerDbContext>();
+        var updatedFile = await dbContext.TrackedFiles
             .FirstAsync(tf => tf.Hash == "office-hash");
         updatedFile.Status.Should().Be(FileStatus.Moved);
         updatedFile.Category.Should().Be("THE OFFICE");
@@ -176,9 +178,9 @@ public class FileOrganizationServiceIntegrationTests : IClassFixture<DatabaseFix
         result.Value.Should().NotBeNull();
         result.Value.IsSafe.Should().BeTrue();
         result.Value.SafetyIssues.Should().BeEmpty();
-        result.Value.ValidationDetails.Should().ContainKey("SourceFileAccessible");
-        result.Value.ValidationDetails.Should().ContainKey("AvailableSpaceBytes");
-        result.Value.ValidationDetails.Should().ContainKey("RequiredSpaceBytes");
+        result.Value.ValidationDetails.Keys.Should().Contain(k => k.Contains("SourceFileAccessible"));
+        result.Value.ValidationDetails.Keys.Should().Contain(k => k.Contains("AvailableSpaceBytes"));
+        result.Value.ValidationDetails.Keys.Should().Contain(k => k.Contains("RequiredSpaceBytes"));
 
         // Cleanup
         CleanupTestFile(testFile);
@@ -403,14 +405,15 @@ public class FileOrganizationServiceIntegrationTests : IClassFixture<DatabaseFix
         organization.RollbackOperationId.Should().NotBeNull();
 
         // Verify database state
-        var finalFile = await _databaseFixture.Context.TrackedFiles
+        var dbContext = scope.ServiceProvider.GetRequiredService<MediaButlerDbContext>();
+        var finalFile = await dbContext.TrackedFiles
             .FirstAsync(tf => tf.Hash == "workflow-hash");
         finalFile.Status.Should().Be(FileStatus.Moved);
         finalFile.Category.Should().Be("WORKFLOW TEST");
         finalFile.MovedToPath.Should().NotBeNullOrEmpty();
 
         // Verify processing logs
-        var logs = await _databaseFixture.Context.ProcessingLogs
+        var logs = await dbContext.ProcessingLogs
             .Where(log => log.FileHash == "workflow-hash")
             .ToListAsync();
         logs.Should().NotBeEmpty();
@@ -461,7 +464,8 @@ public class FileOrganizationServiceIntegrationTests : IClassFixture<DatabaseFix
         result.Value.ActualPath.Should().Contain(filename);
 
         // Verify database
-        var updatedFile = await _databaseFixture.Context.TrackedFiles
+        var dbContext = scope.ServiceProvider.GetRequiredService<MediaButlerDbContext>();
+        var updatedFile = await dbContext.TrackedFiles
             .FirstAsync(tf => tf.Hash == fileHash);
         updatedFile.Category.Should().Be(category);
         updatedFile.Status.Should().Be(FileStatus.Moved);

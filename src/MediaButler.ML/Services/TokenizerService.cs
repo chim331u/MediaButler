@@ -185,7 +185,7 @@ public partial class TokenizerService : ITokenizerService
     private static readonly HashSet<string> StopWords = new(StringComparer.OrdinalIgnoreCase)
     {
         // Only technical terms that are clearly not part of series names
-        "pack", "complete", "season", "serie", "series", "vol", "volume",
+        "pack", "complete", "season", "vol", "volume",
         
         // Common English prepositions that may be removed in some cases
         "of"
@@ -518,7 +518,7 @@ public partial class TokenizerService : ITokenizerService
 
         // Split and filter tokens
         var words = normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-            .Where(token => token.Length >= 2) // Minimum token length
+            .Where(token => token.Length >= 1) // Minimum token length
             .Select(token => token.ToLowerInvariant())
             .Where(token => !StopWords.Contains(token));
 

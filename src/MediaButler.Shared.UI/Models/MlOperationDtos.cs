@@ -1,4 +1,6 @@
-namespace MediaButler.Mobile.Models;
+using System;
+
+namespace MediaButler.Shared.UI.Models;
 
 /// <summary>
 /// Request for ML evaluation/re-evaluation.
@@ -11,7 +13,6 @@ public class MlEvaluationRequest
 
 /// <summary>
 /// Response from ML evaluation operation.
-/// Matches API MlEvaluationResponse from ProcessingController.
 /// </summary>
 public class MlEvaluationResponse
 {
@@ -24,7 +25,6 @@ public class MlEvaluationResponse
 
 /// <summary>
 /// Training session DTO for ML model training.
-/// Matches TrainingStartResponse from API.
 /// </summary>
 public class TrainingSessionDto
 {

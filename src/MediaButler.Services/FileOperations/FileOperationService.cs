@@ -152,6 +152,7 @@ public class FileOperationService : IFileOperationService
                         fullSourcePath, sourceRoot, fullTargetPath, targetRoot, wasCrossDriveOperation);
 
                     // Check if target file already exists and handle appropriately
+                    string finalTargetPath = fullTargetPath;
                     if (File.Exists(fullTargetPath))
                     {
                         _logger.LogWarning("Target file already exists: {TargetPath}. Checking if files are identical.",
@@ -170,82 +171,75 @@ public class FileOperationService : IFileOperationService
 
                             File.Delete(fullSourcePath);
                             _logger.LogDebug("Deleted duplicate source file: {SourcePath}", fullSourcePath);
-
-                            // Update target path to the existing file
-                            targetPath = fullTargetPath;
+                            
+                            // Use existing target
+                            finalTargetPath = fullTargetPath;
                         }
                         else
                         {
-                            // Files are different - append suffix to avoid overwrite
+                            // Files are different - find a unique suffix
                             var targetDir = Path.GetDirectoryName(fullTargetPath)!;
                             var targetFileName = Path.GetFileNameWithoutExtension(fullTargetPath);
                             var targetExtension = Path.GetExtension(fullTargetPath);
 
                             var suffix = 1;
-                            string newTargetPath;
-                            do
+                            bool moved = false;
+                            while (suffix < 100)
                             {
-                                newTargetPath = Path.Combine(targetDir, $"{targetFileName}_{suffix}{targetExtension}");
+                                finalTargetPath = Path.Combine(targetDir, $"{targetFileName}_{suffix}{targetExtension}");
+                                if (!File.Exists(finalTargetPath))
+                                {
+                                    try 
+                                    {
+                                        // Attempt move - even if File.Exists was false, someone else might have grabbed it
+                                        // Use overwrite: false to ensure we don't accidentally overwrite concurrent move
+                                        File.Move(fullSourcePath, finalTargetPath, overwrite: false);
+                                        moved = true;
+                                        _logger.LogInformation("Moved file with suffix to {TargetPath}", finalTargetPath);
+                                        break;
+                                    }
+                                    catch (IOException) // Likely file already exists now
+                                    {
+                                        _logger.LogDebug("Collision detected for suffix {Suffix}, retrying...", suffix);
+                                    }
+                                }
                                 suffix++;
-                            } while (File.Exists(newTargetPath) && suffix < 100); // Limit to prevent infinite loop
+                            }
 
-                            if (File.Exists(newTargetPath))
+                            if (!moved)
                             {
                                 throw new InvalidOperationException(
-                                    $"Cannot generate unique filename. Too many duplicates exist for: {fullTargetPath}");
+                                    $"Cannot generate unique filename with suffix. Too many duplicates exist for: {fullTargetPath}");
                             }
-
-                            _logger.LogWarning(
-                                "Target file {TargetPath} exists with different hash. Renaming to {NewTargetPath}",
-                                fullTargetPath, newTargetPath);
-
-                            fullTargetPath = newTargetPath;
-                            targetPath = newTargetPath;
-                        }
-                    }
-
-                    // Perform the move operation only if source still exists (wasn't deleted as duplicate)
-                    if (File.Exists(fullSourcePath))
-                    {
-                        if (wasCrossDriveOperation)
-                        {
-                            // Cross-drive: copy then delete
-                            await CopyFileAsync(sourcePath, targetPath, cancellationToken);
-
-                            // Verify copy was successful before deleting source
-                            if (File.Exists(targetPath))
-                            {
-                                try
-                                {
-                                    File.Delete(sourcePath);
-                                    _logger.LogDebug("Completed cross-drive move from {SourcePath} to {TargetPath}",
-                                        sourcePath, targetPath);
-                                }
-                                catch (Exception deleteEx)
-                                {
-                                    _logger.LogError(deleteEx, "Failed to delete source file {SourcePath} after successful copy", sourcePath);
-                                    throw new InvalidOperationException($"File copied successfully but failed to delete source: {deleteEx.Message}", deleteEx);
-                                }
-                            }
-                            else
-                            {
-                                throw new InvalidOperationException($"Copy operation failed: target file {targetPath} does not exist after copy");
-                            }
-                        }
-                        else
-                        {
-                            // Same drive: atomic move (overwrite flag added for .NET 6+)
-                            File.Move(sourcePath, targetPath, overwrite: true);
-
-                            _logger.LogDebug("Completed same-drive move from {SourcePath} to {TargetPath}",
-                                sourcePath, targetPath);
                         }
                     }
                     else
                     {
-                        _logger.LogDebug("Source file was already deleted (duplicate scenario). Using existing target: {TargetPath}",
-                            targetPath);
+                        // Target doesn't exist - try to move normally
+                        try
+                        {
+                            if (wasCrossDriveOperation)
+                            {
+                                await CopyFileAsync(fullSourcePath, finalTargetPath, cancellationToken);
+                                File.Delete(fullSourcePath);
+                            }
+                            else
+                            {
+                                File.Move(fullSourcePath, finalTargetPath, overwrite: false);
+                            }
+                        }
+                        catch (IOException) when (File.Exists(finalTargetPath))
+                        {
+                            // Someone else created it just now - recurse or handle once more?
+                            // For simplicity, we just throw and let the higher level retry or fail
+                            throw new InvalidOperationException($"Target file was created concurrently: {finalTargetPath}");
+                        }
                     }
+
+                    // Move related files if any (subtitles, metadata)
+                    await MoveRelatedFilesAsync(fullSourcePath, finalTargetPath, wasCrossDriveOperation, cancellationToken);
+                    
+                    targetPath = finalTargetPath;
                 }
                 catch (Exception ex)
                 {
@@ -674,6 +668,57 @@ public class FileOperationService : IFileOperationService
             {
                 _recentOperationDurations.RemoveAt(0);
             }
+        }
+    }
+
+    /// <summary>
+    /// Discovers and moves related files (subtitles, metadata) for a given media file.
+    /// </summary>
+    private async Task MoveRelatedFilesAsync(string sourcePath, string targetPath, bool wasCrossDriveOperation, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var sourceDir = Path.GetDirectoryName(sourcePath);
+            var targetDir = Path.GetDirectoryName(targetPath);
+            var sourceBaseName = Path.GetFileNameWithoutExtension(sourcePath);
+            var targetBaseName = Path.GetFileNameWithoutExtension(targetPath);
+
+            if (string.IsNullOrEmpty(sourceDir) || string.IsNullOrEmpty(targetDir) || string.IsNullOrEmpty(sourceBaseName))
+                return;
+
+            // Common media-related extensions
+            var relatedExtensions = new[] { ".srt", ".sub", ".ass", ".nfo", ".jpg", ".png", ".xml" };
+
+            foreach (var ext in relatedExtensions)
+            {
+                var sourceRelated = Path.Combine(sourceDir, sourceBaseName + ext);
+                if (File.Exists(sourceRelated))
+                {
+                    var targetRelated = Path.Combine(targetDir, targetBaseName + ext);
+                    _logger.LogDebug("Moving related file: {Source} -> {Target}", sourceRelated, targetRelated);
+
+                    try
+                    {
+                        if (wasCrossDriveOperation)
+                        {
+                            await CopyFileAsync(sourceRelated, targetRelated, cancellationToken);
+                            File.Delete(sourceRelated);
+                        }
+                        else
+                        {
+                            File.Move(sourceRelated, targetRelated, overwrite: true);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to move related file {SourceRelated}. Skipping.", sourceRelated);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error during related files discovery/move for {SourcePath}", sourcePath);
         }
     }
 

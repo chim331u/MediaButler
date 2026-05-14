@@ -1,13 +1,15 @@
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using MediaButler.Core.Enums;
-using MediaButler.Mobile.Models;
+using MediaButler.Shared.UI.Models;
 
-namespace MediaButler.Mobile.Components.Interfaces;
+namespace MediaButler.Shared.UI.Services;
 
 public interface IFilesApiService
 {
     /// <summary>
     /// Gets tracked files with pagination and optional filtering.
-    /// Pure function - same inputs produce same outputs.
     /// </summary>
     Task<Result<IReadOnlyList<FileManagementDto>>> GetFilesAsync(
         int skip = 0,
@@ -18,7 +20,6 @@ public interface IFilesApiService
 
     /// <summary>
     /// Gets tracked files with pagination, filtering, search, and ordering by multiple status values.
-    /// Enables efficient querying across multiple processing states.
     /// </summary>
     Task<Result<PaginatedFilesDto>> GetFilesByStatusesAsync(
         int skip = 0,
@@ -89,7 +90,6 @@ public interface IFilesApiService
 
     /// <summary>
     /// Organizes multiple files in a batch operation.
-    /// Submits files for background processing via batch organize API.
     /// </summary>
     Task<Result<BatchJobResponseDto>> OrganizeBatchAsync(
         BatchOrganizeRequestDto request,
@@ -105,14 +105,12 @@ public interface IFilesApiService
 
     /// <summary>
     /// Gets distinct categories from tracked files.
-    /// Returns all unique category values that have been assigned to files in the system.
     /// </summary>
     Task<Result<IReadOnlyList<string>>> GetDistinctCategoriesAsync(
         CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Marks a file as ignored, preventing it from being processed further.
-    /// This transitions the file to the Ignored status.
     /// </summary>
     Task<Result<object>> IgnoreFileAsync(
         string hash,
@@ -120,7 +118,6 @@ public interface IFilesApiService
 
     /// <summary>
     /// Queues files for ML evaluation/re-evaluation.
-    /// Processes files in New, Classified, and ReadyToMove status.
     /// </summary>
     Task<Result<MlEvaluationResponse>> QueueMlEvaluationAsync(
         string? filterByCategory = null,

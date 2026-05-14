@@ -1,5 +1,6 @@
 using MediaButler.Mobile.Components.Interfaces;
 using MediaButler.Mobile.Models;
+using MediaButler.Shared.UI.Models;
 
 namespace MediaButler.Mobile.Components.Service;
 
@@ -31,7 +32,7 @@ public class TrainingApiService : ITrainingApiService
                 cancellationToken);
 
             if (!result.IsSuccess)
-                return Result<TrainingSessionDto>.Failure(result.Error, result.StatusCode ?? 0);
+                return Result<TrainingSessionDto>.Failure(result.Error, result.StatusCode);
 
             var session = MapToTrainingSessionDto(result.Value!);
             return Result<TrainingSessionDto>.Success(session);
@@ -56,7 +57,7 @@ public class TrainingApiService : ITrainingApiService
                 cancellationToken);
 
             if (!result.IsSuccess)
-                return Result<TrainingSessionDto>.Failure(result.Error, result.StatusCode ?? 0);
+                return Result<TrainingSessionDto>.Failure(result.Error, result.StatusCode);
 
             var session = MapToTrainingSessionDto(result.Value!);
             return Result<TrainingSessionDto>.Success(session);
@@ -81,7 +82,7 @@ public class TrainingApiService : ITrainingApiService
                 cancellationToken);
 
             if (!result.IsSuccess)
-                return Result<IReadOnlyList<TrainingSessionDto>>.Failure(result.Error, result.StatusCode ?? 0);
+                return Result<IReadOnlyList<TrainingSessionDto>>.Failure(result.Error, result.StatusCode);
 
             var sessions = result.Value!.Select(MapToTrainingSessionDto).ToList();
             return Result<IReadOnlyList<TrainingSessionDto>>.Success(sessions);

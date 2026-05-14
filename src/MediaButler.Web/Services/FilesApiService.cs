@@ -1,138 +1,10 @@
 using MediaButler.Core.Enums;
 using MediaButler.Web.Interfaces;
-using MediaButler.Web.Models;
+using MediaButler.Shared.UI.Models;
+using MediaButler.Shared.UI.Services;
+using System.Net.Http.Json;
 
 namespace MediaButler.Web.Services;
-
-/// <summary>
-/// Files API service following "Simple Made Easy" principles.
-/// Single responsibility: File management operations only.
-/// Composes with IHttpClientService without braiding concerns.
-/// </summary>
-public interface IFilesApiService
-{
-    /// <summary>
-    /// Gets tracked files with pagination and optional filtering.
-    /// Pure function - same inputs produce same outputs.
-    /// </summary>
-    Task<Result<IReadOnlyList<FileManagementDto>>> GetFilesAsync(
-        int skip = 0,
-        int take = 20,
-        string? status = null,
-        string? category = null,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Gets tracked files with pagination, filtering, search, and ordering by multiple status values.
-    /// Enables efficient querying across multiple processing states.
-    /// </summary>
-    Task<Result<PaginatedFilesDto>> GetFilesByStatusesAsync(
-        int skip = 0,
-        int take = 20,
-        FileStatus[] statuses = null!,
-        string? category = null,
-        string? searchTerm = null,
-        string? orderBy = null,
-        bool descending = true,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Gets a specific tracked file by its hash.
-    /// </summary>
-    Task<Result<FileManagementDto>> GetFileAsync(
-        string hash,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Gets files that are awaiting user confirmation after classification.
-    /// </summary>
-    Task<Result<IReadOnlyList<FileManagementDto>>> GetPendingFilesAsync(
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Gets files ready for ML classification processing.
-    /// </summary>
-    Task<Result<IReadOnlyList<FileManagementDto>>> GetFilesReadyForClassificationAsync(
-        int limit = 50,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Confirms a file's category assignment.
-    /// </summary>
-    Task<Result<FileManagementDto>> ConfirmFileCategoryAsync(
-        string hash,
-        string category,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Marks a file as moved to its target location.
-    /// </summary>
-    Task<Result<FileManagementDto>> MarkFileAsMovedAsync(
-        string hash,
-        string targetPath,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Soft deletes a tracked file.
-    /// </summary>
-    Task<Result> DeleteFileAsync(
-        string hash,
-        string? reason = null,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Manually triggers a scan of configured watch folders.
-    /// </summary>
-    Task<Result<ScanResultDto>> ScanFoldersAsync(
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Manually triggers a scan of a specific folder.
-    /// </summary>
-    Task<Result<ScanResultDto>> ScanSpecificFolderAsync(
-        string folderPath,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Organizes multiple files in a batch operation.
-    /// Submits files for background processing via batch organize API.
-    /// </summary>
-    Task<Result<BatchJobResponseDto>> OrganizeBatchAsync(
-        BatchOrganizeRequestDto request,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Gets the status of a batch job.
-    /// </summary>
-    Task<Result<BatchJobResponseDto>> GetBatchStatusAsync(
-        string jobId,
-        bool includeDetails = false,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Gets distinct categories from tracked files.
-    /// Returns all unique category values that have been assigned to files in the system.
-    /// </summary>
-    Task<Result<IReadOnlyList<string>>> GetDistinctCategoriesAsync(
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Marks a file as ignored, preventing it from being processed further.
-    /// This transitions the file to the Ignored status.
-    /// </summary>
-    Task<Result<object>> IgnoreFileAsync(
-        string hash,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Queues files for ML evaluation/re-evaluation.
-    /// Processes files in New, Classified, and ReadyToMove status.
-    /// </summary>
-    Task<Result<MlEvaluationResponse>> QueueMlEvaluationAsync(
-        string? filterByCategory = null,
-        bool forceReEvaluation = true,
-        CancellationToken cancellationToken = default);
-}
 
 /// <summary>
 /// Implementation of Files API service.
@@ -372,12 +244,6 @@ public class FilesApiService : IFilesApiService
     {
         try
         {
-            object? request = null;
-            if (!string.IsNullOrWhiteSpace(reason))
-            {
-                request = new { Reason = reason };
-            }
-
             var result = await _httpClient.DeleteAsync($"/api/files/{hash}", cancellationToken);
 
             if (!result.IsSuccess)
@@ -561,15 +427,11 @@ public class FilesApiService : IFilesApiService
         }
     }
 
-    /// <summary>
-    /// Maps API response to FileManagementDto.
-    /// Pure function - deterministic mapping logic.
-    /// </summary>
     private static FileManagementDto MapToFileManagementDto(TrackedFileResponse file)
     {
         return new FileManagementDto
         {
-            Id = file.Hash.GetHashCode(), // Generate ID from hash since API doesn't return numeric ID
+            Id = file.Hash.GetHashCode(),
             Name = file.FileName,
             FileSize = file.FileSize,
             FileCategory = file.Category ?? file.SuggestedCategory,
@@ -583,10 +445,6 @@ public class FilesApiService : IFilesApiService
         };
     }
 
-    /// <summary>
-    /// Maps API response to ScanResultDto.
-    /// Pure function - deterministic mapping logic.
-    /// </summary>
     private static ScanResultDto MapToScanResultDto(ScanResult scanResult)
     {
         return new ScanResultDto
@@ -601,10 +459,6 @@ public class FilesApiService : IFilesApiService
         };
     }
 
-    /// <summary>
-    /// Maps API response to BatchJobResponseDto.
-    /// Pure function - deterministic mapping logic.
-    /// </summary>
     private static BatchJobResponseDto MapToBatchJobResponseDto(BatchJobResponse batchJob)
     {
         return new BatchJobResponseDto
@@ -626,10 +480,6 @@ public class FilesApiService : IFilesApiService
         };
     }
 
-    /// <summary>
-    /// Maps API response to FileProcessingResultDto.
-    /// Pure function - deterministic mapping logic.
-    /// </summary>
     private static FileProcessingResultDto MapToFileProcessingResultDto(FileProcessingResult result)
     {
         return new FileProcessingResultDto
@@ -648,38 +498,24 @@ public class FilesApiService : IFilesApiService
     }
 }
 
-/// <summary>
-/// DTO for API response mapping
-/// </summary>
-public class TrackedFileResponse
+// Internal DTOs for API mapping
+internal class TrackedFileResponse
 {
     public required string Hash { get; set; }
     public required string FileName { get; set; }
     public required string OriginalPath { get; set; }
     public long FileSize { get; set; }
-    public string? FormattedFileSize { get; set; }
     public int Status { get; set; }
     public string? StatusDescription { get; set; }
     public string? SuggestedCategory { get; set; }
     public double? ConfidencePercentage { get; set; }
-    public string? ConfidenceLevel { get; set; }
     public string? Category { get; set; }
     public string? TargetPath { get; set; }
     public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
     public DateTime? ClassifiedAt { get; set; }
-    public DateTime? MovedAt { get; set; }
-    public string? LastError { get; set; }
-    public DateTime? LastErrorAt { get; set; }
-    public int RetryCount { get; set; }
-    public bool RequiresAttention { get; set; }
-    public double? ProcessingDurationMs { get; set; }
 }
 
-/// <summary>
-/// DTO for scan result mapping
-/// </summary>
-public class ScanResult
+internal class ScanResult
 {
     public int FilesDiscovered { get; set; }
     public DateTime ScanStartedAt { get; set; }
@@ -690,92 +526,11 @@ public class ScanResult
     public double ScanDurationMs { get; set; }
 }
 
-/// <summary>
-/// DTO for scan result in the web layer
-/// </summary>
-public class ScanResultDto
-{
-    public int FilesDiscovered { get; set; }
-    public DateTime ScanStartedAt { get; set; }
-    public DateTime ScanCompletedAt { get; set; }
-    public bool MonitoringEnabled { get; set; }
-    public List<string> MonitoredPaths { get; set; } = new();
-    public string? ScannedPath { get; set; }
-    public double ScanDurationMs { get; set; }
-}
-
-/// <summary>
-/// DTO for batch organize request in the web layer
-/// </summary>
-public class BatchOrganizeRequestDto
-{
-    public required List<FileActionDto> Files { get; set; }
-    public bool ContinueOnError { get; set; } = false;
-    public bool ValidateTargetPaths { get; set; } = true;
-    public bool CreateDirectories { get; set; } = true;
-    public bool DryRun { get; set; } = false;
-    public string? BatchName { get; set; }
-    public int? MaxConcurrency { get; set; }
-}
-
-/// <summary>
-/// DTO for file action in the web layer
-/// </summary>
-public class FileActionDto
-{
-    public required string Hash { get; set; }
-    public required string ConfirmedCategory { get; set; }
-    public string? CustomTargetPath { get; set; }
-    public Dictionary<string, object>? Metadata { get; set; }
-}
-
-/// <summary>
-/// DTO for batch job response in the web layer
-/// </summary>
-public class BatchJobResponseDto
+internal class BatchJobResponse
 {
     public required string JobId { get; set; }
-    public required string Status { get; set; } = "Queued";
-    public DateTime QueuedAt { get; set; } = DateTime.UtcNow;
-    public DateTime? StartedAt { get; set; }
-    public DateTime? CompletedAt { get; set; }
-    public int TotalFiles { get; set; }
-    public int ProcessedFiles { get; set; }
-    public int SuccessfulFiles { get; set; }
-    public int FailedFiles { get; set; }
-    public int ProgressPercentage => TotalFiles > 0 ? (ProcessedFiles * 100) / TotalFiles : 0;
-    public Dictionary<string, object> Metadata { get; set; } = new();
-    public List<string> Errors { get; set; } = new();
-    public TimeSpan? EstimatedTimeRemaining { get; set; }
-    public TimeSpan? AverageProcessingTime { get; set; }
-    public List<FileProcessingResultDto>? DetailedResults { get; set; }
-}
-
-/// <summary>
-/// DTO for file processing result in the web layer
-/// </summary>
-public class FileProcessingResultDto
-{
-    public required string FileHash { get; set; }
-    public required string FileName { get; set; }
-    public required bool Success { get; set; }
-    public required string TargetPath { get; set; }
-    public string? ActualPath { get; set; }
-    public string? Error { get; set; }
-    public TimeSpan? ProcessingTime { get; set; }
-    public bool IsDryRun { get; set; }
-    public DateTime ProcessedAt { get; set; } = DateTime.UtcNow;
-    public Dictionary<string, object>? Metadata { get; set; }
-}
-
-/// <summary>
-/// DTO for API response mapping (reusing the API models for simplicity)
-/// </summary>
-public class BatchJobResponse
-{
-    public required string JobId { get; set; }
-    public required string Status { get; set; } = "Queued";
-    public DateTime QueuedAt { get; set; } = DateTime.UtcNow;
+    public required string Status { get; set; }
+    public DateTime QueuedAt { get; set; }
     public DateTime? StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
     public int TotalFiles { get; set; }
@@ -789,21 +544,7 @@ public class BatchJobResponse
     public List<FileProcessingResult>? DetailedResults { get; set; }
 }
 
-/// <summary>
-/// DTO for paginated files response from API
-/// </summary>
-public class PaginatedFilesResponse
-{
-    public List<TrackedFileResponse> Items { get; set; } = new();
-    public int Total { get; set; }
-    public int Skip { get; set; }
-    public int Take { get; set; }
-}
-
-/// <summary>
-/// DTO for file processing result from API
-/// </summary>
-public class FileProcessingResult
+internal class FileProcessingResult
 {
     public required string FileHash { get; set; }
     public required string FileName { get; set; }
@@ -813,6 +554,14 @@ public class FileProcessingResult
     public string? Error { get; set; }
     public TimeSpan? ProcessingTime { get; set; }
     public bool IsDryRun { get; set; }
-    public DateTime ProcessedAt { get; set; } = DateTime.UtcNow;
+    public DateTime ProcessedAt { get; set; }
     public Dictionary<string, object>? Metadata { get; set; }
+}
+
+internal class PaginatedFilesResponse
+{
+    public List<TrackedFileResponse> Items { get; set; } = new();
+    public int Total { get; set; }
+    public int Skip { get; set; }
+    public int Take { get; set; }
 }

@@ -1,4 +1,7 @@
-namespace MediaButler.Mobile.Models;
+using System;
+using System.Collections.Generic;
+
+namespace MediaButler.Shared.UI.Models;
 
 /// <summary>
 /// Request DTO for batch file organization.

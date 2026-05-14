@@ -1,7 +1,7 @@
 using MediaButler.Mobile.Components.Interfaces;
-using MediaButler.Mobile.Components.Interfaces;
-using MediaButler.Mobile.Data;
 using MediaButler.Mobile.Models;
+using MediaButler.Shared.UI.Models;
+using MediaButler.Shared.UI.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Text.Json;
@@ -11,7 +11,6 @@ namespace MediaButler.Mobile.Components.Service;
 /// <summary>
 /// SSE notification service implementation for MAUI.
 /// Uses HttpClient to maintain a persistent connection to the Server-Sent Events endpoint.
-/// Replaces SignalR with a simpler, unidirectional stream.
 /// </summary>
 public class SseNotificationService : ISseNotificationService, IAsyncDisposable
 {
@@ -31,6 +30,11 @@ public class SseNotificationService : ISseNotificationService, IAsyncDisposable
     private readonly List<Action<string, decimal>> _notificationHandlers = new();
 
     public bool IsConnected => _isConnected;
+    public string? ConnectionId { get; private set; }
+    public DateTime? ConnectedAt { get; private set; }
+
+    public event EventHandler<bool>? ConnectionStateChanged;
+    public event EventHandler<string>? ErrorOccurred;
 
     public SseNotificationService(
         ILogger<SseNotificationService> logger,
@@ -55,7 +59,6 @@ public class SseNotificationService : ISseNotificationService, IAsyncDisposable
         _connectionCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _connectionTask = ConnectAndReadLoopAsync(_connectionCts.Token);
         
-        // Return immediately, let the loop handle connection in background
         await Task.CompletedTask;
     }
 
@@ -93,15 +96,14 @@ public class SseNotificationService : ISseNotificationService, IAsyncDisposable
 
                 _logger.LogInformation("Connecting to SSE endpoint: {Url}", url);
 
-                // Create client with SSL configuration
                 var handler = _httpsHandler.GetPlatformMessageHandler();
-                using var client = new HttpClient(handler);
-                client.Timeout = Timeout.InfiniteTimeSpan;
-                client.DefaultRequestHeaders.Accept.Clear();
-                client.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("text/event-stream"));
+                _httpClient = new HttpClient(handler);
+                _httpClient.Timeout = Timeout.InfiniteTimeSpan;
+                _httpClient.DefaultRequestHeaders.Accept.Clear();
+                _httpClient.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("text/event-stream"));
 
                 using var request = new HttpRequestMessage(HttpMethod.Get, url);
-                using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);
+                using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -114,8 +116,6 @@ public class SseNotificationService : ISseNotificationService, IAsyncDisposable
                 _logger.LogInformation("✅ SSE Connected");
                 retryCount = 0;
                 
-                // Notify connected (optional, if we had an event for it)
-
                 using var stream = await response.Content.ReadAsStreamAsync(token);
                 using var reader = new StreamReader(stream);
 
@@ -128,7 +128,6 @@ public class SseNotificationService : ISseNotificationService, IAsyncDisposable
 
                     if (string.IsNullOrWhiteSpace(line))
                     {
-                        // Double newline usually means end of message in SSE
                         currentEvent = null;
                         continue;
                     }
@@ -140,7 +139,6 @@ public class SseNotificationService : ISseNotificationService, IAsyncDisposable
                     else if (line.StartsWith("data: "))
                     {
                         var data = line.Substring(6).Trim();
-                        // Dispatch immediately upon receiving data
                         if (!string.IsNullOrEmpty(currentEvent))
                         {
                             DispatchEvent(currentEvent, data);
@@ -159,7 +157,6 @@ public class SseNotificationService : ISseNotificationService, IAsyncDisposable
                 retryCount++;
                 _logger.LogError(ex, "SSE connection error (Attempt {Retry})", retryCount);
 
-                // Exponential backoff
                 var delaySeconds = Math.Min(30, Math.Pow(2, retryCount));
                 await Task.Delay(TimeSpan.FromSeconds(delaySeconds), token);
             }
@@ -178,7 +175,6 @@ public class SseNotificationService : ISseNotificationService, IAsyncDisposable
 
             switch (eventName)
             {
-                // File Operations
                 case "MoveFileNotification":
                 {
                     var data = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(dataJson);
@@ -230,7 +226,6 @@ public class SseNotificationService : ISseNotificationService, IAsyncDisposable
                      break;
                 }
                 
-                // Other notifications mapping to generic notification handler
                 case "FileDiscoveryNotification":
                      NotifyNotification("New file discovered", 0);
                      break;
@@ -261,13 +256,13 @@ public class SseNotificationService : ISseNotificationService, IAsyncDisposable
             "completed" => MoveFilesResults.Completed,
             "idnotpresent" => MoveFilesResults.IdNotPresent,
             "failed" => MoveFilesResults.Failed,
-            _ => MoveFilesResults.Completed // Default/Fallback
+            _ => MoveFilesResults.Completed
         };
     }
 
     private void NotifyFileProcessed(int fileId, string text, MoveFilesResults result)
     {
-        foreach (var handler in _fileProcessedHandlers)
+        foreach (var handler in _fileProcessedHandlers.ToList())
         {
              try { handler(fileId, text, result); } catch { }
         }
@@ -275,7 +270,7 @@ public class SseNotificationService : ISseNotificationService, IAsyncDisposable
 
     private void NotifyJobCompleted(string text, MoveFilesResults result)
     {
-        foreach (var handler in _jobCompletedHandlers)
+        foreach (var handler in _jobCompletedHandlers.ToList())
         {
              try { handler(text, result); } catch { }
         }
@@ -283,7 +278,7 @@ public class SseNotificationService : ISseNotificationService, IAsyncDisposable
 
     private void NotifyNotification(string message, decimal progress)
     {
-        foreach (var handler in _notificationHandlers)
+        foreach (var handler in _notificationHandlers.ToList())
         {
              try { handler(message, progress); } catch { }
         }
@@ -292,6 +287,20 @@ public class SseNotificationService : ISseNotificationService, IAsyncDisposable
     public void OnFileProcessed(Action<int, string, MoveFilesResults> handler) => _fileProcessedHandlers.Add(handler);
     public void OnJobCompleted(Action<string, MoveFilesResults> handler) => _jobCompletedHandlers.Add(handler);
     public void OnNotification(Action<string, decimal> handler) => _notificationHandlers.Add(handler);
+
+    // Legacy subscription methods (no-op or minimal implementation if not used in Mobile)
+    public IDisposable SubscribeToFileDiscovery(Action<string, string, DateTime> handler) => new SubscriptionDisposable(() => { });
+    public IDisposable SubscribeToFileProcessing(Action<string, string, string> handler) => new SubscriptionDisposable(() => { });
+    public IDisposable SubscribeToSystemStatus(Action<string, string, string> handler) => new SubscriptionDisposable(() => { });
+    public IDisposable SubscribeToErrors(Action<string, string, string> handler) => new SubscriptionDisposable(() => { });
+    public IDisposable SubscribeToHealthCheckPing(Action<string, DateTime> handler) => new SubscriptionDisposable(() => { });
+
+    private class SubscriptionDisposable : IDisposable
+    {
+        private readonly Action _onDispose;
+        public SubscriptionDisposable(Action onDispose) => _onDispose = onDispose;
+        public void Dispose() => _onDispose();
+    }
 
     public async ValueTask DisposeAsync()
     {

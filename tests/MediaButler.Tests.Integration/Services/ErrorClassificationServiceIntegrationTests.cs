@@ -8,6 +8,7 @@ using MediaButler.Core.Enums;
 using MediaButler.Core.Entities;
 using MediaButler.Tests.Integration.Infrastructure;
 using System.Text.Json;
+using MediaButler.Data;
 
 namespace MediaButler.Tests.Integration.Services;
 
@@ -227,6 +228,20 @@ public class ErrorClassificationServiceIntegrationTests : IClassFixture<Database
             RetryAttempts = 2
         };
 
+        // Create required TrackedFile
+        using (var setupScope = _databaseFixture.ServiceProvider.CreateScope())
+        {
+            var setupContext = setupScope.ServiceProvider.GetRequiredService<MediaButlerDbContext>();
+            setupContext.TrackedFiles.Add(new TrackedFile
+            {
+                Hash = errorContext.FileHash,
+                FileName = "source.mkv",
+                OriginalPath = errorContext.SourcePath,
+                Status = FileStatus.New
+            });
+            await setupContext.SaveChangesAsync();
+        }
+
         var classification = ErrorClassificationResult.TransientError(
             "Test transient error", 
             "Test technical details");
@@ -245,7 +260,8 @@ public class ErrorClassificationServiceIntegrationTests : IClassFixture<Database
         result.IsSuccess.Should().BeTrue();
 
         // Verify data was saved
-        var logs = await _databaseFixture.Context.ProcessingLogs
+        var verifyContext = scope.ServiceProvider.GetRequiredService<MediaButlerDbContext>();
+        var logs = await verifyContext.ProcessingLogs
             .Where(log => log.FileHash == "record-test-hash" && log.Category == "ERROR_TEST_OPERATION")
             .ToListAsync();
 
@@ -482,6 +498,20 @@ public class ErrorClassificationServiceIntegrationTests : IClassFixture<Database
             }
         };
 
+        // Create required TrackedFile
+        using (var setupScope = _databaseFixture.ServiceProvider.CreateScope())
+        {
+            var setupContext = setupScope.ServiceProvider.GetRequiredService<MediaButlerDbContext>();
+            setupContext.TrackedFiles.Add(new TrackedFile
+            {
+                Hash = errorContext.FileHash,
+                FileName = "workflow.mkv",
+                OriginalPath = errorContext.SourcePath,
+                Status = FileStatus.New
+            });
+            await setupContext.SaveChangesAsync();
+        }
+
         // When - Execute full workflow
         // 1. Classify the error
         var classificationResult = await service.ClassifyErrorAsync(errorContext);
@@ -515,7 +545,8 @@ public class ErrorClassificationServiceIntegrationTests : IClassFixture<Database
         stats.RetrySuccessRates.Should().ContainKey("TransientError");
 
         // Verify database record
-        var logs = await _databaseFixture.Context.ProcessingLogs
+        var verifyContext = scope.ServiceProvider.GetRequiredService<MediaButlerDbContext>();
+        var logs = await verifyContext.ProcessingLogs
             .Where(log => log.FileHash == "workflow-hash")
             .ToListAsync();
         

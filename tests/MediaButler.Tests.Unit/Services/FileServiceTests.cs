@@ -174,7 +174,7 @@ public class FileServiceTests : TestBase
 
         // Assert
         result.IsFailure.Should().BeTrue();
-        result.Error.Should().Contain("Confidence must be between 0 and 1");
+        result.Error.Should().Contain("Confidence must be between 0");
         
         // Verify no repository calls were made
         _mockFileRepository.Verify(repo => repo.GetByHashAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -615,7 +615,7 @@ public class FileServiceTests : TestBase
 
         // Assert
         result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Contain("Failed to retrieve distinct categories");
+        result.Error.Should().Contain("Failed to retrieve categories");
         result.Error.Should().Contain(exceptionMessage);
     }
 

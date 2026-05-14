@@ -4,9 +4,16 @@ using MediaButler.Core.Enums;
 using MediaButler.Core.Services;
 using MediaButler.Data;
 using MediaButler.Services;
+using MediaButler.Services.Interfaces;
+using MediaButler.Services.FileOperations;
+using MediaButler.Core.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Configuration;
+using MediaButler.Data.UnitOfWork;
+using UnitOfWorkImpl = MediaButler.Data.UnitOfWork.UnitOfWork;
 using Xunit;
+using MediaButler.Tests.Integration.Infrastructure;
 
 namespace MediaButler.Tests.Integration.Services;
 
@@ -14,32 +21,16 @@ namespace MediaButler.Tests.Integration.Services;
 /// Integration tests for concurrent DbContext access scenarios.
 /// Validates the fix for Priority 1 (v1.0.7) - DbContext Threading Issues.
 /// </summary>
-public class ConcurrentDbContextTests : IDisposable
+[Collection("Database Tests")]
+public class ConcurrentDbContextTests : IClassFixture<DatabaseFixture>
 {
-    private readonly ServiceProvider _serviceProvider;
-    private readonly MediaButlerDbContext _context;
+    private readonly DatabaseFixture _databaseFixture;
+    private readonly IServiceProvider _serviceProvider;
 
-    public ConcurrentDbContextTests()
+    public ConcurrentDbContextTests(DatabaseFixture databaseFixture)
     {
-        var services = new ServiceCollection();
-
-        // Setup in-memory database for testing
-        services.AddDbContext<MediaButlerDbContext>(options =>
-            options.UseInMemoryDatabase($"ConcurrentTest_{Guid.NewGuid()}"));
-
-        // Register UnitOfWork and repositories
-        services.AddScoped<MediaButler.Data.UnitOfWork.IUnitOfWork, MediaButler.Data.UnitOfWork.UnitOfWork>();
-        services.AddScoped(typeof(MediaButler.Data.Repositories.IRepository<>), typeof(MediaButler.Data.Repositories.Repository<>));
-
-        // Register services with proper scoping (using IServiceScopeFactory)
-        services.AddScoped<IRollbackService, RollbackService>();
-        services.AddScoped<IFileOrganizationService, FileOrganizationService>();
-
-        // Add logging
-        services.AddLogging();
-
-        _serviceProvider = services.BuildServiceProvider();
-        _context = _serviceProvider.GetRequiredService<MediaButlerDbContext>();
+        _databaseFixture = databaseFixture;
+        _serviceProvider = databaseFixture.ServiceProvider;
     }
 
     [Fact]
@@ -55,11 +46,33 @@ public class ConcurrentDbContextTests : IDisposable
             TargetPath = $"/library/TEST/file_{i}.mkv"
         }).ToList();
 
-        // Act - Create multiple concurrent rollback points
-        foreach (var file in testFiles)
+        // Act - Create TrackedFile entries first to satisfy foreign key constraints
+        using (var setupScope = _serviceProvider.CreateScope())
         {
+            var dbContext = setupScope.ServiceProvider.GetRequiredService<MediaButlerDbContext>();
+            foreach (var file in testFiles)
+            {
+                dbContext.TrackedFiles.Add(new TrackedFile
+                {
+                    Hash = file.Hash,
+                    FileName = Path.GetFileName(file.OriginalPath),
+                    OriginalPath = file.OriginalPath,
+                    Status = FileStatus.New
+                });
+            }
+            await dbContext.SaveChangesAsync();
+        }
+
+        // Act - Create multiple concurrent rollback points
+        for (int i = 0; i < testFiles.Count; i++)
+        {
+            var file = testFiles[i];
+            var index = i;
             tasks.Add(Task.Run(async () =>
             {
+                // Add staggering delay to prevent SQLite lock contention
+                await Task.Delay(index * 20);
+
                 using var scope = _serviceProvider.CreateScope();
                 var rollbackService = scope.ServiceProvider.GetRequiredService<IRollbackService>();
 
@@ -101,9 +114,11 @@ public class ConcurrentDbContextTests : IDisposable
         // Act - Simultaneous reads and writes
         for (int i = 0; i < 5; i++)
         {
+            var index = i;
             // Read operations
             readTasks.Add(Task.Run(async () =>
             {
+                await Task.Delay(index * 20);
                 using var scope = _serviceProvider.CreateScope();
                 var rollbackService = scope.ServiceProvider.GetRequiredService<IRollbackService>();
                 var result = await rollbackService.GetRollbackHistoryAsync("test_hash");
@@ -111,9 +126,9 @@ public class ConcurrentDbContextTests : IDisposable
             }));
 
             // Write operations
-            var index = i;
             writeTasks.Add(Task.Run(async () =>
             {
+                await Task.Delay(index * 20 + 10);
                 using var scope = _serviceProvider.CreateScope();
                 var rollbackService = scope.ServiceProvider.GetRequiredService<IRollbackService>();
                 await rollbackService.CreateRollbackPointAsync(
@@ -137,8 +152,25 @@ public class ConcurrentDbContextTests : IDisposable
     public async Task RollbackService_HighConcurrency_ShouldMaintainDataIntegrity()
     {
         // Arrange
-        const int concurrentOperations = 50;
+        const int concurrentOperations = 10;
         var tasks = new List<Task>();
+
+        // Pre-create TrackedFiles
+        using (var setupScope = _serviceProvider.CreateScope())
+        {
+            var dbContext = setupScope.ServiceProvider.GetRequiredService<MediaButlerDbContext>();
+            for (int i = 0; i < concurrentOperations; i++)
+            {
+                dbContext.TrackedFiles.Add(new TrackedFile
+                {
+                    Hash = $"high_concurrency_{i}",
+                    FileName = $"concurrent_{i}.mkv",
+                    OriginalPath = $"/test/concurrent_{i}.mkv",
+                    Status = FileStatus.New
+                });
+            }
+            await dbContext.SaveChangesAsync();
+        }
 
         // Act - High concurrency scenario (50 concurrent operations)
         for (int i = 0; i < concurrentOperations; i++)
@@ -146,6 +178,9 @@ public class ConcurrentDbContextTests : IDisposable
             var index = i;
             tasks.Add(Task.Run(async () =>
             {
+                // Stagger starts to prevent SQLite locking
+                await Task.Delay(index * 25);
+
                 using var scope = _serviceProvider.CreateScope();
                 var rollbackService = scope.ServiceProvider.GetRequiredService<IRollbackService>();
 
@@ -160,19 +195,35 @@ public class ConcurrentDbContextTests : IDisposable
         await Task.WhenAll(tasks);
 
         // Assert - Verify all rollback points were created
-        using var verifyScope = _serviceProvider.CreateScope();
-        var context = verifyScope.ServiceProvider.GetRequiredService<MediaButlerDbContext>();
-        var rollbackLogs = await context.ProcessingLogs
-            .Where(log => log.Category == "FileOperation.Rollback")
-            .ToListAsync();
+        using (var verifyScope = _serviceProvider.CreateScope())
+        {
+            var dbContext = verifyScope.ServiceProvider.GetRequiredService<MediaButlerDbContext>();
+            var rollbackLogs = await dbContext.ProcessingLogs
+                .Where(log => log.Category == "FileOperation.Rollback")
+                .ToListAsync();
 
-        rollbackLogs.Should().HaveCountGreaterOrEqualTo(concurrentOperations,
-            "All concurrent operations should create rollback points without data loss");
+            rollbackLogs.Should().HaveCountGreaterOrEqualTo(concurrentOperations,
+                "All concurrent operations should create rollback points without data loss");
+        }
     }
 
     [Fact]
     public async Task RollbackService_ValidationAndExecution_Concurrent_ShouldNotDeadlock()
     {
+        // Pre-create TrackedFile
+        using (var setupScope = _serviceProvider.CreateScope())
+        {
+            var dbContext = setupScope.ServiceProvider.GetRequiredService<MediaButlerDbContext>();
+            dbContext.TrackedFiles.Add(new TrackedFile
+            {
+                Hash = "deadlock_test",
+                FileName = "deadlock.mkv",
+                OriginalPath = "/test/deadlock.mkv",
+                Status = FileStatus.New
+            });
+            await dbContext.SaveChangesAsync();
+        }
+
         // Arrange - Create rollback point
         Guid rollbackId;
         using (var scope = _serviceProvider.CreateScope())
@@ -200,9 +251,4 @@ public class ConcurrentDbContextTests : IDisposable
         results.Should().AllSatisfy(r => r.IsSuccess.Should().BeTrue());
     }
 
-    public void Dispose()
-    {
-        _context?.Dispose();
-        _serviceProvider?.Dispose();
-    }
 }

@@ -1,3 +1,4 @@
+using Xunit;
 using MediaButler.Data;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -8,7 +9,8 @@ namespace MediaButler.Tests.Integration.Infrastructure;
 /// Ensures each test starts with a clean database state.
 /// Follows "Simple Made Easy" principles with clear setup/teardown lifecycle.
 /// </summary>
-public abstract class IntegrationTestBase : IClassFixture<DatabaseFixture>, IAsyncLifetime
+[Collection("Database Tests")]
+public abstract class IntegrationTestBase : IAsyncLifetime
 {
     protected DatabaseFixture Fixture { get; }
     protected MediaButlerDbContext Context => Fixture.Context;

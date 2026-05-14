@@ -1,4 +1,4 @@
-namespace MediaButler.Web.Models;
+namespace MediaButler.Shared.UI.Models;
 
 /// <summary>
 /// Represents a result that can either succeed with a value or fail with an error.

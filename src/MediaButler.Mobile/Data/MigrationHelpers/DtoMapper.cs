@@ -1,5 +1,6 @@
 using MediaButler.Mobile.Data;
 using MediaButler.Mobile.Models;
+using MediaButler.Shared.UI.Models;
 
 namespace MediaButler.Mobile.Data.MigrationHelpers;
 

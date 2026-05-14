@@ -1,8 +1,10 @@
-namespace MediaButler.Web.Models;
+using System;
+using System.Collections.Generic;
+
+namespace MediaButler.Shared.UI.Models;
 
 /// <summary>
-/// Health check response from MediaButler.API /api/health/detailed endpoint.
-/// Matches the actual API response structure.
+/// Health check response from MediaButler.API.
 /// </summary>
 public record HealthCheckResponse(
     string Status,
@@ -16,36 +18,23 @@ public record HealthCheckResponse(
     object MachineLearning
 );
 
-/// <summary>
-/// Database health information.
-/// </summary>
 public record DatabaseHealth(
     string Status,
     int TotalFiles,
     int ProcessedToday
 );
 
-/// <summary>
-/// Memory usage information.
-/// </summary>
 public record MemoryHealth(
     double ManagedMemoryMB,
     double WorkingSetMB,
     int TargetLimitMB
 );
 
-/// <summary>
-/// Processing statistics.
-/// </summary>
 public record ProcessingHealth(
     Dictionary<string, int> StatusCounts,
     double AverageProcessingTimeMinutes
 );
 
-/// <summary>
-/// Basic health response from MediaButler.API /api/health endpoint.
-/// Used as fallback when detailed endpoint is unavailable.
-/// </summary>
 public record BasicHealthResponse(
     string Status,
     DateTime Timestamp,
@@ -53,10 +42,6 @@ public record BasicHealthResponse(
     string Service
 );
 
-/// <summary>
-/// Simplified health status for UI display.
-/// Clear, declarative representation without complexity.
-/// </summary>
 public enum HealthStatus
 {
     Healthy,
@@ -64,10 +49,6 @@ public enum HealthStatus
     Unhealthy
 }
 
-/// <summary>
-/// View model for health check display.
-/// Separates API concerns from UI concerns.
-/// </summary>
 public record HealthCheckViewModel(
     HealthStatus OverallStatus,
     string OverallStatusText,
@@ -76,10 +57,6 @@ public record HealthCheckViewModel(
     List<ComponentHealth> Components
 );
 
-/// <summary>
-/// Individual component health for UI display.
-/// Simple, focused data structure.
-/// </summary>
 public record ComponentHealth(
     string Name,
     HealthStatus Status,

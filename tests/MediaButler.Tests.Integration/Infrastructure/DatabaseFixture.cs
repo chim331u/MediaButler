@@ -31,17 +31,26 @@ public class DatabaseFixture : IDisposable
 
     public DatabaseFixture()
     {
-        // Create in-memory SQLite database connection
-        _connection = new SqliteConnection("DataSource=:memory:");
+        // Create unique file-based SQLite database for isolation and WAL support
+        var dbPath = Path.Combine(Path.GetTempPath(), $"MediaButler_ConcurrentTest_{Guid.NewGuid():N}.db");
+        var connectionString = $"DataSource={dbPath};Cache=Shared";
+        _connection = new Microsoft.Data.Sqlite.SqliteConnection(connectionString);
         _connection.Open();
+
+        // Set busy timeout and WAL mode
+        using (var command = _connection.CreateCommand())
+        {
+            command.CommandText = "PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL;";
+            command.ExecuteNonQuery();
+        }
 
         // Configure services for testing
         var services = new ServiceCollection();
         
-        // Add Entity Framework with in-memory SQLite
+        // Setup in-memory SQLite database with shared cache
         services.AddDbContext<MediaButlerDbContext>(options =>
         {
-            options.UseSqlite(_connection);
+            options.UseSqlite(connectionString);
             options.EnableSensitiveDataLogging();
             options.EnableDetailedErrors();
         });
@@ -62,8 +71,10 @@ public class DatabaseFixture : IDisposable
             ["MediaButler:FileDiscovery:MinFileSizeMB"] = "1",
             ["MediaButler:FileDiscovery:DebounceDelaySeconds"] = "3",
             ["MediaButler:FileDiscovery:MaxConcurrentScans"] = "2",
-            ["MediaButler:ML:ModelPath"] = "models",
-            ["MediaButler:ML:ActiveModelVersion"] = "1.0.0"
+            ["MediaButler:ML:AutoClassifyThreshold"] = "0.1",
+            ["MediaButler:ML:SuggestionThreshold"] = "0.05",
+            ["MediaButler:ML:ModelPath"] = "../../../../../models",
+            ["MediaButler:ML:ActiveModelVersion"] = "1"
         };
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(configDict)
@@ -87,18 +98,32 @@ public class DatabaseFixture : IDisposable
         // Add file operation services
         services.AddScoped<IFileOperationService, FileOperationService>();
         services.AddScoped<IPathGenerationService, PathGenerationService>();
+        services.AddScoped<INotificationService, NotificationService>();
         
         // Add ML services with test configuration
         services.AddMediaButlerML(configuration);
         
         // Add background services
         services.AddBackgroundServices(configuration);
+
+        // Add configuration service
+        services.AddSingleton<MediaButler.Core.Configuration.IMediaButlerConfiguration, MediaButler.Services.Configuration.MediaButlerConfiguration>();
+        
+        // Add ML persistence service
+        services.AddScoped<MediaButler.Core.Interfaces.IMLPersistenceService, MediaButler.Data.Services.MLPersistenceService>();
         
         _serviceProvider = services.BuildServiceProvider();
         
         // Get context and ensure database is created
         Context = _serviceProvider.GetRequiredService<MediaButlerDbContext>();
         Context.Database.EnsureCreated();
+        
+        // Warm up connection and services to avoid concurrent initialization issues
+        _ = Context.TrackedFiles.Any();
+        
+        // Warm up ML pipeline
+        var classificationService = _serviceProvider.GetRequiredService<MediaButler.ML.Interfaces.IClassificationService>();
+        _ = classificationService.ClassifyFilenameAsync("warmup.mkv").GetAwaiter().GetResult();
     }
 
     /// <summary>
@@ -189,8 +214,16 @@ public class DatabaseFixture : IDisposable
 
     public void Dispose()
     {
+        var dbPath = _connection?.DataSource;
         Context?.Dispose();
         _serviceProvider?.Dispose();
+        _connection?.Close();
         _connection?.Dispose();
+
+        // Delete test database file
+        if (!string.IsNullOrEmpty(dbPath) && File.Exists(dbPath))
+        {
+            try { File.Delete(dbPath); } catch { /* Ignore cleanup errors */ }
+        }
     }
 }
