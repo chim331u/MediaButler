@@ -1,16 +1,11 @@
+using System.Reflection;
 using MediaButler.API.Configuration;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Configure Serilog
-builder.Host.UseSerilog((context, configuration) => 
-{
-    var assemblyVersion = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "0.0.0";
-    configuration
-        .ReadFrom.Configuration(context.Configuration)
-        .Enrich.WithProperty("Version", assemblyVersion);
-});
+builder.Host.UseMediaButlerLogging();
 
 // Modularized Service Registration
 builder.Services.AddMediaButlerCors(builder.Configuration)
@@ -35,7 +30,7 @@ app.MapControllers();
 app.MapGet("/", () => new
 {
     Service = "MediaButler API",
-    Version = "1.0.0",
+    Version = Program.Version,
     Status = "Ready",
     Documentation = "/swagger",
     HealthCheck = "/api/health",
@@ -44,5 +39,11 @@ app.MapGet("/", () => new
 
 app.Run();
 
-// Make Program class accessible for testing
-public partial class Program { }
+// Make Program class accessible for testing and expose dynamic version
+public partial class Program 
+{
+    public static readonly string Version = 
+        System.Reflection.Assembly.GetEntryAssembly()?.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0]
+        ?? System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString()
+        ?? "1.0.0";
+}

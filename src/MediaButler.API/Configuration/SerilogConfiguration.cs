@@ -30,17 +30,8 @@ public static class SerilogConfiguration
     /// </summary>
     public static void ConfigureLogging(LoggerConfiguration loggerConfiguration, IConfiguration configuration)
     {
-        // 1. Retrieve the Entry Assembly Version (SemVer dynamic extraction)
-        var assembly = Assembly.GetEntryAssembly();
-        var version = assembly?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion 
-                      ?? assembly?.GetName().Version?.ToString() 
-                      ?? "1.0.0";
-
-        // Remove git commit hashes or metadata added by tools like MinVer or SourceLink if present
-        if (version.Contains('+'))
-        {
-            version = version.Split('+')[0];
-        }
+        // 1. Retrieve the Entry Assembly Version
+        var version = Program.Version;
 
         // 2. Base Configuration & Enrichment (compatible with default Serilog.AspNetCore packages)
         loggerConfiguration

@@ -47,7 +47,7 @@ public class HealthController : ControllerBase
         { 
             Status = "Healthy", 
             Timestamp = DateTime.UtcNow,
-            Version = "1.0.0",
+            Version = Program.Version,
             Service = "MediaButler.API"
         });
     }
@@ -78,7 +78,7 @@ public class HealthController : ControllerBase
                 {
                     Status = "Unhealthy",
                     Timestamp = DateTime.UtcNow,
-                    Version = "1.0.0",
+                    Version = Program.Version,
                     Service = "MediaButler.API",
                     Database = new
                     {
@@ -125,7 +125,7 @@ public class HealthController : ControllerBase
             {
                 Status = overallStatus,
                 Timestamp = DateTime.UtcNow,
-                Version = "1.0.0",
+                Version = Program.Version,
                 Service = "MediaButler.API",
                 Database = new
                 {

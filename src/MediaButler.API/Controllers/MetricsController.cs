@@ -264,7 +264,7 @@ public class MetricsController : ControllerBase
             { 
                 status = "ok", 
                 timestamp = DateTime.UtcNow,
-                version = "1.0.0" // Could be injected from configuration
+                version = Program.Version
             });
         }
         catch (Exception ex)
