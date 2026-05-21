@@ -230,7 +230,7 @@ fetch_repository() {
         rm -f "$zip_file"
     fi
     
-    success "Codebase successfully downloaded to $LOCAL_REPO_DIR"
+    log_success "Codebase successfully downloaded to $LOCAL_REPO_DIR"
 }
 
 # --- Docker Operations ---
