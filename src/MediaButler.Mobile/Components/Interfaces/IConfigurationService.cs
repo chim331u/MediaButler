@@ -22,7 +22,16 @@ public interface IConfigurationService
     /// Gets whether response caching is enabled.
     /// Default: false.
     /// </summary>
+    /// <summary>
+    /// Gets whether response caching is enabled.
+    /// Default: false.
+    /// </summary>
     bool EnableCaching { get; }
+
+    /// <summary>
+    /// Gets the API Key for authentication.
+    /// </summary>
+    string ApiKey { get; }
 
     /// <summary>
     /// Indicates whether the configuration is valid and ready to use.

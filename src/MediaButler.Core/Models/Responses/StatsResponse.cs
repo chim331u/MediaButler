@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace MediaButler.API.Models.Response;
+namespace MediaButler.Core.Models.Responses;
 
 /// <summary>
 /// Comprehensive statistics response containing all MediaButler system metrics.

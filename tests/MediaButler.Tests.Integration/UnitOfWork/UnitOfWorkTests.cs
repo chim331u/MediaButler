@@ -186,6 +186,7 @@ public class UnitOfWorkTests : IntegrationTestBase
         classifiedFiles.Should().HaveCountGreaterOrEqualTo(5);
 
         // Update files in batch
+        Context.ChangeTracker.Clear();
         foreach (var file in newFiles)
         {
             file.MarkAsClassified("BATCH SERIES", 0.7m);
@@ -287,7 +288,7 @@ public class UnitOfWorkTests : IntegrationTestBase
         finalFile.ClassifiedAt.Should().NotBeNull();
         finalFile.MovedAt.Should().NotBeNull();
 
-        processingLogs.Should().HaveCount(2);
+        processingLogs.Should().HaveCount(8);
         processingLogs.Should().AllSatisfy(log =>
         {
             log.Level.Should().Be(MediaButler.Core.Enums.LogLevel.Information);

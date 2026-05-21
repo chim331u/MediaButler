@@ -26,7 +26,7 @@ public class ApiPerformanceTests : IClassFixture<WebApplicationFactory<Program>>
         {
             builder.ConfigureServices(services =>
             {
-                // Replace DbContext with in-memory database for testing
+                // Replace DbContext with SQLite in-memory database for testing
                 var descriptor = services.SingleOrDefault(
                     d => d.ServiceType == typeof(DbContextOptions<MediaButlerDbContext>));
 
@@ -35,9 +35,16 @@ public class ApiPerformanceTests : IClassFixture<WebApplicationFactory<Program>>
                     services.Remove(descriptor);
                 }
 
+                // Setup SQLite connection for in-memory database
+                var connection = new Microsoft.Data.Sqlite.SqliteConnection("DataSource=:memory:");
+                connection.Open();
+
+                // Keep the connection open for the duration of this factory instance
+                services.AddSingleton(connection);
+
                 services.AddDbContext<MediaButlerDbContext>(options =>
                 {
-                    options.UseInMemoryDatabase($"PerformanceTest_{Guid.NewGuid()}");
+                    options.UseSqlite(connection);
                 });
             });
         });
@@ -49,7 +56,7 @@ public class ApiPerformanceTests : IClassFixture<WebApplicationFactory<Program>>
         // Arrange - Seed database with 500 files
         await SeedDatabaseWithFiles(500);
 
-        var client = _factory.CreateClient();
+        var client = CreateAuthenticatedClient();
         var stopwatch = Stopwatch.StartNew();
 
         // Act - Query files by single status
@@ -69,7 +76,7 @@ public class ApiPerformanceTests : IClassFixture<WebApplicationFactory<Program>>
         // Arrange - Seed database with 500 files
         await SeedDatabaseWithFiles(500);
 
-        var client = _factory.CreateClient();
+        var client = CreateAuthenticatedClient();
         var stopwatch = Stopwatch.StartNew();
 
         // Act - Query files by multiple statuses (uses new IX_TrackedFiles_MultiStatus_Query index)
@@ -90,18 +97,18 @@ public class ApiPerformanceTests : IClassFixture<WebApplicationFactory<Program>>
         // Arrange - Seed database with 1000 files across all statuses
         await SeedDatabaseWithFiles(1000, distributeAcrossStatuses: true);
 
-        var client = _factory.CreateClient();
+        var client = CreateAuthenticatedClient();
         var stopwatch = Stopwatch.StartNew();
 
         // Act - Get statistics (aggregation query)
-        var response = await client.GetAsync("/api/stats");
+        var response = await client.GetAsync("/api/stats/processing");
 
         stopwatch.Stop();
 
         // Assert - Performance within threshold
         response.IsSuccessStatusCode.Should().BeTrue();
         stopwatch.ElapsedMilliseconds.Should().BeLessThan(PerformanceThresholdMs,
-            $"GET /api/stats should complete within {PerformanceThresholdMs}ms (took {stopwatch.ElapsedMilliseconds}ms)");
+            $"GET /api/stats/processing should complete within {PerformanceThresholdMs}ms (took {stopwatch.ElapsedMilliseconds}ms)");
     }
 
     [Fact]
@@ -110,7 +117,7 @@ public class ApiPerformanceTests : IClassFixture<WebApplicationFactory<Program>>
         // Arrange - Seed database with 500 files
         await SeedDatabaseWithFiles(500);
 
-        var client = _factory.CreateClient();
+        var client = CreateAuthenticatedClient();
         var stopwatch = Stopwatch.StartNew();
 
         // Act - Query files by category (uses IX_TrackedFiles_Category_Stats index)
@@ -133,7 +140,7 @@ public class ApiPerformanceTests : IClassFixture<WebApplicationFactory<Program>>
         // Arrange - Seed database with varying dataset sizes
         await SeedDatabaseWithFiles(fileCount);
 
-        var client = _factory.CreateClient();
+        var client = CreateAuthenticatedClient();
         var stopwatch = Stopwatch.StartNew();
 
         // Act - Query with multiple statuses
@@ -154,7 +161,7 @@ public class ApiPerformanceTests : IClassFixture<WebApplicationFactory<Program>>
         // Arrange - Seed large dataset
         await SeedDatabaseWithFiles(1000);
 
-        var client = _factory.CreateClient();
+        var client = CreateAuthenticatedClient();
         var memoryBefore = GC.GetTotalMemory(forceFullCollection: true);
 
         // Act - Execute multiple concurrent requests
@@ -179,7 +186,7 @@ public class ApiPerformanceTests : IClassFixture<WebApplicationFactory<Program>>
         // Arrange - Seed database with 1000 files
         await SeedDatabaseWithFiles(1000);
 
-        var client = _factory.CreateClient();
+        var client = CreateAuthenticatedClient();
         var stopwatch = Stopwatch.StartNew();
 
         // Act - Query with large skip offset (tests index efficiency)
@@ -191,6 +198,15 @@ public class ApiPerformanceTests : IClassFixture<WebApplicationFactory<Program>>
         response.IsSuccessStatusCode.Should().BeTrue();
         stopwatch.ElapsedMilliseconds.Should().BeLessThan(PerformanceThresholdMs,
             $"Pagination with large offset should use efficient index (took {stopwatch.ElapsedMilliseconds}ms)");
+    }
+
+    private HttpClient CreateAuthenticatedClient()
+    {
+        var client = _factory.CreateClient();
+        var configuration = _factory.Services.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>();
+        var apiKey = configuration["Security:ApiKey"] ?? "mb-local-dev-key-8a9b2c";
+        client.DefaultRequestHeaders.Add("X-Api-Key", apiKey);
+        return client;
     }
 
     /// <summary>

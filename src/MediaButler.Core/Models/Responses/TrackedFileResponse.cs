@@ -1,6 +1,6 @@
 using MediaButler.Core.Enums;
 
-namespace MediaButler.API.Models.Response;
+namespace MediaButler.Core.Models.Responses;
 
 /// <summary>
 /// Data transfer object representing a tracked file for API responses.

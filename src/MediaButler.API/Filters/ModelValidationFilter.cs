@@ -1,6 +1,7 @@
 using MediaButler.API.Models.Response;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
+using MediaButler.Core.Models.Responses;
 
 namespace MediaButler.API.Filters;
 

@@ -65,6 +65,11 @@ public static class MauiProgram
             var config = serviceProvider.GetRequiredService<IConfigurationService>();
             client.BaseAddress = new Uri(config.ApiBaseUrl);
             client.Timeout = TimeSpan.FromSeconds(config.ApiTimeout);
+            
+            if (!string.IsNullOrEmpty(config.ApiKey))
+            {
+                client.DefaultRequestHeaders.Add("X-Api-Key", config.ApiKey);
+            }
         })
         .ConfigurePrimaryHttpMessageHandler(serviceProvider =>
         {

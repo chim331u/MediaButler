@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace MediaButler.API.Models.Response;
+namespace MediaButler.Core.Models.Responses;
 
 /// <summary>
 /// Standard API response wrapper that provides consistent structure for all API responses.

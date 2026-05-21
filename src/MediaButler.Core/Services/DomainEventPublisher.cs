@@ -35,6 +35,9 @@ public class DomainEventPublisher : IDomainEventPublisher
         if (!domainEvents.Any())
             return;
 
+        // Clear events before publishing to prevent infinite recursion on nested SaveChangesAsync
+        entity.ClearDomainEvents();
+
         _logger.LogDebug("Publishing {EventCount} domain events for entity", domainEvents.Count);
 
         foreach (var domainEvent in domainEvents)
@@ -52,9 +55,6 @@ public class DomainEventPublisher : IDomainEventPublisher
                 // Continue publishing other events even if one fails
             }
         }
-
-        // Clear events after publishing
-        entity.ClearDomainEvents();
     }
 
     private async Task PublishAsync(IDomainEvent domainEvent, CancellationToken cancellationToken)

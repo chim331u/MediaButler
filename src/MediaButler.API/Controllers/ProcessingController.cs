@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Mvc;
 using MediaButler.Core.Enums;
 using MediaButler.Services.Interfaces;
 using MediaButler.ML.Interfaces;
+using MediaButler.Core.Models.Requests;
+using MediaButler.Core.Models.Responses;
 
 namespace MediaButler.API.Controllers;
 
@@ -13,14 +15,12 @@ namespace MediaButler.API.Controllers;
 public class ProcessingController : ControllerBase
 {
     private readonly ILogger<ProcessingController> _logger;
-    private readonly IFileService _fileService;
-    private readonly IClassificationService _classificationService;
+    private readonly IMlOrchestrationService _mlOrchestrationService;
 
-    public ProcessingController(ILogger<ProcessingController> logger, IFileService fileService, IClassificationService classificationService)
+    public ProcessingController(ILogger<ProcessingController> logger, IMlOrchestrationService mlOrchestrationService)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _fileService = fileService ?? throw new ArgumentNullException(nameof(fileService));
-        _classificationService = classificationService ?? throw new ArgumentNullException(nameof(classificationService));
+        _mlOrchestrationService = mlOrchestrationService ?? throw new ArgumentNullException(nameof(mlOrchestrationService));
     }
 
     /// <summary>
@@ -74,135 +74,9 @@ public class ProcessingController : ControllerBase
                 return BadRequest(new { error = "Request body is required" });
             }
 
-            // Define the statuses that are eligible for ML evaluation
-            var eligibleStatuses = new[] { FileStatus.New, FileStatus.Classified };
+            _logger.LogInformation("Delegating ML evaluation queue operation to Orchestration Service");
 
-            _logger.LogInformation("Starting ML evaluation queue operation for statuses: {Statuses}",
-                string.Join(", ", eligibleStatuses));
-
-            // Get files with eligible statuses
-            var result = await _fileService.GetFilesPagedByStatusesAsync(
-                skip: 0,
-                take: 1000, // Process up to 1000 files at once
-                statuses: eligibleStatuses,
-                category: request.FilterByCategory
-            );
-
-            if (!result.IsSuccess || result.Value == null)
-            {
-                _logger.LogWarning("Failed to retrieve files for ML evaluation: {Error}", result.Error);
-                return StatusCode(500, new { error = $"Failed to retrieve files: {result.Error}" });
-            }
-
-            var filesToProcess = result.Value.Items.ToList();
-            var totalFiles = result.Value.Total;
-
-            if (totalFiles == 0)
-            {
-                _logger.LogInformation("No files found for ML evaluation with specified criteria");
-                return Ok(new MlEvaluationResponse
-                {
-                    Success = true,
-                    TotalFilesQueued = 0,
-                    Message = "No files found matching the criteria for ML evaluation",
-                    QueuedAt = DateTime.UtcNow
-                });
-            }
-
-            // Start ML evaluation (model will be lazy-loaded on first classification)
-            _logger.LogInformation("Starting ML evaluation for {TotalFiles} files", totalFiles);
-
-            var processedFiles = 0;
-            var failedFiles = 0;
-            var errors = new List<string>();
-
-            // Process files in batches to avoid overwhelming the system
-            const int batchSize = 10;
-            for (int i = 0; i < filesToProcess.Count; i += batchSize)
-            {
-                var batch = filesToProcess.Skip(i).Take(batchSize).ToList();
-                var filenames = batch.Select(f => f.FileName).ToList();
-
-                try
-                {
-                    _logger.LogInformation("Processing batch {BatchStart}-{BatchEnd} of {TotalFiles}",
-                        i + 1, Math.Min(i + batchSize, totalFiles), totalFiles);
-
-                    // Classify the batch of filenames
-                    var classificationResult = await _classificationService.ClassifyBatchAsync(filenames);
-
-                    if (classificationResult.IsSuccess && classificationResult.Value != null)
-                    {
-                        var results = classificationResult.Value.ToList();
-
-                        // Update each file with ML classification results
-                        for (int j = 0; j < batch.Count && j < results.Count; j++)
-                        {
-                            var file = batch[j];
-                            var mlResult = results[j];
-
-                            try
-                            {
-                                // Update the file with ML classification results using the service
-                                var updateResult = await _fileService.UpdateClassificationAsync(
-                                    file.Hash,
-                                    mlResult.PredictedCategory,
-                                    (decimal)mlResult.Confidence
-                                );
-
-                                if (updateResult.IsSuccess)
-                                {
-                                    _logger.LogInformation("Updated file {FileName} with ML prediction: {Category} (confidence: {Confidence}%)",
-                                        file.FileName, mlResult.PredictedCategory, mlResult.ConfidencePercentage);
-
-                                    processedFiles++;
-                                }
-                                else
-                                {
-                                    var error = $"Failed to update file {file.FileName} classification: {updateResult.Error}";
-                                    _logger.LogWarning(error);
-                                    errors.Add(error);
-                                    failedFiles++;
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                var error = $"Failed to update file {file.FileName}: {ex.Message}";
-                                _logger.LogError(ex, "Error updating file with ML results");
-                                errors.Add(error);
-                                failedFiles++;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        var error = $"ML classification failed for batch {i + 1}: {classificationResult.Error}";
-                        _logger.LogError(error);
-                        errors.Add(error);
-                        failedFiles += batch.Count;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    var error = $"Exception processing batch {i + 1}: {ex.Message}";
-                    _logger.LogError(ex, "Exception during ML batch processing");
-                    errors.Add(error);
-                    failedFiles += batch.Count;
-                }
-            }
-
-            var response = new MlEvaluationResponse
-            {
-                Success = processedFiles > 0,
-                TotalFilesQueued = processedFiles,
-                Message = processedFiles > 0
-                    ? $"Successfully processed {processedFiles} files with ML evaluation. {failedFiles} files failed."
-                    : $"ML evaluation failed for all files. {string.Join("; ", errors.Take(3))}",
-                QueuedAt = DateTime.UtcNow,
-                EstimatedProcessingTimeMinutes = 0 // Processing is now complete
-            };
-
-            _logger.LogInformation("ML evaluation queue operation completed. Files queued: {TotalFiles}", totalFiles);
+            var response = await _mlOrchestrationService.ProcessMlEvaluationBatchAsync(request);
 
             return Ok(response);
         }
@@ -223,8 +97,6 @@ public class ProcessingController : ControllerBase
     /// <response code="503">ML model not ready</response>
     /// <response code="500">Internal server error</response>
     [HttpPost("classify")]
-    [Produces("application/json")]
-    [Consumes("application/json")]
     [ProducesResponseType(typeof(ClassificationResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
@@ -238,57 +110,9 @@ public class ProcessingController : ControllerBase
                 return BadRequest(new { error = "Filename is required" });
             }
 
-            _logger.LogInformation("Classifying filename: {Filename}", request.Filename);
+            _logger.LogInformation("Delegating classification for {Filename} to Orchestration Service", request.Filename);
 
-            // Perform classification (model will be lazy-loaded on first call)
-            var classificationResult = await _classificationService.ClassifyFilenameAsync(request.Filename);
-
-            if (!classificationResult.IsSuccess || classificationResult.Value == null)
-            {
-                _logger.LogError("Classification failed for filename: {Filename}. Error: {Error}",
-                    request.Filename, classificationResult.Error);
-                return StatusCode(500, new { error = $"Classification failed: {classificationResult.Error}" });
-            }
-
-            var result = classificationResult.Value;
-
-            // Build response with top prediction and alternatives
-            var predictions = new List<CategoryPredictionDto>
-            {
-                new CategoryPredictionDto
-                {
-                    Category = result.PredictedCategory,
-                    Confidence = result.Confidence,
-                    ConfidencePercentage = Math.Round(result.Confidence * 100, 2),
-                    Rank = 1
-                }
-            };
-
-            // Add alternative predictions
-            if (result.AlternativePredictions != null && result.AlternativePredictions.Any())
-            {
-                predictions.AddRange(result.AlternativePredictions.Select((alt, index) => new CategoryPredictionDto
-                {
-                    Category = alt.Category,
-                    Confidence = alt.Confidence,
-                    ConfidencePercentage = Math.Round(alt.Confidence * 100, 2),
-                    Rank = index + 2
-                }));
-            }
-
-            var response = new ClassificationResponse
-            {
-                Filename = request.Filename,
-                PredictedCategory = result.PredictedCategory,
-                Confidence = result.Confidence,
-                ConfidencePercentage = Math.Round(result.Confidence * 100, 2),
-                Top5Predictions = predictions.Take(5).ToList(),
-                ClassifiedAt = result.ClassifiedAt,
-                ModelVersion = result.ModelVersion
-            };
-
-            _logger.LogInformation("Successfully classified filename: {Filename} as {Category} with {Confidence}% confidence",
-                request.Filename, result.PredictedCategory, result.ConfidencePercentage);
+            var response = await _mlOrchestrationService.ClassifyFilenameAsync(request.Filename);
 
             return Ok(response);
         }
@@ -298,149 +122,4 @@ public class ProcessingController : ControllerBase
             return StatusCode(500, new { error = $"Classification failed: {ex.Message}" });
         }
     }
-
-    private static int CalculateEstimatedProcessingTime(int fileCount)
-    {
-        // Estimate 5 seconds per file for ML processing
-        var totalSeconds = fileCount * 5;
-        return (int)Math.Ceiling(totalSeconds / 60.0); // Convert to minutes
-    }
-}
-
-/// <summary>
-/// Processing queue status information
-/// </summary>
-public record ProcessingQueueStatus
-{
-    public int QueueSize { get; init; }
-    public int ActiveJobs { get; init; }
-    public int CompletedToday { get; init; }
-    public int FailedToday { get; init; }
-    public int AvgProcessingTimeMs { get; init; }
-    public DateTime LastActivity { get; init; } = DateTime.UtcNow;
-}
-
-/// <summary>
-/// Request for queuing ML evaluation
-/// </summary>
-public record MlEvaluationRequest
-{
-    /// <summary>
-    /// Optional category filter. If provided, only files in this category will be processed.
-    /// </summary>
-    public string? FilterByCategory { get; init; }
-
-    /// <summary>
-    /// Force re-evaluation even if files already have a SuggestedCategory.
-    /// </summary>
-    public bool ForceReEvaluation { get; init; } = true;
-}
-
-/// <summary>
-/// Response for ML evaluation queue operation
-/// </summary>
-public record MlEvaluationResponse
-{
-    /// <summary>
-    /// Indicates if the operation was successful
-    /// </summary>
-    public bool Success { get; init; }
-
-    /// <summary>
-    /// Total number of files queued for ML evaluation
-    /// </summary>
-    public int TotalFilesQueued { get; init; }
-
-    /// <summary>
-    /// Descriptive message about the operation result
-    /// </summary>
-    public string Message { get; init; } = string.Empty;
-
-    /// <summary>
-    /// Timestamp when the files were queued
-    /// </summary>
-    public DateTime QueuedAt { get; init; }
-
-    /// <summary>
-    /// Estimated processing time in minutes
-    /// </summary>
-    public int EstimatedProcessingTimeMinutes { get; init; }
-}
-
-/// <summary>
-/// Request for filename classification
-/// </summary>
-public record ClassificationRequest
-{
-    /// <summary>
-    /// The filename to classify (e.g., "Breaking.Bad.S05E16.FINAL.1080p.mkv")
-    /// </summary>
-    public required string Filename { get; init; }
-}
-
-/// <summary>
-/// Response containing classification results with top 5 predictions
-/// </summary>
-public record ClassificationResponse
-{
-    /// <summary>
-    /// The original filename that was classified
-    /// </summary>
-    public required string Filename { get; init; }
-
-    /// <summary>
-    /// The predicted category (top prediction)
-    /// </summary>
-    public required string PredictedCategory { get; init; }
-
-    /// <summary>
-    /// Confidence score for the top prediction (0.0 to 1.0)
-    /// </summary>
-    public double Confidence { get; init; }
-
-    /// <summary>
-    /// Confidence score as a percentage (0 to 100)
-    /// </summary>
-    public double ConfidencePercentage { get; init; }
-
-    /// <summary>
-    /// Top 5 category predictions with confidence scores, ordered by confidence (descending)
-    /// </summary>
-    public required List<CategoryPredictionDto> Top5Predictions { get; init; }
-
-    /// <summary>
-    /// Timestamp when the classification was performed
-    /// </summary>
-    public DateTime ClassifiedAt { get; init; }
-
-    /// <summary>
-    /// Version of the ML model used for classification
-    /// </summary>
-    public required int ModelVersion { get; init; }
-}
-
-/// <summary>
-/// A single category prediction with confidence score (DTO for API response)
-/// </summary>
-public record CategoryPredictionDto
-{
-    /// <summary>
-    /// The predicted category name
-    /// </summary>
-    public required string Category { get; init; }
-
-    /// <summary>
-    /// Confidence score (0.0 to 1.0)
-    /// </summary>
-    public double Confidence { get; init; }
-
-    /// <summary>
-    /// Confidence score as a percentage (0 to 100)
-    /// </summary>
-    public double ConfidencePercentage { get; init; }
-
-    /// <summary>
-    /// Rank of this prediction (1 = top prediction, 2-5 = alternatives)
-    /// </summary>
-    public int Rank { get; init; }
 }

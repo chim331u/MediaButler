@@ -1,6 +1,8 @@
 using MediaButler.Core.Entities;
 using MediaButler.Core.Enums;
 
+using MediaButler.Core.Models.Responses;
+
 namespace MediaButler.API.Models.Response;
 
 /// <summary>

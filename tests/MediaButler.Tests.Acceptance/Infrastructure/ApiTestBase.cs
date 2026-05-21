@@ -23,6 +23,11 @@ public abstract class ApiTestBase : IClassFixture<MediaButlerWebApplicationFacto
         Factory = factory;
         Client = factory.CreateClient();
         
+        // Add API Key to default request headers
+        var configuration = factory.Services.GetService<Microsoft.Extensions.Configuration.IConfiguration>();
+        var apiKey = configuration?["Security:ApiKey"] ?? "mb-local-dev-key-8a9b2c";
+        Client.DefaultRequestHeaders.Add("X-Api-Key", apiKey);
+        
         // Configure JSON serialization options to match API settings
         JsonOptions = new JsonSerializerOptions
         {

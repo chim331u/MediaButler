@@ -1,6 +1,6 @@
 using FluentValidation;
-using MediaButler.API.Models.Request;
 using MediaButler.Core.Enums;
+using MediaButler.Core.Models.Requests;
 
 namespace MediaButler.API.Validators;
 

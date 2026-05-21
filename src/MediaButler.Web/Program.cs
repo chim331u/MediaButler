@@ -46,6 +46,10 @@ builder.Services.AddHttpClient<IHttpClientService, HttpClientService>(client =>
     client.BaseAddress = new Uri(apiSettings.BaseUrl);
     client.Timeout = TimeSpan.FromSeconds(30);
     client.DefaultRequestHeaders.Add("Accept", "application/json");
+    if (!string.IsNullOrEmpty(apiSettings.ApiKey))
+    {
+        client.DefaultRequestHeaders.Add("X-Api-Key", apiSettings.ApiKey);
+    }
 });
 
 // MediaButler API services - following "Simple Made Easy" principles

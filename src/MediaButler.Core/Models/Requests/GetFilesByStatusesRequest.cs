@@ -1,6 +1,6 @@
 using MediaButler.Core.Enums;
 
-namespace MediaButler.API.Models.Request;
+namespace MediaButler.Core.Models.Requests;
 
 /// <summary>
 /// Request model for querying files by multiple status values with pagination.

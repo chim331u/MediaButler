@@ -1,4 +1,4 @@
-using MediaButler.API.Models.Response;
+using MediaButler.Core.Models.Responses;
 using System.Net;
 using System.Text.Json;
 using System.Diagnostics;

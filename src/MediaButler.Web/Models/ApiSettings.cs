@@ -12,6 +12,11 @@ public class ApiSettings
     public string BaseUrl { get; set; } = string.Empty;
 
     /// <summary>
+    /// API Key for authenticating with the MediaButler API.
+    /// </summary>
+    public string ApiKey { get; set; } = string.Empty;
+
+    /// <summary>
     /// Validates that the API settings are properly configured.
     /// </summary>
     public bool IsValid => !string.IsNullOrWhiteSpace(BaseUrl) && Uri.IsWellFormedUriString(BaseUrl, UriKind.Absolute);

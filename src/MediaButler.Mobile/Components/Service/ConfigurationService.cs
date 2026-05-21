@@ -49,6 +49,13 @@ public class ConfigurationService : IConfigurationService
         _configuration.GetValue<bool>("ApiSettings:EnableCaching", false);
 
     /// <summary>
+    /// Gets the API Key for authentication.
+    /// Default: empty.
+    /// </summary>
+    public string ApiKey =>
+        _configuration.GetValue<string>("ApiSettings:ApiKey", string.Empty);
+
+    /// <summary>
     /// Indicates whether the configuration is valid.
     /// </summary>
     public bool IsValidConfiguration =>
