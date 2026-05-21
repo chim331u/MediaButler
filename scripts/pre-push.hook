@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+
+# ==============================================================================
+# Git Pre-Push Hook: Auto-Increment Minor Version
+# Description: Bumps the C# project minor version on push, commits it,
+#              and pushes the resulting commit to avoid losing the update.
+# ==============================================================================
+
+set -euo pipefail
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+NC='\033[0m' # No Color
+
+# 1. Bypass check: Allow manual override or recursion prevention
+if [ "${SKIP_VERSION_BUMP:-0}" = "1" ] || [ "${RECURSIVE_PUSH:-0}" = "1" ]; then
+    exit 0
+fi
+
+# 2. Prevent loop/bump if we are already up to date on the remote
+# In pre-push, stdin contains details of what is being pushed:
+# <local ref> <local sha1> <remote ref> <remote sha1>
+read -r LOCAL_REF LOCAL_SHA REMOTE_REF REMOTE_SHA || true
+
+# If we have no local SHA, it means there is nothing to push (or deleting a branch)
+if [ -z "${LOCAL_SHA:-}" ] || [ "$LOCAL_SHA" = "0000000000000000000000000000000000000000" ]; then
+    exit 0
+fi
+
+# 3. Locate the increment script
+REPO_ROOT=$(git rev-parse --show-toplevel)
+INCREMENT_SCRIPT="$REPO_ROOT/scripts/increment-version.sh"
+
+if [ ! -f "$INCREMENT_SCRIPT" ]; then
+    echo -e "${RED}[Pre-Push Hook] Error: Increment script not found at $INCREMENT_SCRIPT${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}[Pre-Push Hook] Auto-incrementing project minor version on push...${NC}"
+
+# Run the script to bump minor version
+"$INCREMENT_SCRIPT" minor
+
+# 4. Stage and commit the bumped version
+PROJECT_FILE="src/MediaButler.API/MediaButler.API.csproj"
+git add "$PROJECT_FILE"
+
+# Commit using --no-verify and SKIP_VERSION_BUMP=1 to avoid triggering the pre-commit hook
+SKIP_VERSION_BUMP=1 git commit --no-verify -m "chore: bump version (minor)"
+
+echo -e "${GREEN}[Pre-Push Hook] Staged and committed minor version bump.${NC}"
+
+# 5. Execute recursive push with the new commit
+echo -e "${GREEN}[Pre-Push Hook] Re-triggering push to include the minor version bump...${NC}"
+RECURSIVE_PUSH=1 git push "$@"
+
+# 6. Exit with 1 to cancel the original push (the recursive push already succeeded)
+exit 1

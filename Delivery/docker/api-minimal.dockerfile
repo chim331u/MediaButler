@@ -16,7 +16,7 @@ ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 \
 # Copy all source files
 COPY . .
 
-# Build with extreme memory conservation
+# Build with extreme memory conservation and size optimizations
 WORKDIR /source/src/MediaButler.API
 RUN dotnet publish \
     --configuration Release \
@@ -26,7 +26,11 @@ RUN dotnet publish \
     /p:InvariantGlobalization=true \
     /p:MaxCpuCount=1 \
     /p:BuildInParallel=false \
-    /p:UseSharedCompilation=false
+    /p:UseSharedCompilation=false \
+    /p:PublishReadyToRun=false \
+    /p:PublishSingleFile=false \
+    /p:DebugType=None \
+    /p:DebugSymbols=false
 
 # =============================================================================
 # RUNTIME STAGE - .NET 10 Runtime for ARM32

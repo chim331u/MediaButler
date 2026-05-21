@@ -1,10 +1,18 @@
-# MediaButler Deployment
+# MediaButler Deployment Suite
 
-Simple deployment scripts for MediaButler API on QNAP NAS or MacBook development.
+This folder contains the complete, highly optimized, production-ready deployment suite for **MediaButler**. It is designed to run seamlessly on low-resource environments (such as QNAP/Synology NAS with CPU ARM32/ARM64 and 1GB/2GB of RAM) as well as macOS local development workstations.
 
-## Quick Start
+The suite consists of two independent, platform-aware, and self-healing deployment scripts:
+1. **MediaButler API** (`deploy-mediabutler-api.sh`): Deploys the .NET 10 high-performance backend, including auto-generated credentials and database structures.
+2. **MediaButler Web** (`deploy-mediabutler-web.sh`): Deploys the Blazor WebAssembly frontend served by an extremely lightweight, secure, non-root Nginx server.
 
-### Deploy MediaButler API
+---
+
+## 🚀 Quick Start Guide
+
+To deploy the entire MediaButler system, execute the following commands from your terminal:
+
+### Step 1: Deploy the Backend API
 
 ```bash
 cd Delivery/scripts
@@ -12,118 +20,99 @@ chmod +x deploy-mediabutler-api.sh
 ./deploy-mediabutler-api.sh
 ```
 
-The script will:
-1. Ask you to select deployment platform (QNAP NAS or MacBook)
-2. Show all configuration values
-3. Ask for confirmation before proceeding
-4. Clone repository, build Docker image, and run container
+### Step 2: Deploy the Web Frontend
 
-### Platform Options
-
-**Option 1: QNAP NAS (ARM32)**
-- Production deployment
-- ARM32 optimized (1GB RAM)
-- QNAP volume paths (`/share/...`)
-- Port: 30129
-
-**Option 2: MacBook ARM64**
-- Local development
-- ARM64 native build
-- Local paths (`~/mediabutler/...`)
-- Port: 30129
-
-## Configuration
-
-All settings are configured automatically based on platform selection.
-
-### QNAP NAS Defaults
 ```bash
-HOST_PORT=30129
-DATA_VOLUME=/share/CACHEDEV2_DATA/Storage/Docker/mediabutler:/data
-WATCH_VOLUME=/share/Download/Incoming:/watch
-LIBRARY_VOLUME=/share/Video/Serie:/library
+chmod +x deploy-mediabutler-web.sh
+./deploy-mediabutler-web.sh
 ```
 
-### MacBook Defaults
+---
+
+## 📋 Architectural Highlights
+
+### 🔒 Non-Root Security (Web Frontend)
+The Web frontend Nginx server is optimized for maximal security:
+* **Privileged Port Bypass:** Runs entirely as the non-root user `mediabutler` (UID/GID 1000) and listens on internal port `8080`.
+* **Read-Only Compatibility:** Nginx PID files and caching structures are routed through `/tmp/nginx.pid` to allow running inside completely read-only container systems.
+* **Aggressive Static Optimization:** Embedded Gzip compression, cache-control directives, and explicit WebAssembly MIME-type handling.
+
+### ⚙️ Startup Config Injection
+Instead of hardcoding the backend URL during static compilation, the Web deployment utilizes a **dynamic entrypoint** (`web-entrypoint.sh`). When the container starts, it reads the `API_BASE_URL` environment variable and injects it directly into the compiled Blazor `appsettings.json` file before launching Nginx.
+
+### 🧠 Low-Memory OOM Shielding (.NET Build Stage)
+To build robustly on a NAS or embedded hardware with very limited RAM (1GB/2GB), both build systems apply:
+* Disabling the Server GC (`DOTNET_GCServer=0`, `DOTNET_gcConcurrent=false`).
+* Strict single-threaded builds (`/p:MaxCpuCount=1`, `/p:BuildInParallel=false`) to cap compiler memory footprints within 150-200MB boundaries.
+* Compiling on `linux/amd64` (multi-stage) and deploying lightweight native runtimes (`linux/arm/v7` or `linux/arm64`) to bypass compiler issues on ARM targets.
+
+---
+
+## 🔧 Platform Configurations & Defaults
+
+The scripts automatically detect your operating system and offer guided setups:
+
+### 1. MediaButler API Defaults
+
+| Parameter | MacBook ARM64 (Local Dev) | QNAP/Synology NAS (Production) |
+| :--- | :--- | :--- |
+| **Host Port** | `30129` | `30129` |
+| **Docker Platform** | `linux/arm64` | `linux/arm/v7` |
+| **Data Directory** | `~/mediabutler/data` | `/share/CACHEDEV1_DATA/Docker/mediabutler` |
+| **Watch Folder** | `~/mediabutler/watch` | `/share/Download/Incoming` |
+| **Media Library** | `~/mediabutler/library` | `/share/Video/Serie` |
+| **Logs Volume** | `~/mediabutler/logs` | `/share/CACHEDEV1_DATA/Docker/mediabutler/logs` |
+
+> [!TIP]
+> **Guided Security Setup:** During API deployment, if you leave the API Key or JWT Secret prompts empty, the script automatically generates highly secure, cryptographically random keys using `openssl` (or a secure local pseudo-random fallback).
+
+### 2. MediaButler Web Defaults
+
+| Parameter | MacBook ARM64 (Local Dev) | QNAP/Synology NAS (Production) |
+| :--- | :--- | :--- |
+| **Host Port** | `30139` (maps to internal `8080`) | `30139` (maps to internal `8080`) |
+| **Docker Platform** | `linux/arm64` | `linux/arm/v7` |
+| **API URL** | `http://localhost:30129/` | `http://localhost:30129/` *(or public URL)* |
+| **Logs Volume** | `~/mediabutler_web/logs` | `/share/CACHEDEV1_DATA/Docker/mediabutler_web/logs` |
+
+---
+
+## 🛠️ Diagnostics & Maintenance
+
+### Check Logs & Status
 ```bash
-HOST_PORT=30129
-DATA_VOLUME=$HOME/mediabutler/data:/data
-WATCH_VOLUME=$HOME/mediabutler/watch:/watch
-LIBRARY_VOLUME=$HOME/mediabutler/library:/library
+# View last 50 logs of the API
+docker logs --tail 50 mediabutler_api
+
+# View last 50 logs of the Web UI
+docker logs --tail 50 mediabutler_web
 ```
 
-## Access After Deployment
-
-- API: `http://localhost:30129`
-- Swagger UI: `http://localhost:30129/swagger`
-- Health Check: `http://localhost:30129/health`
-
-## Additional Scripts
-
-### Monitor System
+### Resource Utilization
 ```bash
-./monitor-mediabutler.sh
+# Monitor container CPU, memory and network metrics
+docker stats mediabutler_api mediabutler_web
 ```
 
-### Backup Data
-```bash
-./backup-mediabutler.sh --full
+### Self-Healing & Restarts
+If you encounter runtime communication failures or need to apply immediate updates, run the deployment scripts again. They perform a **complete self-healing cycle** by gracefully stopping existing containers and cleaning up orphaned images before spinning up fresh instances.
+
+---
+
+## 📂 Active Folder Structure
+
+Following a thorough optimization cleanup, the `Delivery` folder contains only the essential components:
+
 ```
-
-### Update MediaButler
-```bash
-./update-mediabutler.sh
-```
-
-## Docker Files
-
-Three Dockerfile variants are available in `docker/`:
-
-- `api-optimized.dockerfile` - Production (recommended)
-- `api-simple.dockerfile` - Development
-- `api-minimal.dockerfile` - Minimal build
-
-The deployment script automatically selects the best Dockerfile.
-
-## Troubleshooting
-
-### Check Container Status
-```bash
-docker ps
-docker logs mediabutler_api
-```
-
-### View Container Resource Usage
-```bash
-docker stats mediabutler_api
-```
-
-### Restart Container
-```bash
-docker restart mediabutler_api
-```
-
-### Stop and Remove Container
-```bash
-docker stop mediabutler_api
-docker rm mediabutler_api
-```
-
-## Requirements
-
-- Docker installed
-- Internet connection (for first deployment)
-- QNAP: 1GB+ RAM, 2GB+ disk space
-- MacBook: Docker Desktop installed
-
-## Repository
-
-Default repository: `https://github.com/chim331u/MediaButler.git`
-Default branch: `delploy`
-
-Override with environment variables:
-```bash
-export GITHUB_REPO=https://github.com/your-username/MediaButler.git
-export GIT_BRANCH=main
-./deploy-mediabutler-api.sh
+Delivery/
+├── README.md                <-- This documentation
+├── docker/
+│   ├── api-minimal.dockerfile   <-- API compilation and runtime optimizations
+│   ├── Dockerfile.webassembly   <-- Blazor WebAssembly non-root compilation
+│   └── web-entrypoint.sh        <-- Dynamic startup config injector
+└── scripts/
+    ├── deploy-mediabutler-api.sh <-- Interactive backend deployment
+    ├── deploy-mediabutler-web.sh <-- Interactive frontend deployment
+    ├── monitor-mediabutler.sh   <-- System monitoring dashboard
+    └── update-mediabutler.sh    <-- Seamless repository update script
 ```

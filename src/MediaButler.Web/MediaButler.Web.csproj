@@ -20,7 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MediaButler.Core\MediaButler.Core.csproj" />
-    <ProjectReference Include="..\MediaButler.Shared.Ui\MediaButler.Shared.UI.csproj" />
+    <ProjectReference Include="..\MediaButler.Shared.UI\MediaButler.Shared.UI.csproj" />
   </ItemGroup>
 
 </Project>
