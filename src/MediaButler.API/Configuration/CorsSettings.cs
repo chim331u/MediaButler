@@ -144,24 +144,38 @@ public class CorsSettings
 
         try
         {
-            // Parse both pattern and origin URLs
-            var patternWithoutWildcard = pattern.Replace("*", "WILDCARD");
-            var patternUri = new Uri(patternWithoutWildcard);
             var originUri = new Uri(origin);
+            
+            // Check if pattern allows any port (ends with :*)
+            bool allowAnyPort = pattern.EndsWith(":*");
+            
+            string patternToParse = pattern;
+            if (allowAnyPort)
+            {
+                // Strip the port wildcard for URI parsing
+                patternToParse = pattern.Substring(0, pattern.Length - 2);
+            }
+
+            // Replace remaining wildcards in scheme/host with a valid placeholder
+            var patternWithoutWildcard = patternToParse.Replace("*", "WILDCARD");
+            var patternUri = new Uri(patternWithoutWildcard);
 
             // Check scheme
             if (patternUri.Scheme != originUri.Scheme)
                 return false;
 
-            // Check port if specified in pattern
-            if (!pattern.Contains(":*"))
+            // Check port if port wildcard is NOT specified
+            if (!allowAnyPort)
             {
                 if (patternUri.Port != originUri.Port)
                     return false;
             }
 
-            // Check host with wildcard matching
-            var patternHost = patternUri.Host.Replace("WILDCARD", "*");
+            // Check host with wildcard matching (handle potential casing changes by Uri parsing)
+            var patternHost = patternUri.Host
+                .Replace("WILDCARD", "*")
+                .Replace("wildcard", "*");
+                
             return MatchesHostPattern(patternHost, originUri.Host);
         }
         catch
