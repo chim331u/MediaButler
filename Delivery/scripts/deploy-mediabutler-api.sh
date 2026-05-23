@@ -226,20 +226,61 @@ fetch_repository() {
         local zip_file="/tmp/mediabutler_api.zip"
         
         log_info "Downloading ZIP from: $zip_url"
+        local download_success=0
         if command -v wget >/dev/null 2>&1; then
-            wget -q -O "$zip_file" "$zip_url"
+            log_info "Using wget..."
+            if wget --no-check-certificate -q -O "$zip_file" "$zip_url"; then
+                download_success=1
+            else
+                log_warning "wget failed. Retrying with verbose output..."
+                if wget --no-check-certificate -O "$zip_file" "$zip_url"; then
+                    download_success=1
+                fi
+            fi
         elif command -v curl >/dev/null 2>&1; then
-            curl -s -L -o "$zip_file" "$zip_url"
-        else
-            log_error "Neither wget nor curl detected. Cannot download repository."
+            log_info "Using curl..."
+            if curl -k -s -L -o "$zip_file" "$zip_url"; then
+                download_success=1
+            else
+                log_warning "curl failed. Retrying with verbose output..."
+                if curl -k -L -o "$zip_file" "$zip_url"; then
+                    download_success=1
+                fi
+            fi
+        fi
+
+        if [ "$download_success" -ne 1 ]; then
+            log_error "Failed to download codebase ZIP from $zip_url."
+            log_info "Please ensure the NAS has internet access, can resolve github.com, and the branch is correct."
             exit 1
         fi
         
         log_info "Extracting codebase..."
-        unzip -q "$zip_file" -d "/tmp"
+        if ! unzip -q "$zip_file" -d "/tmp"; then
+            log_error "Failed to extract ZIP file. The download might be corrupted or incomplete."
+            ls -lh "$zip_file" || true
+            exit 1
+        fi
+
         local folder_name
         folder_name=$(basename "$clean_url")
-        mv "/tmp/${folder_name}-${GIT_BRANCH}" "$LOCAL_REPO_DIR"
+        
+        # Dynamically locate the extracted folder to be robust against casing or branch name variations
+        local extracted_dir
+        extracted_dir=$(find /tmp -maxdepth 1 -type d -name "${folder_name}-*" -o -name "$(echo "$folder_name" | tr '[:upper:]' '[:lower:]')-*" | head -n 1)
+        
+        if [ -n "$extracted_dir" ]; then
+            log_info "Moving extracted folder $extracted_dir to $LOCAL_REPO_DIR..."
+            mv "$extracted_dir" "$LOCAL_REPO_DIR"
+        else
+            log_warning "Dynamic folder resolution fallback for ZIP structure..."
+            if [ -d "/tmp/${folder_name}-${GIT_BRANCH}" ]; then
+                mv "/tmp/${folder_name}-${GIT_BRANCH}" "$LOCAL_REPO_DIR"
+            else
+                log_error "Could not locate extracted repository folder in /tmp."
+                exit 1
+            fi
+        fi
         rm -f "$zip_file"
     fi
     
