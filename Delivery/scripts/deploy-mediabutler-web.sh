@@ -261,9 +261,9 @@ build_image() {
         exit 1
     fi
 
-    # Execute build with platform specifications for the final stage
+    # Execute build with BuildKit and platform specifications for the final stage
     # Compiler stage uses linux/amd64 explicitly inside the Dockerfile
-    docker build \
+    DOCKER_BUILDKIT=1 docker build \
         --platform "$DOCKER_PLATFORM" \
         -f "$DOCKERFILE_PATH" \
         -t "${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}" \
