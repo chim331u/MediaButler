@@ -93,6 +93,10 @@ public class SseNotificationService : ISseNotificationService, IAsyncDisposable
             {
                 var baseUrl = _configService.ApiBaseUrl.TrimEnd('/');
                 var url = $"{baseUrl}/api/sse/connect";
+                if (!string.IsNullOrEmpty(_configService.ApiKey))
+                {
+                    url = $"{url}?apiKey={Uri.EscapeDataString(_configService.ApiKey)}";
+                }
 
                 _logger.LogInformation("Connecting to SSE endpoint: {Url}", url);
 

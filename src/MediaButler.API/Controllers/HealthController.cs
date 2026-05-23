@@ -40,6 +40,7 @@ public class HealthController : ControllerBase
     /// <returns>Health status with timestamp</returns>
     /// <response code="200">API is healthy and operational</response>
     [HttpGet]
+    [HttpGet("/health")]
     [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
     public IActionResult GetHealth()
     {

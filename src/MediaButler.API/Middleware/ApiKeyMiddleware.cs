@@ -18,6 +18,13 @@ public class ApiKeyMiddleware
 
     public async Task InvokeAsync(HttpContext context, IConfiguration configuration)
     {
+        // Allow OPTIONS preflight requests to bypass authentication
+        if (string.Equals(context.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
+        {
+            await _next(context);
+            return;
+        }
+
         var path = context.Request.Path.Value;
         var excludedPaths = configuration.GetSection("Security:ExcludedPaths").Get<string[]>() ?? Array.Empty<string>();
         
@@ -29,7 +36,21 @@ public class ApiKeyMiddleware
         }
 
         // Require API Key for all other paths
-        if (!context.Request.Headers.TryGetValue(APIKEYNAME, out var extractedApiKey))
+        string? extractedApiKey = null;
+        if (context.Request.Headers.TryGetValue(APIKEYNAME, out var headerValue))
+        {
+            extractedApiKey = headerValue;
+        }
+        else if (context.Request.Query.TryGetValue("apiKey", out var queryValue))
+        {
+            extractedApiKey = queryValue;
+        }
+        else if (context.Request.Query.TryGetValue("api-key", out var queryValue2))
+        {
+            extractedApiKey = queryValue2;
+        }
+
+        if (string.IsNullOrEmpty(extractedApiKey))
         {
             context.Response.StatusCode = 401;
             context.Response.ContentType = "application/json";

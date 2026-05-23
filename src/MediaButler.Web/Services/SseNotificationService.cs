@@ -46,6 +46,10 @@ public class SseNotificationService : ISseNotificationService, IAsyncDisposable
         }
 
         var url = $"{_apiSettings.BaseUrl.TrimEnd('/')}/api/sse/connect";
+        if (!string.IsNullOrEmpty(_apiSettings.ApiKey))
+        {
+            url = $"{url}?apiKey={Uri.EscapeDataString(_apiSettings.ApiKey)}";
+        }
         await _jsRuntime.InvokeVoidAsync("sseInterop.start", url, _dotnetRef);
     }
 

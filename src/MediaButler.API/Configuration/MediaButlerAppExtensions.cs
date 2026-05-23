@@ -68,11 +68,11 @@ public static class MediaButlerAppExtensions
         app.UseHttpsRedirection();
         app.UseRouting();
 
-        // Add API Key Authentication
-        app.UseApiKeyAuthentication();
-
         // Use configurable CORS policy for all environments
         app.UseCors("ConfigurablePolicy");
+
+        // Add API Key Authentication
+        app.UseApiKeyAuthentication();
 
         return app;
     }

@@ -172,15 +172,12 @@ interactive_prompts() {
 
     # Guided Security setup
     echo ""
-    log_info "Setting up Security Credentials. Leave empty to automatically generate secure keys."
+    log_info "Setting up Security Credentials. Leave empty to use local development defaults."
     
-    read -p "API Key (Security:ApiKey) [Auto-Generate]: " -r input_api_key
-    if [ -z "$input_api_key" ]; then
-        API_KEY=$(generate_api_key)
-        log_warning "Auto-generated secure API Key: $API_KEY"
-    else
-        API_KEY="$input_api_key"
-    fi
+    local default_key="mb-local-dev-key-8a9b2c"
+    read -p "API Key (Security:ApiKey) [$default_key]: " -r input_api_key
+    API_KEY="${input_api_key:-$default_key}"
+    log_info "Using API Key: $API_KEY"
 
     read -p "JWT Secret (Security:JwtSecret) [Auto-Generate]: " -r input_jwt_secret
     if [ -z "$input_jwt_secret" ]; then
@@ -197,7 +194,23 @@ fetch_repository() {
     log_info "Fetching codebase..."
     rm -rf "$LOCAL_REPO_DIR"
 
-    if command -v git >/dev/null 2>&1; then
+    # Check if we are running from a local working directory
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local local_root
+    local_root="$(cd "${script_dir}/../.." && pwd)"
+
+    if [ -f "${local_root}/MediaButler.sln" ]; then
+        log_info "Detected local working directory at ${local_root}. Copying local files..."
+        mkdir -p "$LOCAL_REPO_DIR"
+        # Copy files excluding temporary and build artifacts
+        if command -v rsync >/dev/null 2>&1; then
+            rsync -a --exclude='bin/' --exclude='obj/' --exclude='.git/' --exclude='temp/' --exclude='logs/' --exclude='data/' --exclude='Delivery/logs/' --exclude='Delivery/data/' "${local_root}/" "$LOCAL_REPO_DIR/"
+        else
+            cp -R "${local_root}/"* "$LOCAL_REPO_DIR/"
+            rm -rf "$LOCAL_REPO_DIR/bin" "$LOCAL_REPO_DIR/obj" "$LOCAL_REPO_DIR/.git" "$LOCAL_REPO_DIR/temp" "$LOCAL_REPO_DIR/logs" "$LOCAL_REPO_DIR/data"
+        fi
+    elif command -v git >/dev/null 2>&1; then
         log_info "Git client detected. Cloning repository..."
         git clone -b "$GIT_BRANCH" "$GITHUB_REPO" "$LOCAL_REPO_DIR"
     else
@@ -230,7 +243,7 @@ fetch_repository() {
         rm -f "$zip_file"
     fi
     
-    log_success "Codebase successfully downloaded to $LOCAL_REPO_DIR"
+    log_success "Codebase successfully prepared in $LOCAL_REPO_DIR"
 }
 
 # --- Docker Operations ---
