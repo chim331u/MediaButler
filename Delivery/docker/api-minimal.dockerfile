@@ -2,7 +2,7 @@
 # Optimized for QNAP NAS deployment (1GB RAM constraint)
 # Target memory footprint: <150MB
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0-alpine AS build
+FROM --platform=linux/amd64 mcr.microsoft.com/dotnet/sdk:10.0-alpine AS build
 WORKDIR /source
 
 # Set memory-conscious environment variables for build
