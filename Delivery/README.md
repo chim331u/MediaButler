@@ -99,6 +99,63 @@ If you encounter runtime communication failures or need to apply immediate updat
 
 ---
 
+## 📦 Mac Cross-Compilation & Packaging (Highly Recommended for NAS)
+
+If your NAS has a low-resource ARM CPU (ARM32/ARM64) or lacks QEMU virtualization support, compiling directly on the NAS can trigger **Illegal Instruction (SIGILL)** or **exec format** errors due to CPU instruction constraints. 
+
+To bypass this completely, you can build the native NAS images on your **MacBook** and transfer them ready-to-load!
+
+### Step 1: Package on Your Mac
+Run the packaging script from the repository root on your Mac:
+```bash
+chmod +x Delivery/scripts/package-mediabutler-for-nas.sh
+./Delivery/scripts/package-mediabutler-for-nas.sh
+```
+Select `1` for **ARM32** (`linux/arm/v7`) or `2` for **ARM64** (`linux/arm64`). This builds the optimized images and packages them as `.tar` files inside the `Delivery/dist/` directory.
+
+### Step 2: Transfer to NAS
+Copy the generated `.tar` files from your Mac to your NAS (via SMB, FTP, or File Station) into your target directory:
+* `mediabutler_api_arm32.tar` (or `_arm64.tar`)
+* `mediabutler_web_arm32.tar` (or `_arm64.tar`)
+
+### Step 3: Load and Run on NAS
+SSH into your NAS, navigate to the folder, and run the following commands to load and spin up the containers:
+```bash
+# Load images into Docker
+docker load -i mediabutler_api_arm32.tar
+docker load -i mediabutler_web_arm32.tar
+
+# Spin up API Container
+docker run -d --name mediabutler_api --restart always \
+  -p 30129:8080 \
+  -v /share/CACHEDEV1_DATA/Docker/mediabutler:/data \
+  -v /share/Download/Incoming:/watch \
+  -v /share/Video/Serie:/library \
+  -v /share/CACHEDEV1_DATA/Docker/mediabutler/logs:/app/logs \
+  -e "ASPNETCORE_ENVIRONMENT=Production" \
+  -e "Security__ApiKey=mb-local-dev-key-8a9b2c" \
+  -e "Security__JwtSecret=mb-local-dev-jwt-secret-9x8y7z" \
+  -e "MediaButler__Paths__WatchFolder=/watch" \
+  -e "MediaButler__Paths__MediaLibrary=/library" \
+  -e "ConnectionStrings__DefaultConnection=Data Source=/data/mediabutler.db" \
+  -e "MediaButler__ML__MaxBatchSize=10" \
+  -e "MediaButler__FileDiscovery__ScanIntervalMinutes=5" \
+  -e "MediaButler__ARM32__MemoryThresholdMB=140" \
+  -e "MediaButler__ARM32__AutoGCTriggerMB=110" \
+  --platform "linux/arm/v7" \
+  mediabutler_api_image:latest
+
+# Spin up Web UI Container
+docker run -d --name mediabutler_web --restart always \
+  -p 30139:8080 \
+  -v /share/CACHEDEV1_DATA/Docker/mediabutler_web/logs:/var/log/nginx \
+  -e "API_BASE_URL=http://localhost:30129/" \
+  --platform "linux/arm/v7" \
+  mediabutler_web_image:latest
+```
+
+---
+
 ## 📂 Active Folder Structure
 
 Following a thorough optimization cleanup, the `Delivery` folder contains only the essential components:
@@ -113,6 +170,7 @@ Delivery/
 └── scripts/
     ├── deploy-mediabutler-api.sh <-- Interactive backend deployment
     ├── deploy-mediabutler-web.sh <-- Interactive frontend deployment
+    ├── package-mediabutler-for-nas.sh <-- macOS Cross-Compilation and packaging suite [NEW]
     ├── monitor-mediabutler.sh   <-- System monitoring dashboard
     └── update-mediabutler.sh    <-- Seamless repository update script
 ```
