@@ -313,12 +313,21 @@ build_image() {
         exit 1
     fi
 
-    # Execute build with BuildKit and platform specifications
-    DOCKER_BUILDKIT=1 docker build \
-        --platform "$DOCKER_PLATFORM" \
-        -f "$DOCKERFILE_PATH" \
-        -t "${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}" \
-        "$BUILD_CONTEXT"
+    # Dynamically detect if BuildKit (via buildx) is supported on the host
+    if docker buildx version >/dev/null 2>&1; then
+        log_info "Docker Buildx detected. Enabling BuildKit..."
+        DOCKER_BUILDKIT=1 docker build \
+            --platform "$DOCKER_PLATFORM" \
+            -f "$DOCKERFILE_PATH" \
+            -t "${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}" \
+            "$BUILD_CONTEXT"
+    else
+        log_warning "Docker Buildx NOT detected. Using legacy builder (omitting --platform flag to prevent platform mismatch)..."
+        docker build \
+            -f "$DOCKERFILE_PATH" \
+            -t "${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}" \
+            "$BUILD_CONTEXT"
+    fi
 
     log_success "Image built successfully!"
     local size
