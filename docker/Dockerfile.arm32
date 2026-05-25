@@ -1,1 +1,92 @@
-﻿
+# ==============================================================================
+# MediaButler QNAP ARM32v7 Dockerfile
+# ==============================================================================
+# Multi-stage Dockerfile to cross-compile the static Svelte Web UI and pure Go
+# API server, outputting an ultra-lightweight, high-performance container image.
+#
+# Optimized for high resource constraints (QNAP NAS, ARM32v7, 1GB RAM)
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# Stage 1: Build the static Svelte Web UI
+# ------------------------------------------------------------------------------
+FROM --platform=$BUILDPLATFORM node:20-alpine AS frontend-builder
+WORKDIR /app/frontend
+
+# Copy dependencies manifest
+COPY src/frontend/package*.json ./
+RUN npm ci
+
+# Copy frontend source code and compile
+COPY src/frontend/ ./
+RUN npm run build
+
+# ------------------------------------------------------------------------------
+# Stage 2: Cross-compile the Go API Server for ARM32v7
+# ------------------------------------------------------------------------------
+FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS backend-builder
+WORKDIR /app/backend
+
+# Disable CGO for a pure Go static binary
+ENV CGO_ENABLED=0
+
+# Copy dependency manifests and download
+COPY src/backend/go.mod src/backend/go.sum ./
+RUN go mod download
+
+# Copy backend source code
+COPY src/backend/ ./
+
+# Copy compiled Svelte assets from Stage 1 into the backend embed target directory
+COPY --from=frontend-builder /app/backend/dist ./dist
+
+# Cross-compile for ARM32v7 (ARMv7, CGO-free, stripped)
+ARG TARGETOS=linux
+ARG TARGETARCH=arm
+RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} GOARM=7 go build \
+    -ldflags="-s -w" \
+    -trimpath \
+    -o mediabutler .
+
+# ------------------------------------------------------------------------------
+# Stage 3: Super-lightweight runtime container for QNAP NAS (ARM32v7)
+# ------------------------------------------------------------------------------
+FROM arm32v7/alpine:latest
+
+# Metadata labels
+LABEL maintainer="MediaButler DevOps" \
+      description="MediaButler API Server & Svelte UI - Optimized for QNAP ARM32v7"
+
+# Install essential runtime utilities (certificates for TLS, tzdata for correct logs)
+RUN apk --no-cache add ca-certificates tzdata
+
+# Create dedicated non-root user and group for security
+RUN addgroup -S mediabutler && adduser -S -G mediabutler mediabutler
+
+# Create operational directories and set ownership
+WORKDIR /app
+RUN mkdir -p /app/data /app/watch /app/dest && \
+    chown -R mediabutler:mediabutler /app
+
+# Copy the optimized, cross-compiled binary from builder stage
+COPY --from=backend-builder --chown=mediabutler:mediabutler /app/backend/mediabutler /app/mediabutler
+
+# Set runtime container user to non-root
+USER mediabutler
+
+# Default environment configuration matching QNAP paths
+ENV PORT=8080 \
+    DATABASE_PATH=/app/data/mediabutler.db \
+    DEST_FOLDER=/app/dest \
+    WATCH_FOLDERS=/app/watch \
+    LOG_LEVEL=info \
+    ML_THRESHOLD=0.85
+
+# Persistent volume declarations
+VOLUME ["/app/data", "/app/watch", "/app/dest"]
+
+# Port exposure
+EXPOSE 8080
+
+# Execute server
+ENTRYPOINT ["/app/mediabutler"]

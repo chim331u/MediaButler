@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  mediabutler:
+    build:
+      context: ./src/backend
+      dockerfile: Dockerfile
+    container_name: mediabutler-local
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - DATABASE_PATH=/app/data/mediabutler.db
+      - DEST_FOLDER=/app/dest
+      - WATCH_FOLDERS=/app/watch
+      - LOG_LEVEL=debug
+      - ML_THRESHOLD=0.85
+    volumes:
+      # Map the existing local SQLite DB
+      - ./temp/mediabutler.db:/app/data/mediabutler.db
+      # Map the local watch and dest folders for easy local testing on Mac
+      - ./temp/watch:/app/watch
+      - ./temp/dest:/app/dest
+    restart: unless-stopped

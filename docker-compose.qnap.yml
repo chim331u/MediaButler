@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  mediabutler:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.arm32
+    container_name: mediabutler-qnap
+    image: mediabutler:qnap-arm32
+    restart: unless-stopped
+    network_mode: "bridge"
+    user: "0:0"
+    ports:
+      - "30139:8080" # API Access
+      - "30149:8080" # Web UI Access
+    environment:
+      - PORT=8080
+      - DATABASE_PATH=/app/data/mediabutler.db
+      - DEST_FOLDER=/app/dest
+      - WATCH_FOLDERS=/app/watch
+      - LOG_LEVEL=info
+      - ML_THRESHOLD=0.85
+    volumes:
+      # Persistent SQLite Database folder on the QNAP host
+      - ${QNAP_DATA_DIR:-/share/CACHEDEV1_DATA/Docker/mediabutler}:/app/data
+      # Watch folder for raw files on the QNAP host
+      - /share/Download/Incoming:/app/watch
+      # Destination folder for sorted files on the QNAP host
+      - /share/Video/Serie:/app/dest
+    
+    # DevOps Rule: Enforce strict resource limits to prevent OOM on 1GB RAM QNAP NAS
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'          # Limit to max 50% of single core
+          memory: 128M          # Strict upper RAM bound
+        reservations:
+          memory: 32M           # Guaranteed memory reservation
