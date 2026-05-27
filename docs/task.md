@@ -6,6 +6,7 @@
 
 ## 📋 Elenco Attività (Nuovi in alto)
 
+- [x] **Completato: Rimozione definitiva degli hook git local/remote (`pre-commit`, `pre-push`) e script di versione obsoleti legati a dotnet**
 - [x] **Completato: Ottimizzazione e stabilizzazione del test suite (`main_test.go`) tramite polling robusto per l'asincronia in sostituzione dei time.Sleep statici**
 - [x] **Completato: Aggiunta del livello di log on-the-fly sulla pagina Settings (GET/POST `/api/config` e nuova scheda "Logging & Diagnostics" in Svelte)**
 - [x] **Completato: Esecuzione con successo del commit e push delle modifiche sul repository remoto (bypassando i vecchi hook pre-push)**
