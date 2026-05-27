@@ -12,13 +12,18 @@ import (
 	"time"
 )
 
+var programLevel = new(slog.LevelVar)
+
 func main() {
 	// 1. Load Configurations
 	cfg := LoadConfig()
+	
+	// Set initial level from environment config
+	programLevel.Set(cfg.LogLevel)
 
 	// 2. Setup Structured JSON logging (slog) directly to stdout/stderr for Dozzle compatibility
 	logHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: cfg.LogLevel,
+		Level: programLevel,
 	})
 	logger := slog.New(logHandler)
 	slog.SetDefault(logger)

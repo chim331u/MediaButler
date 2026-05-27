@@ -497,19 +497,56 @@ func (s *Server) markFileAsMoved(w http.ResponseWriter, r *http.Request, hash st
 	s.getFileByHash(w, r, hash)
 }
 
-// GET /api/config
+// GET or POST /api/config
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		w.Header().Set("Allow", "GET")
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"databasePath": s.config.DatabasePath,
+			"watchFolders": s.config.WatchFolders,
+			"destFolder":   s.config.DestFolder,
+			"mlThreshold":  s.config.MLThreshold,
+			"logLevel":     programLevel.Level().String(),
+		})
+	case http.MethodPost:
+		var req struct {
+			LogLevel string `json:"logLevel"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "Invalid request body")
+			return
+		}
+
+		levelStr := strings.ToUpper(strings.TrimSpace(req.LogLevel))
+		var newLevel slog.Level
+		switch levelStr {
+		case "DEBUG":
+			newLevel = slog.LevelDebug
+		case "INFO":
+			newLevel = slog.LevelInfo
+		case "WARN":
+			newLevel = slog.LevelWarn
+		case "ERROR":
+			newLevel = slog.LevelError
+		default:
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("Invalid log level '%s'. Supported: DEBUG, INFO, WARN, ERROR", req.LogLevel))
+			return
+		}
+
+		programLevel.Set(newLevel)
+		slog.Info("Log level dynamically updated", "newLevel", levelStr)
+
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"databasePath": s.config.DatabasePath,
+			"watchFolders": s.config.WatchFolders,
+			"destFolder":   s.config.DestFolder,
+			"mlThreshold":  s.config.MLThreshold,
+			"logLevel":     programLevel.Level().String(),
+		})
+	default:
+		w.Header().Set("Allow", "GET, POST")
 		writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
-		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"databasePath": s.config.DatabasePath,
-		"watchFolders": s.config.WatchFolders,
-		"destFolder":   s.config.DestFolder,
-		"mlThreshold":  s.config.MLThreshold,
-	})
 }
 
 // POST /api/rescan

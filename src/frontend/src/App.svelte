@@ -231,6 +231,27 @@
     }
   }
 
+  // Update log level dynamically on backend on the fly
+  async function updateLogLevel(event) {
+    const newLevel = event.target.value;
+    try {
+      const res = await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ logLevel: newLevel })
+      });
+      if (res.ok) {
+        const updatedConfig = await res.json();
+        config = updatedConfig;
+        showToast('success', 'Log Level Updated', `Active log level changed to "${newLevel}" on the fly.`);
+      } else {
+        showToast('error', 'Action Failed', 'Failed to update system log level.');
+      }
+    } catch (err) {
+      showToast('error', 'Connection Error', 'Network error while updating log level.');
+    }
+  }
+
   // Force classification of a file (e.g. for New files)
   async function forceClassifyFile(hash) {
     try {
@@ -1015,6 +1036,34 @@
                   🧠 Retrain Classifier Engine
                 </button>
                 <p class="field-note" style="margin-top: 4px;">Rebuilds Naive Bayes frequencies completely from all Moved (status 5) history records in the database.</p>
+              </div>
+            </div>
+
+            <div class="settings-card glass-panel">
+              <h4>📋 Logging & Diagnostics</h4>
+              
+              <div class="settings-field">
+                <span class="field-label">Active System Log Level</span>
+                <select 
+                  class="category-select" 
+                  value={config.logLevel} 
+                  onchange={updateLogLevel}
+                  style="width: 100%; max-width: 220px; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 6px; cursor: pointer; outline: none;"
+                >
+                  <option value="DEBUG">DEBUG (Verbose tracing)</option>
+                  <option value="INFO">INFO (Standard info)</option>
+                  <option value="WARN">WARN (Warnings only)</option>
+                  <option value="ERROR">ERROR (Errors only)</option>
+                </select>
+                <p class="field-note">Changing this value updates the structured slog system output on the fly without service restarts.</p>
+              </div>
+
+              <div class="settings-field" style="margin-top: 12px; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, 0.05);">
+                <span class="field-label">Real-time Event Connection</span>
+                <span class="badge {sseConnected ? 'badge-moved' : 'badge-error'}" style="align-self: flex-start; padding: 6px 12px; border-radius: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;">
+                  {sseConnected ? '🟢 Connected' : '🔴 Disconnected'}
+                </span>
+                <p class="field-note" style="margin-top: 4px;">Status of the native Server-Sent Events broker connection hosting reactive UI updates.</p>
               </div>
             </div>
           </div>

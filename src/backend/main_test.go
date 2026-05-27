@@ -736,12 +736,17 @@ func TestCategoriesAndMoveEndpoints(t *testing.T) {
 		t.Errorf("Expected status 202 Accepted for move, got %d, body: %s", rr.Code, rr.Body.String())
 	}
 
-	// Wait briefly for goroutine move to complete
-	time.Sleep(150 * time.Millisecond)
-
-	// Verify file has been moved
-	if _, err := os.Stat(filepath.Join(tempDir, "dest", "MOVIES", "movie1.mkv")); os.IsNotExist(err) {
-		t.Errorf("Expected file to be moved to destination path, but it is not there")
+	// Wait for goroutine move to complete (up to 2 seconds)
+	success := false
+	for i := 0; i < 40; i++ {
+		if _, err := os.Stat(filepath.Join(tempDir, "dest", "MOVIES", "movie1.mkv")); err == nil {
+			success = true
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !success {
+		t.Fatalf("Timed out waiting for file to be moved to destination path")
 	}
 
 	// 5. Test classify endpoint
