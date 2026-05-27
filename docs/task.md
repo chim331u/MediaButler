@@ -6,6 +6,7 @@
 
 ## 📋 Elenco Attività (Nuovi in alto)
 
+- [x] **Completato: Implementazione dell'albero delle directory espandibile in Settings con visualizzazione dei file, switch reattivo per file nascosti e percorso DB SQLite attivo**
 - [x] **Completato: Rimozione definitiva degli hook git local/remote (`pre-commit`, `pre-push`) e script di versione obsoleti legati a dotnet**
 - [x] **Completato: Ottimizzazione e stabilizzazione del test suite (`main_test.go`) tramite polling robusto per l'asincronia in sostituzione dei time.Sleep statici**
 - [x] **Completato: Aggiunta del livello di log on-the-fly sulla pagina Settings (GET/POST `/api/config` e nuova scheda "Logging & Diagnostics" in Svelte)**

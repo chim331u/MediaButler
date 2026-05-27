@@ -758,6 +758,7 @@ func TestCategoriesAndMoveEndpoints(t *testing.T) {
 
 	// Prime classifier weights for MOVIES
 	LearnClassification(db, "interstellar", "MOVIES")
+	time.Sleep(300 * time.Millisecond)
 
 	req, _ = http.NewRequest("POST", "/api/files/hash_new/classify", nil)
 	rr = httptest.NewRecorder()
@@ -784,3 +785,140 @@ func TestCategoriesAndMoveEndpoints(t *testing.T) {
 		t.Errorf("Expected newStatus to be 2 and SuggestedCategory to be 'MOVIES' in DB, got status %d, suggestedCategory %s, err: %v", newStatus, newSugCat, err)
 	}
 }
+
+func TestFSList(t *testing.T) {
+	// Create a temporary directory structure
+	tempDir, err := os.MkdirTemp("", "mediabutler_fslist_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	watchFolder := filepath.Join(tempDir, "watch")
+	destFolder := filepath.Join(tempDir, "dest")
+	outsideFolder := filepath.Join(tempDir, "outside")
+
+	// Create directories
+	_ = os.MkdirAll(filepath.Join(watchFolder, "folderB"), 0755)
+	_ = os.MkdirAll(filepath.Join(watchFolder, "folderA"), 0755)
+	_ = os.MkdirAll(filepath.Join(watchFolder, "@Recycle"), 0755)
+	_ = os.MkdirAll(filepath.Join(destFolder, "Movies"), 0755)
+	_ = os.MkdirAll(outsideFolder, 0755)
+
+	// Create files
+	_ = os.WriteFile(filepath.Join(watchFolder, "fileB.mkv"), []byte("20 bytes of dummy data"), 0644)
+	_ = os.WriteFile(filepath.Join(watchFolder, "fileA.mp4"), []byte("10 bytes!!"), 0644)
+	_ = os.WriteFile(filepath.Join(watchFolder, ".hiddenFile"), []byte("hidden"), 0644)
+	_ = os.WriteFile(filepath.Join(outsideFolder, "secret.txt"), []byte("secret"), 0644)
+
+	cfg := Config{
+		WatchFolders: []string{watchFolder},
+		DestFolder:   destFolder,
+	}
+
+	server := NewServer(cfg, nil, nil, nil)
+	mux := http.NewServeMux()
+	server.RegisterRoutes(mux)
+
+	// 1. Authorized path calls - normal request (showHidden=false by default)
+	req, _ := http.NewRequest("GET", "/api/fs/list?path="+watchFolder, nil)
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d. Body: %s", rr.Code, rr.Body.String())
+	}
+
+	var items []FSItem
+	if err := json.Unmarshal(rr.Body.Bytes(), &items); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	// Should contain: folderA, folderB (directories), fileA.mp4, fileB.mkv (files).
+	// Sorted: folderA, folderB, fileA.mp4, fileB.mkv.
+	// Hidden files (.hiddenFile, @Recycle) should be filtered out by default.
+	if len(items) != 4 {
+		t.Errorf("Expected 4 items, got %d. Items: %+v", len(items), items)
+	}
+
+	expectedNames := []string{"folderA", "folderB", "fileA.mp4", "fileB.mkv"}
+	for i, expected := range expectedNames {
+		if i < len(items) && items[i].Name != expected {
+			t.Errorf("At index %d: expected name '%s', got '%s'", i, expected, items[i].Name)
+		}
+	}
+
+	// Verify size and Dir flag
+	if len(items) >= 4 {
+		if !items[0].IsDir {
+			t.Errorf("Expected folderA to be a directory")
+		}
+		if items[0].SizeBytes != 0 {
+			t.Errorf("Expected folder size to be 0, got %d", items[0].SizeBytes)
+		}
+		if items[2].IsDir {
+			t.Errorf("Expected fileA.mp4 to be a file")
+		}
+		if items[2].SizeBytes != 10 {
+			t.Errorf("Expected fileA.mp4 size to be 10, got %d", items[2].SizeBytes)
+		}
+	}
+
+	// 2. Test showHidden=true (must show hidden files and @ folders)
+	req, _ = http.NewRequest("GET", "/api/fs/list?path="+watchFolder+"&showHidden=true", nil)
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d", rr.Code)
+	}
+
+	var itemsWithHidden []FSItem
+	_ = json.Unmarshal(rr.Body.Bytes(), &itemsWithHidden)
+
+	// Should contain: @Recycle, folderA, folderB (directories), .hiddenFile, fileA.mp4, fileB.mkv
+	// Sorted case-insensitive directories first, then files.
+	foundHiddenFile := false
+	foundRecycle := false
+	for _, item := range itemsWithHidden {
+		if item.Name == ".hiddenFile" {
+			foundHiddenFile = true
+		}
+		if item.Name == "@Recycle" {
+			foundRecycle = true
+		}
+	}
+
+	if !foundHiddenFile || !foundRecycle {
+		t.Errorf("Expected to find hidden items .hiddenFile and @Recycle when showHidden=true. Got: %+v", itemsWithHidden)
+	}
+
+	// 3. Traversal protection - try to access outside allowed directories (e.g. outsideFolder)
+	req, _ = http.NewRequest("GET", "/api/fs/list?path="+outsideFolder, nil)
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Errorf("Expected status 403 Forbidden for outside path, got %d", rr.Code)
+	}
+
+	// 4. Traversal protection - try with directory traversal path (e.g. watchFolder/../outside)
+	traversalPath := filepath.Join(watchFolder, "..", "outside")
+	req, _ = http.NewRequest("GET", "/api/fs/list?path="+traversalPath, nil)
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Errorf("Expected status 403 Forbidden for traversal path, got %d", rr.Code)
+	}
+
+	// 5. Dest folder access (authorized)
+	req, _ = http.NewRequest("GET", "/api/fs/list?path="+destFolder, nil)
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("Expected status 200 for dest folder, got %d", rr.Code)
+	}
+}
+

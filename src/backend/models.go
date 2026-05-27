@@ -93,3 +93,12 @@ type ConfirmCategoryRequest struct {
 type MarkMovedRequest struct {
 	TargetPath string `json:"targetPath"`
 }
+
+// FSItem represents a file or directory item in the filesystem listing
+type FSItem struct {
+	Name      string `json:"name"`
+	Path      string `json:"path"`
+	IsDir     bool   `json:"isDir"`
+	SizeBytes int64  `json:"sizeBytes"`
+}
+

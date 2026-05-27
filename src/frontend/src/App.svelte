@@ -1,9 +1,11 @@
 <script>
   import { onMount } from 'svelte';
+  import DirectoryTree from './lib/DirectoryTree.svelte';
 
   // --- Svelte 5 Runes for Declarative State ---
   let currentTab = $state('dashboard');
   let activeFiles = $state([]);
+  let showHiddenFiles = $state(false);
   let pendingFiles = $state([]);
   let historyFiles = $state([]);
   let config = $state(null);
@@ -994,20 +996,45 @@
         {#if config}
           <div class="settings-grid">
             <div class="settings-card glass-panel">
-              <h4>📁 File Directories Path</h4>
+              <div class="settings-card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); padding-bottom: 8px;">
+                <h4 style="margin: 0;">📁 File Directories Path</h4>
+                <label class="premium-checkbox-label" style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer; color: rgba(255, 255, 255, 0.7); user-select: none;">
+                  <input type="checkbox" bind:checked={showHiddenFiles} style="cursor: pointer; accent-color: #3b82f6;" />
+                  <span>Mostra file nascosti</span>
+                </label>
+              </div>
               
               <div class="settings-field">
                 <span class="field-label">Watch Directories (comma-separated scan targets)</span>
-                <div class="paths-tag-list">
+                <div class="paths-tag-list" style="margin-bottom: 12px;">
                   {#each config.watchFolders as folder}
                     <code class="path-tag">{folder}</code>
                   {/each}
                 </div>
+                <div class="directories-trees-container" style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px; padding: 12px; background: rgba(0, 0, 0, 0.2); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.05);">
+                  {#each config.watchFolders as folder}
+                    <div class="directory-tree-wrapper">
+                      <span class="tree-root-label" style="font-size: 0.8rem; color: rgba(255, 255, 255, 0.5); font-weight: 600; display: block; margin-bottom: 6px;">Watch Folder Tree:</span>
+                      <DirectoryTree path={folder} label={folder} showHidden={showHiddenFiles} />
+                    </div>
+                  {/each}
+                </div>
               </div>
 
-              <div class="settings-field">
+              <div class="settings-field" style="margin-top: 16px;">
                 <span class="field-label">Destination Organized Directory</span>
                 <code class="path-tag primary-border">{config.destFolder}</code>
+                <div class="directories-trees-container" style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px; padding: 12px; background: rgba(0, 0, 0, 0.2); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.05);">
+                  <div class="directory-tree-wrapper">
+                    <span class="tree-root-label" style="font-size: 0.8rem; color: rgba(255, 255, 255, 0.5); font-weight: 600; display: block; margin-bottom: 6px;">Destination Folder Tree:</span>
+                    <DirectoryTree path={config.destFolder} label={config.destFolder} showHidden={showHiddenFiles} />
+                  </div>
+                </div>
+              </div>
+
+              <div class="settings-field" style="margin-top: 16px; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 16px;">
+                <span class="field-label">Active SQLite Database Path</span>
+                <code class="path-tag">{config.databasePath}</code>
               </div>
             </div>
 
@@ -1025,10 +1052,7 @@
                 <p class="field-note">Files below this confidence threshold will prompt manual confirmation before organization.</p>
               </div>
 
-              <div class="settings-field">
-                <span class="field-label">Active SQLite Database Path</span>
-                <code class="path-tag">{config.databasePath}</code>
-              </div>
+
 
               <div class="settings-field" style="margin-top: 12px; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, 0.05);">
                 <span class="field-label">Classifier Maintenance</span>

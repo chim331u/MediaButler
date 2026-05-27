@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -39,6 +41,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/rescan", s.handleRescan)
 	mux.HandleFunc("/api/retrain", s.handleRetrain)
 	mux.HandleFunc("/api/categories", s.handleCategories)
+	mux.HandleFunc("/api/fs/list", s.handleFSList)
 	mux.Handle("/api/events", s.sse)
 }
 
@@ -663,4 +666,109 @@ func (s *Server) moveFile(w http.ResponseWriter, r *http.Request, hash string) {
 		"status":  "Moving",
 		"message": "File organization initiated asynchronously",
 	})
+}
+
+// GET /api/fs/list
+func (s *Server) handleFSList(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", "GET")
+		writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	pathParam := r.URL.Query().Get("path")
+	if pathParam == "" {
+		writeError(w, http.StatusBadRequest, "Missing 'path' query parameter")
+		return
+	}
+
+	showHidden := false
+	if r.URL.Query().Get("showHidden") == "true" {
+		showHidden = true
+	}
+
+	cleanPath := filepath.Clean(pathParam)
+	absReqPath, err := filepath.Abs(cleanPath)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid path")
+		return
+	}
+
+	// Security check: must reside within (or be identical to) watch folders or dest folder
+	allowed := false
+	for _, folder := range s.config.WatchFolders {
+		absFolder, err := filepath.Abs(filepath.Clean(folder))
+		if err != nil {
+			continue
+		}
+		if absReqPath == absFolder || strings.HasPrefix(absReqPath, absFolder+string(filepath.Separator)) {
+			allowed = true
+			break
+		}
+	}
+
+	if !allowed {
+		absDest, err := filepath.Abs(filepath.Clean(s.config.DestFolder))
+		if err == nil {
+			if absReqPath == absDest || strings.HasPrefix(absReqPath, absDest+string(filepath.Separator)) {
+				allowed = true
+			}
+		}
+	}
+
+	if !allowed {
+		writeError(w, http.StatusForbidden, "Forbidden: Access denied to this path")
+		return
+	}
+
+	entries, err := os.ReadDir(absReqPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			writeError(w, http.StatusNotFound, "Directory not found")
+		} else {
+			slog.Error("Failed to read directory", "path", absReqPath, "err", err)
+			writeError(w, http.StatusInternalServerError, "Failed to read directory")
+		}
+		return
+	}
+
+	items := []FSItem{}
+	for _, entry := range entries {
+		name := entry.Name()
+
+		// If showHidden is false, filter out hidden files starting with . or @
+		if !showHidden {
+			if strings.HasPrefix(name, ".") || strings.HasPrefix(name, "@") {
+				continue
+			}
+		}
+
+		var sizeBytes int64 = 0
+		if !entry.IsDir() {
+			info, err := entry.Info()
+			if err == nil {
+				sizeBytes = info.Size()
+			}
+		}
+
+		items = append(items, FSItem{
+			Name:      name,
+			Path:      filepath.Join(absReqPath, name),
+			IsDir:     entry.IsDir(),
+			SizeBytes: sizeBytes,
+		})
+	}
+
+	// Sort: directories first (alphabetical case-insensitive), then files (alphabetical case-insensitive)
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].IsDir && !items[j].IsDir {
+			return true
+		}
+		if !items[i].IsDir && items[j].IsDir {
+			return false
+		}
+		return strings.ToLower(items[i].Name) < strings.ToLower(items[j].Name)
+	})
+
+	writeJSON(w, http.StatusOK, items)
 }
