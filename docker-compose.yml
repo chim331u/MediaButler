@@ -16,8 +16,8 @@ services:
       - LOG_LEVEL=debug
       - ML_THRESHOLD=0.85
     volumes:
-      # Map the existing local SQLite DB
-      - ./temp/mediabutler.db:/app/data/mediabutler.db
+      # Map the existing local SQLite DB folder
+      - ./temp:/app/data
       # Map the local watch and dest folders for easy local testing on Mac
       - ./temp/watch:/app/watch
       - ./temp/dest:/app/dest

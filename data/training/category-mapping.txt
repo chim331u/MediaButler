@@ -1,9 +1,0 @@
-English -> Italian Mapping:
-GAME OF THRONES -> Trono di Spade
-ONE PIECE -> One Piece
-BREAKING BAD -> Breaking Bad (keep English for international shows)
-ATTACK ON TITAN -> Attacco dei Giaganti
-MY HERO ACADEMIA -> My Hero Academia
-NARUTO SHIPPUDEN -> Naruto Shippuden
-GOMORRA -> Gomorra
-THE MANDALORIAN -> The Mandalorian

@@ -41,8 +41,10 @@ func InitDB(dbPath string) (*sql.DB, error) {
 		}
 	}
 
-	// Limit SQLite to 1 open connection to prevent concurrent write collisions (database is locked)
-	db.SetMaxOpenConns(1)
+	// Set connection limits. Since WAL mode supports multiple concurrent readers,
+	// we allow up to 5 connections. SQLite automatically serializes writes using busy_timeout.
+	db.SetMaxOpenConns(5)
+	db.SetMaxIdleConns(2)
 
 	slog.Info("SQLite database initialized successfully with WAL and performance pragmas")
 	return db, nil

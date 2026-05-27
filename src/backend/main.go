@@ -80,9 +80,9 @@ func main() {
 	httpServer := &http.Server{
 		Addr:         ":" + cfg.Port,
 		Handler:      handler,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		ReadTimeout:  0,   // No timeout to allow persistent SSE connections
+		WriteTimeout: 0,   // No timeout to support large file movements and streaming responses
+		IdleTimeout:  120 * time.Second,
 	}
 
 	// 6. Graceful Shutdown Management

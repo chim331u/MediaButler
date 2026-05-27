@@ -100,6 +100,9 @@ func CopyFileWithProgress(src, dst string, progressFunc func(bytesCopied, totalB
 			if progressFunc != nil {
 				progressFunc(totalCopied, totalBytes)
 			}
+			// DevOps Optimization: Prevent full disk I/O starvation on QNAP NAS (ARM32)
+			// A tiny sleep allows the system scheduler and SQLite to breathe.
+			time.Sleep(5 * time.Millisecond)
 		}
 		if err == io.EOF {
 			break

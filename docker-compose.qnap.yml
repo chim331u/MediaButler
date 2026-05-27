@@ -23,10 +23,12 @@ services:
     volumes:
       # Persistent SQLite Database folder on the QNAP host
       - ${QNAP_DATA_DIR:-/share/CACHEDEV1_DATA/Docker/mediabutler}:/app/data
-      # Watch folder for raw files on the QNAP host
+      # Watch folder for raw files on the QNAP host (double mounted for C# DB compatibility)
       - /share/Download/Incoming:/app/watch
-      # Destination folder for sorted files on the QNAP host
+      - /share/Download/Incoming:/watch
+      # Destination folder for sorted files on the QNAP host (double mounted for C# DB compatibility)
       - /share/Video/Serie:/app/dest
+      - /share/Video/Serie:/library
     
     # DevOps Rule: Enforce strict resource limits to prevent OOM on 1GB RAM QNAP NAS
     deploy:
