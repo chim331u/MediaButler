@@ -127,3 +127,85 @@ Se preferisci non utilizzare Docker per azzerare totalmente il footprint di memo
    bash qnap-service.sh stop
    ```
    *I log strutturati ed il database SQLite verranno salvati localmente all'interno della cartella `./data/`.*
+
+---
+
+## 📱 5. Rilascio e Compilazione Mobile Android
+
+L'applicazione mobile nativa Android è scritta in Kotlin con Jetpack Compose ed OkHttp-SSE per gli aggiornamenti in tempo reale. Il codice si trova interamente all'interno della directory `src/android`.
+
+### 📋 Prerequisiti di Build
+Prima di procedere, assicurati di avere installato sul tuo host locale:
+* **Java Development Kit (JDK 17)**: Richiesto dalla versione moderna di Android Gradle Plugin (AGP).
+* **Android SDK**: Strumenti a riga di comando (Command-line tools) o Android Studio per disporre della piattaforma SDK (API 34) e dei build-tools.
+* **Gradle Wrapper**: Lo script autogestito `./gradlew` incluso nel progetto si occuperà di scaricare la versione corretta di Gradle ed i plugin necessari.
+
+---
+
+### 💻 Opzione A: Debug Locale ed Esecuzione in Sviluppo
+
+Per eseguire l'applicazione su un emulatore o su un dispositivo Android fisico collegato in modalità Debug USB:
+
+1. **Spostati nella cartella Android**:
+   ```bash
+   cd src/android
+   ```
+2. **Avvia la compilazione e l'installazione in modalità Debug**:
+   Seleziona il dispositivo di target attivo tramite adb ed installa l'applicazione:
+   ```bash
+   ./gradlew installDebug
+   ```
+3. **Genera l'APK di debug** (senza installarlo direttamente):
+   ```bash
+   ./gradlew assembleDebug
+   ```
+   *L'eseguibile di debug risultante verrà salvato in:*
+   `src/android/app/build/outputs/apk/debug/app-debug.apk`
+
+---
+
+### 📦 Opzione B: Rilascio Autonomo per Dispositivo (Release APK)
+
+Per generare un APK compatto di release da installare manualmente sul proprio dispositivo o distribuire autonomamente, applichiamo l'ottimizzazione tramite **R8/ProGuard** (integrato in `build.gradle.kts` che riduce l'impronta complessiva a soli **1.46 MB**):
+
+1. **Compila il pacchetto di Release**:
+   ```bash
+   cd src/android
+   ./gradlew assembleRelease
+   ```
+   *Questo comando produce un APK non firmato in:*
+   `src/android/app/build/outputs/apk/release/app-release-unsigned.apk`
+
+2. **Allinea l'APK per ottimizzare l'uso della RAM** (utilizzando `zipalign` incluso nei build-tools dell'Android SDK):
+   ```bash
+   zipalign -v -p 4 app-release-unsigned.apk app-release-aligned.apk
+   ```
+
+3. **Firma l'APK** (utilizzando `apksigner` con il tuo certificato di firma JKS di produzione):
+   ```bash
+   apksigner sign --ks mio-key-store.jks --out app-release.apk app-release-aligned.apk
+   ```
+   *L'eseguibile `app-release.apk` finale è pronto per essere installato su qualsiasi dispositivo Android.*
+
+---
+
+### 🚀 Opzione C: Pubblicazione su Google Play Store (App Bundle - AAB)
+
+Google richiede il formato **Android App Bundle (AAB)** per i nuovi caricamenti sullo store, che ottimizza la distribuzione delle risorse in base al modello specifico dell'utente.
+
+1. **Genera l'App Bundle di Release**:
+   ```bash
+   cd src/android
+   ./gradlew bundleRelease
+   ```
+   *Il pacchetto AAB non firmato viene generato in:*
+   `src/android/app/build/outputs/bundle/release/app-release.aab`
+
+2. **Firma l'App Bundle**:
+   Proprio come l'APK, firma l'AAB prima del caricamento:
+   ```bash
+   apksigner sign --ks mio-key-store.jks app-release.aab
+   ```
+
+3. **Caricamento**:
+   Accedi alla console sviluppatore [Google Play Console](https://play.google.com/console/), crea una nuova release all'interno della dashboard del tuo progetto ed effettua l'upload del file `app-release.aab` per la revisione interna, di beta-test o produzione.

@@ -22,19 +22,19 @@ services:
       - ML_THRESHOLD=0.85
     volumes:
       # Persistent SQLite Database folder on the QNAP host
-      - ${QNAP_DATA_DIR:-/share/CACHEDEV1_DATA/Docker/mediabutler}:/app/data
+      - /share/Storage/Docker/mediabutler:/app/data
       # Watch folder for raw files on the QNAP host (double mounted for C# DB compatibility)
       - /share/Download/Incoming:/app/watch
       - /share/Download/Incoming:/watch
       # Destination folder for sorted files on the QNAP host (double mounted for C# DB compatibility)
       - /share/Video/Serie:/app/dest
       - /share/Video/Serie:/library
-    
+
     # DevOps Rule: Enforce strict resource limits to prevent OOM on 1GB RAM QNAP NAS
     deploy:
       resources:
         limits:
-          cpus: '0.50'          # Limit to max 50% of single core
-          memory: 128M          # Strict upper RAM bound
+          cpus: '0.50' # Limit to max 50% of single core
+          memory: 128M # Strict upper RAM bound
         reservations:
-          memory: 32M           # Guaranteed memory reservation
+          memory: 32M # Guaranteed memory reservation
