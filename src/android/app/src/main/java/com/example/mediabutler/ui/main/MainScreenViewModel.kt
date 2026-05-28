@@ -56,6 +56,25 @@ class MainScreenViewModel(private val repository: DataRepository) : ViewModel() 
     private val _customCategory = MutableStateFlow("")
     val customCategory: StateFlow<String> = _customCategory.asStateFlow()
 
+    // Dynamic Preset Categories State
+    private val _presets = MutableStateFlow<List<String>>(listOf("MOVIES", "TV SHOWS", "MUSIC", "DOCS", "PHOTOS"))
+    val presets: StateFlow<List<String>> = _presets.asStateFlow()
+
+    // Bulk Reclassification State
+    private val _isReclassifying = MutableStateFlow(false)
+    val isReclassifying: StateFlow<Boolean> = _isReclassifying.asStateFlow()
+
+    // ML Threshold local editing state
+    private val _mlThresholdInput = MutableStateFlow<Float?>(null)
+    val mlThresholdInput: StateFlow<Float?> = _mlThresholdInput.asStateFlow()
+
+    // File Explorer State
+    private val _directoryCache = MutableStateFlow<Map<String, List<com.example.mediabutler.data.FSItem>>>(emptyMap())
+    val directoryCache: StateFlow<Map<String, List<com.example.mediabutler.data.FSItem>>> = _directoryCache.asStateFlow()
+
+    private val _showHiddenFiles = MutableStateFlow(false)
+    val showHiddenFiles: StateFlow<Boolean> = _showHiddenFiles.asStateFlow()
+
     // Toasts/Notifications Events
     private val _notifications = MutableSharedFlow<Pair<String, String>>() // Title to Message
     val notifications: SharedFlow<Pair<String, String>> = _notifications.asSharedFlow()
@@ -131,11 +150,87 @@ class MainScreenViewModel(private val repository: DataRepository) : ViewModel() 
     fun openConfirmModal(file: TrackedFile) {
         _selectedFile.value = file
         _customCategory.value = file.suggestedCategory ?: ""
+        loadPresets()
     }
 
     fun closeConfirmModal() {
         _selectedFile.value = null
         _customCategory.value = ""
+    }
+
+    fun loadPresets() {
+        viewModelScope.launch {
+            try {
+                val prs = repository.getCategoryPresets()
+                if (prs.isNotEmpty()) {
+                    _presets.value = prs
+                }
+            } catch (e: Exception) {
+                // Fail silently, use defaults
+            }
+        }
+    }
+
+    fun ignoreFile(hash: String) {
+        viewModelScope.launch {
+            val ok = repository.ignoreFile(hash)
+            if (ok) {
+                _notifications.emit("File Ignored" to "File successfully ignored.")
+                // Optimistically remove from active list
+                _pendingFiles.value = _pendingFiles.value.filter { it.hash != hash }
+            } else {
+                _notifications.emit("Action Failed" to "Could not ignore file.")
+            }
+        }
+    }
+
+    fun reclassifyUnconfirmed() {
+        viewModelScope.launch {
+            _isReclassifying.value = true
+            val ok = repository.reclassifyUnconfirmed()
+            if (ok) {
+                _notifications.emit("Reclassification Started" to "Recalculating AI suggestions in the background...")
+            } else {
+                _notifications.emit("Reclassification Failed" to "Could not trigger bulk reclassification.")
+                _isReclassifying.value = false
+            }
+        }
+    }
+
+    fun updateLocalMlThreshold(value: Float) {
+        _mlThresholdInput.value = value
+    }
+
+    fun saveMlThreshold() {
+        val value = _mlThresholdInput.value ?: return
+        viewModelScope.launch {
+            val ok = repository.updateMlThreshold(value.toDouble())
+            if (ok) {
+                _notifications.emit("Config Updated" to "ML threshold updated successfully.")
+                loadConfig() // Reload from server
+            } else {
+                _notifications.emit("Update Failed" to "Could not update ML threshold.")
+            }
+            _mlThresholdInput.value = null
+        }
+    }
+
+    fun toggleShowHiddenFiles() {
+        _showHiddenFiles.value = !_showHiddenFiles.value
+        // Clear directory cache to force reload
+        _directoryCache.value = emptyMap()
+    }
+
+    fun loadFSList(path: String) {
+        if (_directoryCache.value.containsKey(path)) return
+        viewModelScope.launch {
+            try {
+                val list = repository.getFSList(path, _showHiddenFiles.value)
+                _directoryCache.value = _directoryCache.value + (path to list)
+            } catch (e: Exception) {
+                // Fail silently
+            }
+        }
     }
 
     fun updateCustomCategory(cat: String) {
@@ -148,7 +243,7 @@ class MainScreenViewModel(private val repository: DataRepository) : ViewModel() 
             val categoryUpper = category.trim().uppercase()
             val ok = repository.confirmCategory(hash, categoryUpper)
             if (ok) {
-                _notifications.emit("Move Started" to "Organization of file triggered asynchronously.")
+                _notifications.emit("Category Confirmed" to "File category confirmed manually as \"$categoryUpper\". Ready to move.")
                 closeConfirmModal()
 
                 // Optimistically update file status to ReadyToMove (3) in local list
@@ -157,22 +252,47 @@ class MainScreenViewModel(private val repository: DataRepository) : ViewModel() 
                         it.copy(status = FileStatus.READY_TO_MOVE.value, category = categoryUpper)
                     } else it
                 }
-
-                // Pre-populate progress tracker placeholder
-                val file = _selectedFile.value
-                if (file != null) {
-                    _activeProgresses.value = _activeProgresses.value + (hash to MoveProgressPayload(
-                        hash = hash,
-                        fileName = file.fileName,
-                        progress = 0.0,
-                        bytesCopied = 0,
-                        totalBytes = file.fileSize
-                    ))
-                }
             } else {
-                _notifications.emit("Action Failed" to "Could not trigger move operation.")
+                _notifications.emit("Action Failed" to "Could not confirm category.")
             }
             _isSubmitting.value = false
+        }
+    }
+
+    fun moveFile(hash: String) {
+        viewModelScope.launch {
+            val file = _pendingFiles.value.firstOrNull { it.hash == hash } ?: return@launch
+            val previousStatus = file.status
+
+            // Optimistically update file status to Moving (4) in local list
+            _pendingFiles.value = _pendingFiles.value.map {
+                if (it.hash == hash) {
+                    it.copy(status = FileStatus.MOVING.value)
+                } else it
+            }
+
+            // Pre-populate progress tracker placeholder
+            _activeProgresses.value = _activeProgresses.value + (hash to MoveProgressPayload(
+                hash = hash,
+                fileName = file.fileName,
+                progress = 0.0,
+                bytesCopied = 0,
+                totalBytes = file.fileSize
+            ))
+
+            val ok = repository.moveFile(hash)
+            if (ok) {
+                _notifications.emit("Move Started" to "Organization of file triggered asynchronously.")
+            } else {
+                _notifications.emit("Move Failed" to "Could not start file organization.")
+                // Revert status
+                _pendingFiles.value = _pendingFiles.value.map {
+                    if (it.hash == hash) {
+                        it.copy(status = previousStatus)
+                    } else it
+                }
+                _activeProgresses.value = _activeProgresses.value - hash
+            }
         }
     }
 
@@ -235,6 +355,16 @@ class MainScreenViewModel(private val repository: DataRepository) : ViewModel() 
                             // General SSE stream connection error
                             _sseConnected.value = false
                         }
+                    }
+                    is SSEEvent.FileIgnored -> {
+                        val ignoredHash = event.hash
+                        _pendingFiles.value = _pendingFiles.value.filter { it.hash != ignoredHash }
+                        _notifications.emit("File Ignored" to "File successfully ignored.")
+                    }
+                    SSEEvent.Reclassified -> {
+                        _isReclassifying.value = false
+                        refreshDashboard()
+                        _notifications.emit("Classification Updated" to "AI suggestions recalculated.")
                     }
                 }
             }

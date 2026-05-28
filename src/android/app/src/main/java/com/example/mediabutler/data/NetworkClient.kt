@@ -1,5 +1,7 @@
 package com.example.mediabutler.data
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -30,34 +32,34 @@ class NetworkClient {
 
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
-    suspend fun fetchConfig(baseUrl: String): ConfigResponse? {
+    suspend fun fetchConfig(baseUrl: String): ConfigResponse? = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url("$baseUrl/api/config")
             .get()
             .build()
 
-        return executeRequest(request)
+        executeRequest(request)
     }
 
-    suspend fun fetchPendingFiles(baseUrl: String): List<TrackedFile> {
+    suspend fun fetchPendingFiles(baseUrl: String): List<TrackedFile> = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url("$baseUrl/api/files/pending")
             .get()
             .build()
 
-        return executeRequest<List<TrackedFile>>(request) ?: emptyList()
+        executeRequest<List<TrackedFile>>(request) ?: emptyList()
     }
 
-    suspend fun fetchHistoryFiles(baseUrl: String, skip: Int, take: Int): List<TrackedFile> {
+    suspend fun fetchHistoryFiles(baseUrl: String, skip: Int, take: Int): List<TrackedFile> = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url("$baseUrl/api/files?status=5&skip=$skip&take=$take")
             .get()
             .build()
 
-        return executeRequest<List<TrackedFile>>(request) ?: emptyList()
+        executeRequest<List<TrackedFile>>(request) ?: emptyList()
     }
 
-    suspend fun confirmCategory(baseUrl: String, hash: String, category: String): Boolean {
+    suspend fun confirmCategory(baseUrl: String, hash: String, category: String): Boolean = withContext(Dispatchers.IO) {
         val bodyJson = json.encodeToString(ConfirmCategoryRequest.serializer(), ConfirmCategoryRequest(category))
         val body = bodyJson.toRequestBody(jsonMediaType)
 
@@ -66,7 +68,7 @@ class NetworkClient {
             .post(body)
             .build()
 
-        return try {
+        try {
             okHttpClient.newCall(request).execute().use { response ->
                 response.isSuccessful || response.code == 202
             }
@@ -113,6 +115,15 @@ class NetworkClient {
                             null
                         }
                     }
+                    "file.ignored" -> {
+                        try {
+                            val payload = json.decodeFromString<FileIgnoredPayload>(data)
+                            SSEEvent.FileIgnored(payload.hash)
+                        } catch (e: Exception) {
+                            null
+                        }
+                    }
+                    "files.reclassified" -> SSEEvent.Reclassified
                     else -> null
                 }
                 if (event != null) {
@@ -136,6 +147,82 @@ class NetworkClient {
         awaitClose {
             eventSource.cancel()
         }
+    }
+
+    suspend fun ignoreFile(baseUrl: String, hash: String): Boolean = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("$baseUrl/api/files/$hash/ignore")
+            .post("".toRequestBody(null))
+            .build()
+        try {
+            okHttpClient.newCall(request).execute().use { response ->
+                response.isSuccessful || response.code == 202
+            }
+        } catch (e: IOException) {
+            false
+        }
+    }
+
+    suspend fun fetchCategoryPresets(baseUrl: String): List<String> = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("$baseUrl/api/categories/presets")
+            .get()
+            .build()
+        executeRequest<List<String>>(request) ?: emptyList()
+    }
+
+    suspend fun reclassifyUnconfirmed(baseUrl: String): Boolean = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("$baseUrl/api/files/reclassify-unconfirmed")
+            .post("".toRequestBody(null))
+            .build()
+        try {
+            okHttpClient.newCall(request).execute().use { response ->
+                response.isSuccessful || response.code == 202
+            }
+        } catch (e: IOException) {
+            false
+        }
+    }
+
+    suspend fun updateConfig(baseUrl: String, mlThreshold: Double): Boolean = withContext(Dispatchers.IO) {
+        val reqObj = UpdateConfigRequest(mlThreshold = mlThreshold)
+        val bodyJson = json.encodeToString(UpdateConfigRequest.serializer(), reqObj)
+        val body = bodyJson.toRequestBody(jsonMediaType)
+        val request = Request.Builder()
+            .url("$baseUrl/api/config")
+            .post(body)
+            .build()
+        try {
+            okHttpClient.newCall(request).execute().use { response ->
+                response.isSuccessful
+            }
+        } catch (e: IOException) {
+            false
+        }
+    }
+
+    suspend fun moveFile(baseUrl: String, hash: String): Boolean = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("$baseUrl/api/files/$hash/move")
+            .post("".toRequestBody(null))
+            .build()
+        try {
+            okHttpClient.newCall(request).execute().use { response ->
+                response.isSuccessful || response.code == 202
+            }
+        } catch (e: IOException) {
+            false
+        }
+    }
+
+    suspend fun fetchFSList(baseUrl: String, path: String, showHidden: Boolean): List<FSItem> = withContext(Dispatchers.IO) {
+        val encodedPath = java.net.URLEncoder.encode(path, "UTF-8")
+        val request = Request.Builder()
+            .url("$baseUrl/api/fs/list?path=$encodedPath&showHidden=$showHidden")
+            .get()
+            .build()
+        executeRequest<List<FSItem>>(request) ?: emptyList()
     }
 
     private inline fun <reified T> executeRequest(request: Request): T? {

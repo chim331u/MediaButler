@@ -81,9 +81,29 @@ data class MoveErrorPayload(
     val error: String
 )
 
+@Serializable
+data class UpdateConfigRequest(
+    val mlThreshold: Double
+)
+
+@Serializable
+data class FileIgnoredPayload(
+    val hash: String
+)
+
+@Serializable
+data class FSItem(
+    val name: String,
+    val path: String,
+    val isDir: Boolean,
+    val sizeBytes: Long = 0
+)
+
 sealed interface SSEEvent {
     data object Connected : SSEEvent
     data class Progress(val payload: MoveProgressPayload) : SSEEvent
     data class Completed(val payload: MoveCompletedPayload) : SSEEvent
     data class Error(val payload: MoveErrorPayload) : SSEEvent
+    data class FileIgnored(val hash: String) : SSEEvent
+    data object Reclassified : SSEEvent
 }

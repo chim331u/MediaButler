@@ -6,6 +6,8 @@
 
 ## 📋 Elenco Attività (Nuovi in alto)
 
+- [x] **Completato: Integrazione del pulsante Move e modifica della categoria per i file confermati (READY_TO_MOVE/ERROR) nell'app Android nativa (Fase 16)**
+- [x] **Completato: Allineamento funzionale completo dell'app Android (Presets dinamici, Ignora file con popup, Ri-classificazione asincrona, Slider ML threshold, Directory Explorer lazy-loaded) e risoluzione definitiva del crash all'avvio su Dispatchers.IO**
 - [x] **Completato: Creazione della guida completa al deployment locale (Mac) e su NAS QNAP in docs/deploy_guide.md ed allineamento della cartella scripts/**
 - [x] **Completato: Implementazione dell'azione "Non mostrare più" (status 8 e categoria NULL) con pop-up di conferma preventiva e pulsante premium 🚫 nella tabella Active Queue**
 - [x] **Completato: Caricamento dinamico dei Quick Presets nel modal di conferma con gli ultimi 5 valori di categoria da DB e fallback "UNKNOW"**

@@ -32,9 +32,18 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.draw.scale
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Refresh
@@ -130,7 +139,10 @@ fun MainScreen(
     val sseConnected by viewModel.sseConnected.collectAsStateWithLifecycle()
     val activeProgresses by viewModel.activeProgresses.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
+    val isReclassifying by viewModel.isReclassifying.collectAsStateWithLifecycle()
     val selectedFile by viewModel.selectedFile.collectAsStateWithLifecycle()
+
+    var ignoreConfirmTarget by remember { mutableStateOf<TrackedFile?>(null) }
 
     // Handle incoming backend toast alerts as standard Android Toasts
     LaunchedEffect(Unit) {
@@ -170,7 +182,11 @@ fun MainScreen(
                             pendingFiles = pendingFiles,
                             activeProgresses = activeProgresses,
                             isLoading = isLoading,
-                            onOrganizeClick = { viewModel.openConfirmModal(it) }
+                            isReclassifying = isReclassifying,
+                            onReclassifyClick = { viewModel.reclassifyUnconfirmed() },
+                            onIgnoreClick = { ignoreConfirmTarget = it },
+                            onOrganizeClick = { viewModel.openConfirmModal(it) },
+                            onMoveClick = { viewModel.moveFile(it.hash) }
                         )
                         "history" -> HistoryView(historyFiles = historyFiles)
                         "settings" -> SettingsView(
@@ -178,6 +194,38 @@ fun MainScreen(
                             config = config
                         )
                     }
+                }
+
+                // Ignore File Confirmation Dialog
+                ignoreConfirmTarget?.let { file ->
+                    AlertDialog(
+                        onDismissRequest = { ignoreConfirmTarget = null },
+                        title = { Text("Sei sicuro?", color = TextPrimary, fontWeight = FontWeight.Bold) },
+                        text = {
+                            Text(
+                                text = "Non mostrare più il file \"${file.fileName}\"? Verrà escluso permanentemente dalla coda attiva.",
+                                color = TextSecondary,
+                                fontSize = 14.sp
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    viewModel.ignoreFile(file.hash)
+                                    ignoreConfirmTarget = null
+                                }
+                            ) {
+                                Text("Sì, Ignora", color = StateError, fontWeight = FontWeight.Bold)
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { ignoreConfirmTarget = null }) {
+                                Text("Annulla", color = TextPrimary)
+                            }
+                        },
+                        containerColor = DarkSurface,
+                        shape = RoundedCornerShape(12.dp)
+                    )
                 }
 
                 // AI Category Confirmation Modal Overlay
@@ -310,7 +358,11 @@ fun DashboardView(
     pendingFiles: List<TrackedFile>,
     activeProgresses: Map<String, MoveProgressPayload>,
     isLoading: Boolean,
-    onOrganizeClick: (TrackedFile) -> Unit
+    isReclassifying: Boolean,
+    onReclassifyClick: () -> Unit,
+    onIgnoreClick: (TrackedFile) -> Unit,
+    onOrganizeClick: (TrackedFile) -> Unit,
+    onMoveClick: (TrackedFile) -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -348,17 +400,45 @@ fun DashboardView(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        Text(
-            text = "Tracked Watch-Folder Files",
-            color = TextPrimary,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold
-        )
-        Text(
-            text = "Real-time state of media files detected by filesystem watcher",
-            color = TextSecondary,
-            fontSize = 12.sp
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Tracked Watch-Folder Files",
+                    color = TextPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "Real-time state of media files",
+                    color = TextSecondary,
+                    fontSize = 11.sp
+                )
+            }
+
+            Button(
+                onClick = onReclassifyClick,
+                enabled = !isReclassifying && !isLoading,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = CobaltBlue.copy(alpha = 0.12f),
+                    disabledContainerColor = CobaltBlue.copy(alpha = 0.05f)
+                ),
+                border = BorderStroke(1.dp, CobaltBlue.copy(alpha = 0.4f)),
+                shape = RoundedCornerShape(20.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                modifier = Modifier.height(32.dp)
+            ) {
+                Text(
+                    text = if (isReclassifying) "🧠 Recalculating..." else "🧠 Re-classify",
+                    color = CobaltBlue,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
 
         Spacer(modifier = Modifier.height(12.dp))
 
@@ -404,7 +484,9 @@ fun DashboardView(
                     FileQueueCard(
                         file = file,
                         progress = activeProgresses[file.hash],
-                        onOrganizeClick = { onOrganizeClick(file) }
+                        onIgnoreClick = { onIgnoreClick(file) },
+                        onOrganizeClick = { onOrganizeClick(file) },
+                        onMoveClick = { onMoveClick(file) }
                     )
                 }
             }
@@ -433,7 +515,9 @@ fun StatCard(title: String, value: String, color: Color, modifier: Modifier = Mo
 fun FileQueueCard(
     file: TrackedFile,
     progress: MoveProgressPayload?,
-    onOrganizeClick: () -> Unit
+    onIgnoreClick: () -> Unit,
+    onOrganizeClick: () -> Unit,
+    onMoveClick: () -> Unit
 ) {
     val status = FileStatus.fromInt(file.status)
     val statusColor = when (status) {
@@ -481,11 +565,30 @@ fun FileQueueCard(
                     )
                 }
 
-                Text(
-                    text = formatBytes(file.fileSize),
-                    color = TextSecondary,
-                    fontSize = 11.sp
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = formatBytes(file.fileSize),
+                        color = TextSecondary,
+                        fontSize = 11.sp
+                    )
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    IconButton(
+                        onClick = onIgnoreClick,
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(StateError.copy(alpha = 0.1f))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Ignore File",
+                            tint = StateError,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -595,6 +698,54 @@ fun FileQueueCard(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("Organize", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            // Move or retry action buttons if ready to move or error
+            if (status == FileStatus.READY_TO_MOVE || status == FileStatus.ERROR) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Button(
+                        onClick = onMoveClick,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (status == FileStatus.ERROR) StateError else CobaltBlue
+                        ),
+                        shape = RoundedCornerShape(6.dp),
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(vertical = 8.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (status == FileStatus.ERROR) Icons.Default.Refresh else Icons.Default.Check,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (status == FileStatus.ERROR) "Retry Move" else "Move",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onOrganizeClick,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(DarkSurfaceElevated)
+                            .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(6.dp))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Edit Category",
+                            tint = TextPrimary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
             }
         }
@@ -712,11 +863,104 @@ fun HistoryView(historyFiles: List<TrackedFile>) {
 }
 
 @Composable
+fun DirectoryNode(
+    item: com.example.mediabutler.data.FSItem,
+    viewModel: MainScreenViewModel,
+    directoryCache: Map<String, List<com.example.mediabutler.data.FSItem>>,
+    depth: Int
+) {
+    var isExpanded by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isExpanded) {
+        if (isExpanded && item.isDir) {
+            viewModel.loadFSList(item.path)
+        }
+    }
+
+    Column(modifier = Modifier.padding(start = (depth * 8).dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(enabled = item.isDir) { isExpanded = !isExpanded }
+                .padding(vertical = 4.dp, horizontal = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (item.isDir) {
+                Text(
+                    text = if (isExpanded) "▼" else "▶",
+                    color = CobaltBlue,
+                    fontSize = 10.sp,
+                    modifier = Modifier.width(12.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(text = "📁", fontSize = 14.sp)
+            } else {
+                Spacer(modifier = Modifier.width(16.dp))
+                Text(text = "📄", fontSize = 14.sp)
+            }
+
+            Spacer(modifier = Modifier.width(6.dp))
+
+            Text(
+                text = item.name,
+                color = if (item.isDir) TextPrimary else TextSecondary,
+                fontSize = 12.sp,
+                fontWeight = if (item.isDir) FontWeight.Bold else FontWeight.Normal,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+
+            if (!item.isDir) {
+                Text(
+                    text = formatBytes(item.sizeBytes),
+                    color = TextSecondary.copy(alpha = 0.7f),
+                    fontSize = 10.sp
+                )
+            }
+        }
+
+        if (isExpanded && item.isDir) {
+            val children = directoryCache[item.path]
+            if (children != null) {
+                children.forEach { child ->
+                    DirectoryNode(
+                        item = child,
+                        viewModel = viewModel,
+                        directoryCache = directoryCache,
+                        depth = depth + 1
+                    )
+                }
+                if (children.isEmpty()) {
+                    Text(
+                        text = "Empty Directory",
+                        color = TextSecondary.copy(alpha = 0.5f),
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(start = 24.dp, top = 2.dp, bottom = 2.dp)
+                    )
+                }
+            } else {
+                LinearProgressIndicator(
+                    color = CobaltBlue,
+                    modifier = Modifier
+                        .padding(start = 24.dp, top = 4.dp, bottom = 4.dp)
+                        .width(100.dp)
+                        .height(2.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
 fun SettingsView(
     viewModel: MainScreenViewModel,
     config: ConfigResponse?
 ) {
     val serverIpInput by viewModel.serverIpInput.collectAsStateWithLifecycle()
+    val showHiddenFiles by viewModel.showHiddenFiles.collectAsStateWithLifecycle()
+    val directoryCache by viewModel.directoryCache.collectAsStateWithLifecycle()
+    val mlThresholdInput by viewModel.mlThresholdInput.collectAsStateWithLifecycle()
 
     LazyColumn(
         modifier = Modifier
@@ -804,12 +1048,34 @@ fun SettingsView(
                         .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(12.dp))
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = "📁 Active Directories Path",
-                            color = TextPrimary,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "📁 Active Directories Explorer",
+                                color = TextPrimary,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Show Hidden", color = TextSecondary, fontSize = 10.sp)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Switch(
+                                    checked = showHiddenFiles,
+                                    onCheckedChange = { viewModel.toggleShowHiddenFiles() },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = CobaltBlue,
+                                        checkedTrackColor = CobaltBlue.copy(alpha = 0.3f),
+                                        uncheckedThumbColor = TextSecondary,
+                                        uncheckedTrackColor = DarkSurfaceElevated
+                                    ),
+                                    modifier = Modifier.scale(0.6f)
+                                )
+                            }
+                        }
                         Spacer(modifier = Modifier.height(12.dp))
 
                         Text(
@@ -820,20 +1086,18 @@ fun SettingsView(
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         config.watchFolders.forEach { folder ->
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(DarkSurfaceElevated)
-                                    .padding(horizontal = 8.dp, vertical = 6.dp)
-                            ) {
-                                Text(
-                                    text = folder,
-                                    color = TextPrimary,
-                                    fontSize = 11.sp
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(4.dp))
+                            val rootItem = com.example.mediabutler.data.FSItem(
+                                name = folder.substringAfterLast('/'),
+                                path = folder,
+                                isDir = true
+                            )
+                            DirectoryNode(
+                                item = rootItem,
+                                viewModel = viewModel,
+                                directoryCache = directoryCache,
+                                depth = 0
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
                         }
 
                         Spacer(modifier = Modifier.height(10.dp))
@@ -845,21 +1109,17 @@ fun SettingsView(
                             fontWeight = FontWeight.SemiBold
                         )
                         Spacer(modifier = Modifier.height(4.dp))
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(DarkSurfaceElevated)
-                                .border(1.dp, CobaltBlue.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
-                                .padding(horizontal = 8.dp, vertical = 6.dp)
-                        ) {
-                            Text(
-                                text = config.destFolder,
-                                color = CobaltBlue,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
+                        val destItem = com.example.mediabutler.data.FSItem(
+                            name = config.destFolder.substringAfterLast('/'),
+                            path = config.destFolder,
+                            isDir = true
+                        )
+                        DirectoryNode(
+                            item = destItem,
+                            viewModel = viewModel,
+                            directoryCache = directoryCache,
+                            depth = 0
+                        )
                     }
                 }
             }
@@ -885,19 +1145,31 @@ fun SettingsView(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text("ML Threshold", color = TextSecondary, fontSize = 11.sp)
-                            Text("${(config.mlThreshold * 100).toInt()}% Confidence", color = CobaltBlue, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            val currentThreshold = mlThresholdInput ?: config.mlThreshold.toFloat()
+                            Text("${(currentThreshold * 100).toInt()}% Confidence", color = CobaltBlue, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        LinearProgressIndicator(
-                            progress = { config.mlThreshold.toFloat() },
-                            color = CobaltBlue,
-                            trackColor = DarkSurfaceElevated,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(6.dp)
-                                .clip(CircleShape)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        val currentThreshold = mlThresholdInput ?: config.mlThreshold.toFloat()
+                        Slider(
+                            value = currentThreshold,
+                            onValueChange = { viewModel.updateLocalMlThreshold(it) },
+                            onValueChangeFinished = { viewModel.saveMlThreshold() },
+                            valueRange = 0.5f..0.98f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = CobaltBlue,
+                                activeTrackColor = CobaltBlue,
+                                inactiveTrackColor = DarkSurfaceElevated
+                            ),
+                            modifier = Modifier.fillMaxWidth()
                         )
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "I file con una confidenza stimata superiore a questa soglia vengono considerati affidabili ed approvati automaticamente dal sistema. I file con confidenza inferiore richiederanno invece la tua conferma manuale nell'interfaccia per prevenire catalogazioni errate.",
+                            color = TextSecondary,
+                            fontSize = 10.sp,
+                            style = MaterialTheme.typography.bodySmall.copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic),
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
                         Text(
                             text = "Database: ${config.databasePath}",
                             color = TextSecondary,
@@ -935,7 +1207,7 @@ fun ConfirmCategoryModal(
 ) {
     val isSubmitting by viewModel.isSubmitting.collectAsStateWithLifecycle()
     val customCategory by viewModel.customCategory.collectAsStateWithLifecycle()
-    val presetCategories = listOf("MOVIES", "TV SHOWS", "MUSIC", "DOCS", "PHOTOS")
+    val presetCategories by viewModel.presets.collectAsStateWithLifecycle()
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
