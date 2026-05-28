@@ -42,6 +42,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/rescan", s.handleRescan)
 	mux.HandleFunc("/api/retrain", s.handleRetrain)
 	mux.HandleFunc("/api/categories", s.handleCategories)
+	mux.HandleFunc("/api/categories/presets", s.handleCategoryPresets)
 	mux.HandleFunc("/api/fs/list", s.handleFSList)
 	mux.Handle("/api/events", s.sse)
 }
@@ -133,6 +134,13 @@ func (s *Server) handleFileByHashOrAction(w http.ResponseWriter, r *http.Request
 				return
 			}
 			s.markFileAsMoved(w, r, hash)
+		case "ignore":
+			if r.Method != http.MethodPost {
+				w.Header().Set("Allow", "POST")
+				writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
+				return
+			}
+			s.ignoreFile(w, r, hash)
 		default:
 			writeError(w, http.StatusNotFound, "Action not found")
 		}
@@ -501,6 +509,40 @@ func (s *Server) markFileAsMoved(w http.ResponseWriter, r *http.Request, hash st
 	s.getFileByHash(w, r, hash)
 }
 
+// POST /api/files/{hash}/ignore
+func (s *Server) ignoreFile(w http.ResponseWriter, r *http.Request, hash string) {
+	now := time.Now()
+	res, err := s.db.Exec(`
+		UPDATE TrackedFiles 
+		SET Status = ?, Category = NULL, LastUpdateDate = ? 
+		WHERE Hash = ? AND IsActive = 1
+	`, FileStatusIgnored, now, hash)
+
+	if err != nil {
+		slog.Error("Failed to mark file as ignored", "hash", hash, "err", err)
+		writeError(w, http.StatusInternalServerError, "Failed to update status to ignored")
+		return
+	}
+
+	rowsAffected, _ := res.RowsAffected()
+	if rowsAffected == 0 {
+		writeError(w, http.StatusNotFound, "File not found")
+		return
+	}
+
+	slog.Info("File successfully marked as ignored (Status 8) and category cleared", "hash", hash)
+
+	if s.sse != nil {
+		s.sse.Broadcast("file.ignored", fmt.Sprintf(`{"hash":"%s"}`, hash))
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"message": "File marked as ignored successfully",
+		"hash":    hash,
+	})
+}
+
+
 // GET or POST /api/config
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
@@ -725,6 +767,51 @@ func (s *Server) handleCategories(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, categories)
 }
+
+// GET /api/categories/presets
+// Returns the 5 most recently used categories from successfully moved files (status 5),
+// padded with "UNKNOW" up to 5 elements.
+func (s *Server) handleCategoryPresets(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", "GET")
+		writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	query := `
+		SELECT DISTINCT Category 
+		FROM (
+			SELECT Category 
+			FROM TrackedFiles 
+			WHERE Status = 5 AND Category IS NOT NULL AND Category != '' 
+			ORDER BY MovedAt DESC, LastUpdateDate DESC 
+			LIMIT 5
+		)
+	`
+	rows, err := s.db.Query(query)
+	if err != nil {
+		slog.Error("Failed to fetch distinct category presets from DB", "err", err)
+		writeError(w, http.StatusInternalServerError, "Database error")
+		return
+	}
+	defer rows.Close()
+
+	categories := []string{}
+	for rows.Next() {
+		var cat string
+		if err := rows.Scan(&cat); err == nil {
+			categories = append(categories, cat)
+		}
+	}
+
+	// Pad with "UNKNOW" if less than 5 elements are found
+	for len(categories) < 5 {
+		categories = append(categories, "UNKNOW")
+	}
+
+	writeJSON(w, http.StatusOK, categories)
+}
+
 
 // POST /api/files/{hash}/move
 // Triggers the actual async file copy/move organization to destination paths

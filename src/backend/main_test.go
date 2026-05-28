@@ -1152,4 +1152,212 @@ func TestBulkReclassification(t *testing.T) {
 	}
 }
 
+func TestCategoryPresets(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "mediabutler_presets_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test.db")
+	db, err := InitDB(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to initialize test DB: %v", err)
+	}
+	defer db.Close()
+
+	err = EnsureSchema(db)
+	if err != nil {
+		t.Fatalf("Failed to ensure schema: %v", err)
+	}
+
+	cfg := Config{
+		DatabasePath: dbPath,
+		MLThreshold:  0.85,
+	}
+
+	server := NewServer(cfg, db, nil, nil)
+
+	// 1. Initial State: DB has no records, should return 5 "UNKNOW" elements
+	req := httptest.NewRequest(http.MethodGet, "/api/categories/presets", nil)
+	rr := httptest.NewRecorder()
+	server.handleCategoryPresets(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", rr.Code)
+	}
+
+	var resEmpty []string
+	if err := json.Unmarshal(rr.Body.Bytes(), &resEmpty); err != nil {
+		t.Fatalf("Failed to decode JSON body: %v", err)
+	}
+
+	if len(resEmpty) != 5 {
+		t.Errorf("Expected exactly 5 elements, got %d", len(resEmpty))
+	}
+	for i, val := range resEmpty {
+		if val != "UNKNOW" {
+			t.Errorf("Expected element %d to be 'UNKNOW', got '%s'", i, val)
+		}
+	}
+
+	// 2. Insert records with status 5 (Moved)
+	now := time.Now()
+	
+	// File 1: MOVIES, moved 1 hour ago
+	_, _ = db.Exec(`
+		INSERT INTO TrackedFiles (Hash, FileName, OriginalPath, FileSize, Status, Category, MovedAt, LastUpdateDate, CreatedDate)
+		VALUES ('hash1', 'movie1.mkv', '/watch/movie1.mkv', 100, 5, 'MOVIES', ?, ?, ?)
+	`, now.Add(-1*time.Hour), now.Add(-1*time.Hour), now.Add(-2*time.Hour))
+
+	// File 2: TV SHOWS, moved 30 mins ago
+	_, _ = db.Exec(`
+		INSERT INTO TrackedFiles (Hash, FileName, OriginalPath, FileSize, Status, Category, MovedAt, LastUpdateDate, CreatedDate)
+		VALUES ('hash2', 'tv1.mkv', '/watch/tv1.mkv', 200, 5, 'TV SHOWS', ?, ?, ?)
+	`, now.Add(-30*time.Minute), now.Add(-30*time.Minute), now.Add(-2*time.Hour))
+
+	// File 3: TV SHOWS, moved 15 mins ago (duplicate Category but most recent)
+	_, _ = db.Exec(`
+		INSERT INTO TrackedFiles (Hash, FileName, OriginalPath, FileSize, Status, Category, MovedAt, LastUpdateDate, CreatedDate)
+		VALUES ('hash3', 'tv2.mkv', '/watch/tv2.mkv', 250, 5, 'TV SHOWS', ?, ?, ?)
+	`, now.Add(-15*time.Minute), now.Add(-15*time.Minute), now.Add(-2*time.Hour))
+
+	// File 4: ANIME, moved 5 mins ago
+	_, _ = db.Exec(`
+		INSERT INTO TrackedFiles (Hash, FileName, OriginalPath, FileSize, Status, Category, MovedAt, LastUpdateDate, CreatedDate)
+		VALUES ('hash4', 'anime1.mkv', '/watch/anime1.mkv', 150, 5, 'ANIME', ?, ?, ?)
+	`, now.Add(-5*time.Minute), now.Add(-5*time.Minute), now.Add(-2*time.Hour))
+
+	// File 5: MOVIES, moved 1 min ago
+	_, _ = db.Exec(`
+		INSERT INTO TrackedFiles (Hash, FileName, OriginalPath, FileSize, Status, Category, MovedAt, LastUpdateDate, CreatedDate)
+		VALUES ('hash5', 'movie2.mkv', '/watch/movie2.mkv', 300, 5, 'MOVIES', ?, ?, ?)
+	`, now.Add(-1*time.Minute), now.Add(-1*time.Minute), now.Add(-2*time.Hour))
+
+	// File 6: DOCUMENTARIES, moved 2 hours ago (this should be excluded because only top 5 recent files are considered)
+	_, _ = db.Exec(`
+		INSERT INTO TrackedFiles (Hash, FileName, OriginalPath, FileSize, Status, Category, MovedAt, LastUpdateDate, CreatedDate)
+		VALUES ('hash6', 'doc1.mkv', '/watch/doc1.mkv', 400, 5, 'DOCUMENTARIES', ?, ?, ?)
+	`, now.Add(-2*time.Hour), now.Add(-2*time.Hour), now.Add(-3*time.Hour))
+
+	// Let's test the endpoint again!
+	rr2 := httptest.NewRecorder()
+	server.handleCategoryPresets(rr2, req)
+
+	if rr2.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", rr2.Code)
+	}
+
+	var resCategories []string
+	if err := json.Unmarshal(rr2.Body.Bytes(), &resCategories); err != nil {
+		t.Fatalf("Failed to decode JSON body: %v", err)
+	}
+
+	if len(resCategories) != 5 {
+		t.Errorf("Expected exactly 5 elements, got %d: %v", len(resCategories), resCategories)
+	}
+
+	expectedSet := map[string]bool{"MOVIES": true, "ANIME": true, "TV SHOWS": true}
+	for i := 0; i < 3; i++ {
+		val := resCategories[i]
+		if !expectedSet[val] {
+			t.Errorf("Unexpected category at index %d: '%s'", i, val)
+		}
+	}
+	if resCategories[3] != "UNKNOW" || resCategories[4] != "UNKNOW" {
+		t.Errorf("Expected last two elements to be 'UNKNOW', got %v", resCategories)
+	}
+}
+
+func TestIgnoreFile(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "mediabutler_ignore_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test.db")
+	db, err := InitDB(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to initialize test DB: %v", err)
+	}
+	defer db.Close()
+
+	err = EnsureSchema(db)
+	if err != nil {
+		t.Fatalf("Failed to ensure schema: %v", err)
+	}
+
+	// Insert active file with status Classified (2) and a set Category
+	_, err = db.Exec(`
+		INSERT INTO TrackedFiles (Hash, FileName, OriginalPath, FileSize, Status, Category, CreatedDate, LastUpdateDate)
+		VALUES ('0000000000000000000000000000000000000000000000000000000000ignore', 'ignored_file.mkv', '/watch/ignored_file.mkv', 500, 2, 'MOVIES', datetime('now'), datetime('now'))
+	`)
+	if err != nil {
+		t.Fatalf("Failed to insert tracked file: %v", err)
+	}
+
+	cfg := Config{
+		DatabasePath: dbPath,
+		MLThreshold:  0.85,
+	}
+
+	sse := NewSSEBroker()
+	sseChan := make(chan string, 10)
+	sse.Register(sseChan)
+	defer sse.Unregister(sseChan)
+
+	server := NewServer(cfg, db, sse, nil)
+	mux := http.NewServeMux()
+	server.RegisterRoutes(mux)
+
+	// Call POST /api/files/{hash}/ignore
+	req := httptest.NewRequest(http.MethodPost, "/api/files/0000000000000000000000000000000000000000000000000000000000ignore/ignore", nil)
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d. Body: %s", rr.Code, rr.Body.String())
+	}
+
+	var resData map[string]string
+	if err := json.Unmarshal(rr.Body.Bytes(), &resData); err != nil {
+		t.Fatalf("Failed to decode JSON response: %v", err)
+	}
+
+	if resData["hash"] != "0000000000000000000000000000000000000000000000000000000000ignore" {
+		t.Errorf("Expected hash '0000000000000000000000000000000000000000000000000000000000ignore', got '%s'", resData["hash"])
+	}
+
+	// Verify database changes: Status = 8, Category = NULL
+	var status int
+	var cat *string
+	err = db.QueryRow("SELECT Status, Category FROM TrackedFiles WHERE Hash = '0000000000000000000000000000000000000000000000000000000000ignore'").Scan(&status, &cat)
+	if err != nil {
+		t.Fatalf("Failed to query ignored file in DB: %v", err)
+	}
+
+	if status != 8 {
+		t.Errorf("Expected Status 8 (Ignored), got %d", status)
+	}
+	if cat != nil {
+		t.Errorf("Expected Category to be NULL, got '%s'", *cat)
+	}
+
+	// Verify SSE broadcast
+	select {
+	case msg := <-sseChan:
+		if !strings.Contains(msg, "file.ignored") {
+			t.Errorf("Expected SSE event type 'file.ignored', got message:\n%s", msg)
+		}
+		if !strings.Contains(msg, `"hash":"0000000000000000000000000000000000000000000000000000000000ignore"`) {
+			t.Errorf("Expected ignored hash '0000000000000000000000000000000000000000000000000000000000ignore' in SSE event, got message:\n%s", msg)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Errorf("Timed out waiting for file.ignored SSE event")
+	}
+}
+
+
+
 

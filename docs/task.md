@@ -6,6 +6,9 @@
 
 ## 📋 Elenco Attività (Nuovi in alto)
 
+- [x] **Completato: Creazione della guida completa al deployment locale (Mac) e su NAS QNAP in docs/deploy_guide.md ed allineamento della cartella scripts/**
+- [x] **Completato: Implementazione dell'azione "Non mostrare più" (status 8 e categoria NULL) con pop-up di conferma preventiva e pulsante premium 🚫 nella tabella Active Queue**
+- [x] **Completato: Caricamento dinamico dei Quick Presets nel modal di conferma con gli ultimi 5 valori di categoria da DB e fallback "UNKNOW"**
 - [x] **Completato: Aggiunta del pulsante "Ri-Classifica" in Dashboard Home con riclassificazione massiva in background ed aggiornamento reattivo SSE**
 - [x] **Completato: Implementazione dei log di retraining dettagliati (durata, reset, file, parole chiavi) e slider mlThreshold dinamico con descrizione in Settings**
 - [x] **Completato: Implementazione dell'albero delle directory espandibile in Settings con visualizzazione dei file, switch reattivo per file nascosti e percorso DB SQLite attivo**

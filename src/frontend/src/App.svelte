@@ -26,7 +26,7 @@
   
   // Custom categories autocompletion list
   let dbCategories = $state([]);
-  const presetCategories = ['MOVIES', 'TV SHOWS', 'MUSIC', 'DOCS', 'PHOTOS'];
+  let presetCategories = $state(['MOVIES', 'TV SHOWS', 'MUSIC', 'DOCS', 'PHOTOS']);
   let dropdownOpen = $state(false);
 
   // Active SSE Move Progress tracking
@@ -115,12 +115,24 @@
     }
   }
 
+  async function fetchPresetCategories() {
+    try {
+      const res = await fetch('/api/categories/presets');
+      if (res.ok) {
+        presetCategories = await res.json();
+      }
+    } catch (err) {
+      console.error('Failed to fetch preset categories', err);
+    }
+  }
+
   async function fetchDbCategories() {
     try {
       const res = await fetch('/api/categories');
       if (res.ok) {
         dbCategories = await res.json();
       }
+      await fetchPresetCategories();
     } catch (err) {
       console.error('Failed to fetch db categories', err);
     }
@@ -364,13 +376,26 @@
     await fetchDashboard();
   }
 
-  // Ignore / Remove file from queue
-  function ignoreFile(hash) {
-    // There is no custom ignore API yet, so we just remove it locally or mock ignoring.
-    activeFiles = activeFiles.filter(f => f.hash !== hash);
-    pendingFiles = pendingFiles.filter(f => f.hash !== hash);
-    showToast('info', 'Ignored', 'File ignored and hidden from workspace.');
-    closeConfirmModal();
+  // Ignore / Remove file from queue (Permanent ignore in database)
+  async function ignoreFile(hash) {
+    const file = activeFiles.find(f => f.hash === hash);
+    const fileName = file ? file.fileName : "questo file";
+
+    const confirmed = confirm(`Sei sicuro di non voler mostrare più il file "${fileName}"?\n\nVerrà nascosto permanentemente dal workspace.`);
+    if (!confirmed) return;
+
+    try {
+      const res = await fetch(`/api/files/${hash}/ignore`, { method: 'POST' });
+      if (res.ok) {
+        showToast('success', 'File Nascosto', 'Il file è stato rimosso dalla coda e nascosto con successo.');
+        await fetchDashboard();
+        closeConfirmModal();
+      } else {
+        showToast('error', 'Azione Fallita', 'Impossibile nascondere il file.');
+      }
+    } catch (err) {
+      showToast('error', 'Errore di Connessione', 'Errore di rete durante la richiesta.');
+    }
   }
 
   // --- Real-time SSE Setup ---
@@ -443,6 +468,17 @@
         fetchDashboard();
       } catch (err) {
         console.error('Failed to parse reclassified SSE event', err);
+      }
+    });
+
+    // File ignored event
+    eventSource.addEventListener('file.ignored', (e) => {
+      try {
+        const payload = JSON.parse(e.data);
+        console.log(`File ignored event: ${payload.hash}`);
+        fetchDashboard();
+      } catch (err) {
+        console.error('Failed to parse file.ignored SSE event', err);
       }
     });
 
@@ -876,6 +912,9 @@
                             <button class="btn btn-secondary btn-sm" onclick={(e) => { e.stopPropagation(); openConfirmModal(file); }} title="Edit category before moving">
                               ✏️ Edit
                             </button>
+                            <button class="btn btn-secondary btn-sm ignore-btn-action" onclick={(e) => { e.stopPropagation(); ignoreFile(file.hash); }} title="Non mostrare più (Ignora)">
+                              🚫
+                            </button>
                           {:else if file.status === 6}
                             <button class="btn btn-primary btn-sm retry-btn" onclick={(e) => { e.stopPropagation(); confirmFile(file.hash, file.category || file.suggestedCategory || 'MOVIES'); }} title="Retry organize file transfer">
                               ⟳ Retry
@@ -883,9 +922,15 @@
                             <button class="btn btn-secondary btn-sm" onclick={(e) => { e.stopPropagation(); openConfirmModal(file); }} title="Edit details & category">
                               ✏️ Edit
                             </button>
+                            <button class="btn btn-secondary btn-sm ignore-btn-action" onclick={(e) => { e.stopPropagation(); ignoreFile(file.hash); }} title="Non mostrare più (Ignora)">
+                              🚫
+                            </button>
                           {:else if file.status === 0 || file.status === 7}
                             <button class="btn btn-secondary btn-sm classify-btn" onclick={(e) => { e.stopPropagation(); forceClassifyFile(file.hash); }} title="Force classification of this file">
                               🧠 Classify
+                            </button>
+                            <button class="btn btn-secondary btn-sm ignore-btn-action" onclick={(e) => { e.stopPropagation(); ignoreFile(file.hash); }} title="Non mostrare più (Ignora)">
+                              🚫
                             </button>
                           {:else}
                             <span class="no-actions-badge">Running</span>
@@ -1594,6 +1639,18 @@
     cursor: not-allowed !important;
     opacity: 0.5 !important;
     pointer-events: none;
+  }
+
+  .ignore-btn-action {
+    background: rgba(239, 68, 68, 0.08) !important;
+    border-color: rgba(239, 68, 68, 0.2) !important;
+    color: #ef4444 !important;
+    transition: all 0.2s ease !important;
+  }
+  .ignore-btn-action:hover {
+    background: #ef4444 !important;
+    color: white !important;
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.4) !important;
   }
 
   /* Empty State styling */
@@ -2466,7 +2523,7 @@
   .col-filename { width: auto; }
   .col-size { width: 90px; }
   .col-suggested { width: 160px; }
-  .col-actions { width: 190px; text-align: right; }
+  .col-actions { width: 240px; text-align: right; }
 
   .files-list-table td {
     padding: 10px 16px;
