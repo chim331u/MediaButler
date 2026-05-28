@@ -12,6 +12,7 @@
   let sseConnected = $state(false);
   let isLoading = $state(false);
   let isSubmitting = $state(false);
+  let isReclassifying = $state(false);
 
   // Pagination for History Log
   let historySkip = $state(0);
@@ -218,6 +219,23 @@
     }
   }
 
+  // Trigger bulk Naive Bayes reclassification of unconfirmed files on backend
+  async function triggerReclassifyUnconfirmed() {
+    isReclassifying = true;
+    try {
+      const res = await fetch('/api/files/reclassify-unconfirmed', { method: 'POST' });
+      if (res.ok) {
+        showToast('info', 'Calcolo Avviato', 'Ricalcolo probabilistico dei file avviato in background...');
+      } else {
+        showToast('error', 'Errore', 'Errore durante l\'avvio della riclassificazione.');
+      }
+    } catch (err) {
+      showToast('error', 'Errore di Connessione', 'Errore di rete durante la richiesta di riclassificazione.');
+    } finally {
+      isReclassifying = false;
+    }
+  }
+
   // Trigger manual Bayes retrain based on DB history
   async function triggerRetrain() {
     try {
@@ -251,6 +269,28 @@
       }
     } catch (err) {
       showToast('error', 'Connection Error', 'Network error while updating log level.');
+    }
+  }
+
+  // Update ML threshold dynamically on backend
+  async function updateMLThreshold(event) {
+    const value = parseInt(event.target.value, 10);
+    const newThreshold = value / 100;
+    try {
+      const res = await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mlThreshold: newThreshold })
+      });
+      if (res.ok) {
+        const updatedConfig = await res.json();
+        config = updatedConfig;
+        showToast('success', 'ML Threshold Updated', `Naive Bayes classification threshold updated to ${value}%.`);
+      } else {
+        showToast('error', 'Action Failed', 'Failed to update classification threshold.');
+      }
+    } catch (err) {
+      showToast('error', 'Connection Error', 'Network error while updating classification threshold.');
     }
   }
 
@@ -393,6 +433,17 @@
     eventSource.addEventListener('rescan.completed', () => {
       showToast('success', 'Scan Completed', 'Watch folder rescan completed successfully.');
       fetchDashboard();
+    });
+
+    // Bulk reclassification completed event
+    eventSource.addEventListener('files.reclassified', (e) => {
+      try {
+        const payload = JSON.parse(e.data);
+        showToast('success', 'Riclassificazione Completata', `Riclassificazione Completata: Pesi ricalcolati con successo per ${payload.updated} file non confermati.`);
+        fetchDashboard();
+      } catch (err) {
+        console.error('Failed to parse reclassified SSE event', err);
+      }
     });
 
     // Copy / Move progress update
@@ -688,14 +739,19 @@
             <h2>Tracked Watch-Folder Files</h2>
             <p class="subtitle">Real-time status of files currently detected in active directories</p>
           </div>
-          <button class="btn btn-secondary" onclick={fetchDashboard} disabled={isLoading}>
-            {#if isLoading}
-              <svg class="spinner" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
-            {:else}
-              <svg class="refresh-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.27 15" /></svg>
-            {/if}
-            Refresh Queue
-          </button>
+          <div class="header-actions" style="display: flex; gap: 12px; align-items: center;">
+            <button class="btn btn-primary btn-premium-glow" onclick={triggerReclassifyUnconfirmed} disabled={isReclassifying || isLoading}>
+              🧠 Ri-Classifica File
+            </button>
+            <button class="btn btn-secondary" onclick={fetchDashboard} disabled={isLoading}>
+              {#if isLoading}
+                <svg class="spinner" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+              {:else}
+                <svg class="refresh-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.27 15" /></svg>
+              {/if}
+              Refresh Queue
+            </button>
+          </div>
         </div>
 
         {#if activeFiles.length === 0}
@@ -1043,13 +1099,25 @@
               
               <div class="settings-field">
                 <span class="field-label">Naive Bayes Classification Threshold</span>
-                <div class="slider-display">
-                  <div class="slider-bar-bg">
-                    <div class="slider-bar-value" style="width: {config.mlThreshold * 100}%"></div>
+                <div class="slider-display" style="display: flex; flex-direction: column; gap: 8px; align-items: stretch;">
+                  <input 
+                    type="range" 
+                    min="50" 
+                    max="98" 
+                    step="1"
+                    value={config.mlThreshold * 100}
+                    onchange={updateMLThreshold}
+                    style="width: 100%; margin: 8px 0; accent-color: #3b82f6; cursor: pointer;"
+                  />
+                  <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                    <span style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.4);">50%</span>
+                    <strong class="slider-text" style="color: #3b82f6; font-size: 0.9rem;">{(config.mlThreshold * 100).toFixed(0)}% Confidence</strong>
+                    <span style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.4);">98%</span>
                   </div>
-                  <strong class="slider-text">{(config.mlThreshold * 100).toFixed(0)}% Confidence</strong>
                 </div>
-                <p class="field-note">Files below this confidence threshold will prompt manual confirmation before organization.</p>
+                <p class="field-note" style="margin-top: 8px; line-height: 1.5; font-style: italic;">
+                  I file con una confidenza stimata superiore a questa soglia vengono considerati affidabili ed approvati automaticamente dal sistema. I file con confidenza inferiore richiederanno invece la tua conferma manuale nell'interfaccia per prevenire catalogazioni errate.
+                </p>
               </div>
 
 
@@ -1480,6 +1548,52 @@
     width: 14px;
     height: 14px;
     animation: spin-slow 1s linear infinite;
+  }
+
+  /* Premium Cobalt/Indigo Glow Button */
+  .btn-premium-glow {
+    background: linear-gradient(135deg, hsl(var(--accent-blue)), hsl(var(--accent-purple))) !important;
+    color: white !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    box-shadow: 0 4px 14px 0 rgba(168, 85, 247, 0.4) !important;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  }
+  .btn-premium-glow::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.2),
+      transparent
+    );
+    transition: all 0.6s ease;
+  }
+  .btn-premium-glow:hover:not(:disabled)::before {
+    left: 100%;
+  }
+  .btn-premium-glow:hover:not(:disabled) {
+    transform: translateY(-2px) scale(1.02);
+    box-shadow: 0 6px 20px 0 rgba(168, 85, 247, 0.6), 0 0 15px -3px hsla(210, 100%, 55%, 0.5) !important;
+    filter: brightness(1.1);
+  }
+  .btn-premium-glow:active:not(:disabled) {
+    transform: translateY(0) scale(1);
+  }
+  .btn-premium-glow:disabled {
+    background: rgba(255, 255, 255, 0.04) !important;
+    color: hsl(var(--text-muted)) !important;
+    border-color: rgba(255, 255, 255, 0.02) !important;
+    box-shadow: none !important;
+    cursor: not-allowed !important;
+    opacity: 0.5 !important;
+    pointer-events: none;
   }
 
   /* Empty State styling */

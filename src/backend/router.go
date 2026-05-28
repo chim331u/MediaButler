@@ -37,6 +37,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/files", s.handleFiles)
 	mux.HandleFunc("/api/files/", s.handleFileByHashOrAction)
 	mux.HandleFunc("/api/files/pending", s.handlePendingFiles)
+	mux.HandleFunc("/api/files/reclassify-unconfirmed", s.handleReclassifyUnconfirmed)
 	mux.HandleFunc("/api/config", s.handleConfig)
 	mux.HandleFunc("/api/rescan", s.handleRescan)
 	mux.HandleFunc("/api/retrain", s.handleRetrain)
@@ -513,31 +514,44 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		})
 	case http.MethodPost:
 		var req struct {
-			LogLevel string `json:"logLevel"`
+			LogLevel    *string  `json:"logLevel"`
+			MLThreshold *float64 `json:"mlThreshold"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeError(w, http.StatusBadRequest, "Invalid request body")
 			return
 		}
 
-		levelStr := strings.ToUpper(strings.TrimSpace(req.LogLevel))
-		var newLevel slog.Level
-		switch levelStr {
-		case "DEBUG":
-			newLevel = slog.LevelDebug
-		case "INFO":
-			newLevel = slog.LevelInfo
-		case "WARN":
-			newLevel = slog.LevelWarn
-		case "ERROR":
-			newLevel = slog.LevelError
-		default:
-			writeError(w, http.StatusBadRequest, fmt.Sprintf("Invalid log level '%s'. Supported: DEBUG, INFO, WARN, ERROR", req.LogLevel))
-			return
+		if req.LogLevel != nil && *req.LogLevel != "" {
+			levelStr := strings.ToUpper(strings.TrimSpace(*req.LogLevel))
+			var newLevel slog.Level
+			switch levelStr {
+			case "DEBUG":
+				newLevel = slog.LevelDebug
+			case "INFO":
+				newLevel = slog.LevelInfo
+			case "WARN":
+				newLevel = slog.LevelWarn
+			case "ERROR":
+				newLevel = slog.LevelError
+			default:
+				writeError(w, http.StatusBadRequest, fmt.Sprintf("Invalid log level '%s'. Supported: DEBUG, INFO, WARN, ERROR", *req.LogLevel))
+				return
+			}
+
+			programLevel.Set(newLevel)
+			slog.Info("Log level dynamically updated", "newLevel", levelStr)
 		}
 
-		programLevel.Set(newLevel)
-		slog.Info("Log level dynamically updated", "newLevel", levelStr)
+		if req.MLThreshold != nil {
+			val := *req.MLThreshold
+			if val < 0.0 || val > 1.0 {
+				writeError(w, http.StatusBadRequest, "mlThreshold must be between 0.0 and 1.0")
+				return
+			}
+			s.config.MLThreshold = val
+			slog.Info("ML threshold dynamically updated", "newThreshold", val)
+		}
 
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"databasePath": s.config.DatabasePath,
@@ -591,6 +605,96 @@ func (s *Server) handleRetrain(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, map[string]string{
 		"message": "Naive Bayes classifier model retrained successfully based on database history",
+	})
+}
+
+// POST /api/files/reclassify-unconfirmed
+func (s *Server) handleReclassifyUnconfirmed(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	go func() {
+		slog.Info("Avvio ricalcolo e riclassificazione massiva dei file non confermati...")
+
+		rows, err := s.db.Query(`
+			SELECT Hash, FileName, Status 
+			FROM TrackedFiles 
+			WHERE IsActive = 1 AND Status IN (0, 2, 6, 7)
+		`)
+		if err != nil {
+			slog.Error("Errore durante l'estrazione dei file non confermati per la riclassificazione massiva", "err", err)
+			return
+		}
+		defer rows.Close()
+
+		type fileTask struct {
+			Hash     string
+			FileName string
+			Status   int
+		}
+
+		var tasks []fileTask
+		for rows.Next() {
+			var t fileTask
+			if err := rows.Scan(&t.Hash, &t.FileName, &t.Status); err != nil {
+				slog.Error("Errore durante la lettura di un file non confermato", "err", err)
+				continue
+			}
+			tasks = append(tasks, t)
+		}
+
+		processedCount := len(tasks)
+		updatedCount := 0
+
+		for _, task := range tasks {
+			predictedCategory, confidence, err := PredictCategory(s.db, task.FileName)
+			if err != nil {
+				slog.Error("Errore nella predizione della categoria durante la riclassificazione massiva", "hash", task.Hash, "fileName", task.FileName, "err", err)
+				continue
+			}
+
+			now := time.Now()
+			if predictedCategory != "UNKNOWN" && predictedCategory != "" {
+				_, err = s.db.Exec(`
+					UPDATE TrackedFiles
+					SET Status = ?, SuggestedCategory = ?, Confidence = ?, ClassifiedAt = ?, LastUpdateDate = ?
+					WHERE Hash = ? AND IsActive = 1
+				`, FileStatusClassified, predictedCategory, confidence, now, now, task.Hash)
+			} else {
+				_, err = s.db.Exec(`
+					UPDATE TrackedFiles
+					SET Status = ?, SuggestedCategory = NULL, Confidence = 0.0, ClassifiedAt = NULL, LastUpdateDate = ?
+					WHERE Hash = ? AND IsActive = 1
+				`, FileStatusNew, now, task.Hash)
+			}
+
+			if err != nil {
+				slog.Error("Errore nell'aggiornamento del file durante la riclassificazione massiva", "hash", task.Hash, "err", err)
+			} else {
+				updatedCount++
+			}
+		}
+
+		slog.Info("Riclassificazione massiva completata", "processed", processedCount, "updated", updatedCount)
+
+		if s.sse != nil {
+			payloadBytes, err := json.Marshal(map[string]interface{}{
+				"processed": processedCount,
+				"updated":   updatedCount,
+			})
+			if err != nil {
+				slog.Error("Errore nella serializzazione del payload per l'evento SSE files.reclassified", "err", err)
+				return
+			}
+			s.sse.Broadcast("files.reclassified", string(payloadBytes))
+		}
+	}()
+
+	writeJSON(w, http.StatusAccepted, map[string]string{
+		"message": "Bulk reclassification triggered successfully in the background",
 	})
 }
 

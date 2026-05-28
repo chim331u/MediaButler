@@ -6,6 +6,8 @@
 
 ## 📋 Elenco Attività (Nuovi in alto)
 
+- [x] **Completato: Aggiunta del pulsante "Ri-Classifica" in Dashboard Home con riclassificazione massiva in background ed aggiornamento reattivo SSE**
+- [x] **Completato: Implementazione dei log di retraining dettagliati (durata, reset, file, parole chiavi) e slider mlThreshold dinamico con descrizione in Settings**
 - [x] **Completato: Implementazione dell'albero delle directory espandibile in Settings con visualizzazione dei file, switch reattivo per file nascosti e percorso DB SQLite attivo**
 - [x] **Completato: Rimozione definitiva degli hook git local/remote (`pre-commit`, `pre-push`) e script di versione obsoleti legati a dotnet**
 - [x] **Completato: Ottimizzazione e stabilizzazione del test suite (`main_test.go`) tramite polling robusto per l'asincronia in sostituzione dei time.Sleep statici**

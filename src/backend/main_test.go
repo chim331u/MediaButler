@@ -922,3 +922,234 @@ func TestFSList(t *testing.T) {
 	}
 }
 
+func TestConfigEndpoint(t *testing.T) {
+	cfg := Config{
+		MLThreshold: 0.85,
+	}
+	server := NewServer(cfg, nil, nil, nil)
+	mux := http.NewServeMux()
+	server.RegisterRoutes(mux)
+
+	// 1. GET /api/config
+	req, _ := http.NewRequest("GET", "/api/config", nil)
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d", rr.Code)
+	}
+
+	var configResp map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &configResp); err != nil {
+		t.Fatalf("Failed to decode GET config response: %v", err)
+	}
+	if configResp["mlThreshold"].(float64) != 0.85 {
+		t.Errorf("Expected mlThreshold to be 0.85, got %v", configResp["mlThreshold"])
+	}
+
+	// 2. POST /api/config with valid MLThreshold
+	reqBody := `{"mlThreshold": 0.95}`
+	req, _ = http.NewRequest("POST", "/api/config", strings.NewReader(reqBody))
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d, body: %s", rr.Code, rr.Body.String())
+	}
+
+	configResp = nil
+	if err := json.Unmarshal(rr.Body.Bytes(), &configResp); err != nil {
+		t.Fatalf("Failed to decode POST config response: %v", err)
+	}
+	if configResp["mlThreshold"].(float64) != 0.95 {
+		t.Errorf("Expected updated mlThreshold in response to be 0.95, got %v", configResp["mlThreshold"])
+	}
+	if server.config.MLThreshold != 0.95 {
+		t.Errorf("Expected server config.MLThreshold to be updated to 0.95, got %v", server.config.MLThreshold)
+	}
+
+	// 3. POST /api/config with invalid MLThreshold (< 0)
+	reqBody = `{"mlThreshold": -0.1}`
+	req, _ = http.NewRequest("POST", "/api/config", strings.NewReader(reqBody))
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400 Bad Request for negative mlThreshold, got %d", rr.Code)
+	}
+
+	// 4. POST /api/config with invalid MLThreshold (> 1)
+	reqBody = `{"mlThreshold": 1.1}`
+	req, _ = http.NewRequest("POST", "/api/config", strings.NewReader(reqBody))
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400 Bad Request for mlThreshold > 1, got %d", rr.Code)
+	}
+}
+
+func TestBulkReclassification(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "mediabutler_bulk_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test.db")
+	db, err := InitDB(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to initialize DB: %v", err)
+	}
+	defer db.Close()
+	_ = EnsureSchema(db)
+	_ = EnsureModelSchema(db)
+
+	// 1. Insert some file records
+	now := time.Now()
+	_, _ = db.Exec(`
+		INSERT INTO TrackedFiles (Hash, FileName, OriginalPath, FileSize, Status, Category, SuggestedCategory, Confidence, CreatedDate, LastUpdateDate, IsActive)
+		VALUES ('hash1', 'breaking_bad_s01e01.mkv', '/watch/breaking_bad_s01e01.mkv', 100, 0, NULL, NULL, 0.0, ?, ?, 1),
+		       ('hash2', 'interstellar.mkv', '/watch/interstellar.mkv', 200, 2, NULL, 'SOME_OLD_CAT', 0.1, ?, ?, 1),
+		       ('hash3', 'frieren_01.mkv', '/watch/frieren_01.mkv', 300, 5, 'ANIME', 'ANIME', 0.98, ?, ?, 1),
+		       ('hash4', '[1080p Web-DL].mkv', '/watch/[1080p Web-DL].mkv', 400, 2, NULL, 'MOVIES', 0.8, ?, ?, 1)
+	`, now, now, now, now, now, now, now, now)
+
+	// 2. Prime classifier weights
+	LearnClassification(db, "breaking bad", "TV SHOWS")
+	LearnClassification(db, "interstellar", "MOVIES")
+	time.Sleep(300 * time.Millisecond) // Wait for async training
+
+	cfg := Config{
+		DatabasePath: dbPath,
+		MLThreshold:  0.85,
+	}
+
+	sse := NewSSEBroker()
+	sseChan := make(chan string, 10)
+	sse.Register(sseChan)
+	defer sse.Unregister(sseChan)
+
+	server := NewServer(cfg, db, sse, nil)
+	mux := http.NewServeMux()
+	server.RegisterRoutes(mux)
+
+	// 3. Call the POST /api/files/reclassify-unconfirmed endpoint
+	req, _ := http.NewRequest("POST", "/api/files/reclassify-unconfirmed", nil)
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("Expected status 202 Accepted, got %d, body: %s", rr.Code, rr.Body.String())
+	}
+
+	var resp map[string]string
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+	if resp["message"] != "Bulk reclassification triggered successfully in the background" {
+		t.Errorf("Unexpected response message: %s", resp["message"])
+	}
+
+	// 4. Wait for background goroutine to complete (up to 2 seconds)
+	success := false
+	for i := 0; i < 40; i++ {
+		// Query hash1 to see if it became Classified (2)
+		var status int
+		_ = db.QueryRow("SELECT Status FROM TrackedFiles WHERE Hash = 'hash1'").Scan(&status)
+		if status == int(FileStatusClassified) {
+			success = true
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	if !success {
+		t.Fatalf("Timed out waiting for bulk reclassification to complete")
+	}
+
+	// 5. Verify database updates
+	// File 1: was status 0, should become 2 (Classified) with SuggestedCategory = "TV SHOWS"
+	var status1 int
+	var sugCat1 string
+	var conf1 float64
+	err = db.QueryRow("SELECT Status, SuggestedCategory, Confidence FROM TrackedFiles WHERE Hash = 'hash1'").Scan(&status1, &sugCat1, &conf1)
+	if err != nil {
+		t.Fatalf("Failed to query hash1: %v", err)
+	}
+	if status1 != 2 {
+		t.Errorf("Expected hash1 Status to be 2, got %d", status1)
+	}
+	if sugCat1 != "TV SHOWS" {
+		t.Errorf("Expected hash1 SuggestedCategory to be 'TV SHOWS', got '%s'", sugCat1)
+	}
+	if conf1 <= 0.0 {
+		t.Errorf("Expected hash1 Confidence to be > 0, got %f", conf1)
+	}
+
+	// File 2: was status 2, should remain 2 (Classified) with SuggestedCategory = "MOVIES"
+	var status2 int
+	var sugCat2 string
+	var conf2 float64
+	err = db.QueryRow("SELECT Status, SuggestedCategory, Confidence FROM TrackedFiles WHERE Hash = 'hash2'").Scan(&status2, &sugCat2, &conf2)
+	if err != nil {
+		t.Fatalf("Failed to query hash2: %v", err)
+	}
+	if status2 != 2 {
+		t.Errorf("Expected hash2 Status to be 2, got %d", status2)
+	}
+	if sugCat2 != "MOVIES" {
+		t.Errorf("Expected hash2 SuggestedCategory to be 'MOVIES', got '%s'", sugCat2)
+	}
+
+	// File 3: was status 5 (Moved), should NOT be affected
+	var status3 int
+	var cat3 string
+	err = db.QueryRow("SELECT Status, Category FROM TrackedFiles WHERE Hash = 'hash3'").Scan(&status3, &cat3)
+	if err != nil {
+		t.Fatalf("Failed to query hash3: %v", err)
+	}
+	if status3 != 5 {
+		t.Errorf("Expected hash3 Status to remain 5, got %d", status3)
+	}
+	if cat3 != "ANIME" {
+		t.Errorf("Expected hash3 Category to remain 'ANIME', got '%s'", cat3)
+	}
+
+	// File 4: was status 2, with unknown name "[1080p Web-DL].mkv", should restore to status 0 (New) with NULL category
+	var status4 int
+	var sugCat4 *string
+	var conf4 float64
+	err = db.QueryRow("SELECT Status, SuggestedCategory, Confidence FROM TrackedFiles WHERE Hash = 'hash4'").Scan(&status4, &sugCat4, &conf4)
+	if err != nil {
+		t.Fatalf("Failed to query hash4: %v", err)
+	}
+	if status4 != 0 {
+		t.Errorf("Expected hash4 Status to be restored to 0, got %d", status4)
+	}
+	if sugCat4 != nil {
+		t.Errorf("Expected hash4 SuggestedCategory to be NULL/empty, got '%s'", *sugCat4)
+	}
+	if conf4 != 0.0 {
+		t.Errorf("Expected hash4 Confidence to be 0.0, got %f", conf4)
+	}
+
+	// 6. Verify SSE event
+	select {
+	case msg := <-sseChan:
+		if !strings.Contains(msg, "files.reclassified") {
+			t.Errorf("Expected SSE event type 'files.reclassified', got message:\n%s", msg)
+		}
+		// Body should have processed: 3 (hash1, hash2, hash4) and updated: 3
+		if !strings.Contains(msg, `"processed":3`) {
+			t.Errorf("Expected processed count 3 in SSE event, got message:\n%s", msg)
+		}
+		if !strings.Contains(msg, `"updated":3`) {
+			t.Errorf("Expected updated count 3 in SSE event, got message:\n%s", msg)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Errorf("Timed out waiting for files.reclassified SSE event")
+	}
+}
+
+

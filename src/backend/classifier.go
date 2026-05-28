@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 )
 
 var (
@@ -422,6 +423,8 @@ func LearnClassification(db *sql.DB, cleanedTitle string, confirmedCategory stri
 
 // RetrainModel resets the token frequency counts and re-learns from all confirmed historical files in database.
 func RetrainModel(db *sql.DB) error {
+	startTime := time.Now()
+
 	learnMu.Lock()
 	defer learnMu.Unlock()
 
@@ -432,12 +435,15 @@ func RetrainModel(db *sql.DB) error {
 	defer tx.Rollback()
 
 	// 1. Reset current model weights
+	slog.Info("Avvio retraining del classificatore statistico...")
+	slog.Info("Rimozione vecchie frequenze di parole dal database (tabella model_word_frequencies)...")
 	_, err = tx.Exec("DELETE FROM model_word_frequencies")
 	if err != nil {
 		return fmt.Errorf("failed to reset frequencies: %w", err)
 	}
 
 	// 2. Fetch all successfully moved files with confirmed categories
+	slog.Info("Scansione della storia in corso...", "stato", "estrazione_file_confermati")
 	rows, err := tx.Query("SELECT FileName, Category FROM TrackedFiles WHERE Status = 5 AND Category IS NOT NULL AND Category != ''")
 	if err != nil {
 		return fmt.Errorf("failed to query history files: %w", err)
@@ -474,10 +480,23 @@ func RetrainModel(db *sql.DB) error {
 		fileCount++
 	}
 
+	// 3. Query distinct words
+	var uniqueWords int = 0
+	err = tx.QueryRow("SELECT COUNT(DISTINCT Word) FROM model_word_frequencies").Scan(&uniqueWords)
+	if err != nil {
+		return fmt.Errorf("failed to count unique words in model_word_frequencies: %w", err)
+	}
+
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("failed to commit retrain transaction: %w", err)
 	}
 
-	slog.Info("Naive Bayes statistical model retrained successfully", "filesAnalyzed", fileCount, "tokensRegistered", totalTokens)
+	elapsedMs := time.Since(startTime).Milliseconds()
+	slog.Info("Retraining del classificatore completato con successo!",
+		"trovati_file_confermati", fileCount,
+		"parole_chiave_inserite", uniqueWords,
+		"token_totali_elaborati", totalTokens,
+		"tempo_effettivo_train_ms", elapsedMs,
+	)
 	return nil
 }
