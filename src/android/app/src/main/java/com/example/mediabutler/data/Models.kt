@@ -87,6 +87,12 @@ data class UpdateConfigRequest(
 )
 
 @Serializable
+data class UpdateFileRequest(
+    val category: String,
+    val status: Int
+)
+
+@Serializable
 data class FileIgnoredPayload(
     val hash: String
 )

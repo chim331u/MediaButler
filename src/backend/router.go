@@ -141,6 +141,13 @@ func (s *Server) handleFileByHashOrAction(w http.ResponseWriter, r *http.Request
 				return
 			}
 			s.ignoreFile(w, r, hash)
+		case "update":
+			if r.Method != http.MethodPost {
+				w.Header().Set("Allow", "POST")
+				writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
+				return
+			}
+			s.updateFile(w, r, hash)
 		default:
 			writeError(w, http.StatusNotFound, "Action not found")
 		}
@@ -157,6 +164,7 @@ func (s *Server) getFiles(w http.ResponseWriter, r *http.Request) {
 	takeStr := r.URL.Query().Get("take")
 	statusStr := r.URL.Query().Get("status")
 	categoryStr := r.URL.Query().Get("category")
+	searchStr := r.URL.Query().Get("search")
 
 	skip := 0
 	take := 20
@@ -182,6 +190,11 @@ func (s *Server) getFiles(w http.ResponseWriter, r *http.Request) {
 	`
 	var args []interface{}
 
+	if searchStr != "" {
+		query += " AND FileName LIKE ?"
+		args = append(args, "%"+searchStr+"%")
+	}
+
 	if statusStr != "" {
 		statusVal, err := strconv.Atoi(statusStr)
 		if err == nil {
@@ -192,6 +205,32 @@ func (s *Server) getFiles(w http.ResponseWriter, r *http.Request) {
 	if categoryStr != "" {
 		query += " AND Category = ?"
 		args = append(args, categoryStr)
+	}
+
+	// Calculate total count matching search criteria to set X-Total-Count header
+	countQuery := "SELECT COUNT(*) FROM TrackedFiles WHERE IsActive = 1"
+	var countArgs []interface{}
+	if searchStr != "" {
+		countQuery += " AND FileName LIKE ?"
+		countArgs = append(countArgs, "%"+searchStr+"%")
+	}
+	if statusStr != "" {
+		statusVal, err := strconv.Atoi(statusStr)
+		if err == nil {
+			countQuery += " AND Status = ?"
+			countArgs = append(countArgs, statusVal)
+		}
+	}
+	if categoryStr != "" {
+		countQuery += " AND Category = ?"
+		countArgs = append(countArgs, categoryStr)
+	}
+
+	var totalCount int
+	if err := s.db.QueryRow(countQuery, countArgs...).Scan(&totalCount); err == nil {
+		w.Header().Set("X-Total-Count", strconv.Itoa(totalCount))
+	} else {
+		slog.Error("Failed to calculate total count", "err", err)
 	}
 
 	query += " ORDER BY CreatedDate DESC LIMIT ? OFFSET ?"
@@ -540,6 +579,71 @@ func (s *Server) ignoreFile(w http.ResponseWriter, r *http.Request, hash string)
 		"message": "File marked as ignored successfully",
 		"hash":    hash,
 	})
+}
+
+// POST /api/files/{hash}/update
+func (s *Server) updateFile(w http.ResponseWriter, r *http.Request, hash string) {
+	var req UpdateFileRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	categoryUpper := strings.ToUpper(strings.TrimSpace(req.Category))
+	statusVal := req.Status
+
+	if statusVal < 0 || statusVal > 8 {
+		writeError(w, http.StatusBadRequest, "Invalid status code. Must be between 0 and 8.")
+		return
+	}
+
+	// 1. Fetch current file info to learn feedback if status changes or category is updated
+	var fileName string
+	var currentStatus int
+	err := s.db.QueryRow("SELECT FileName, Status FROM TrackedFiles WHERE Hash = ? AND IsActive = 1", hash).Scan(&fileName, &currentStatus)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "File not found")
+		} else {
+			slog.Error("Failed to check file existence", "hash", hash, "err", err)
+			writeError(w, http.StatusInternalServerError, "Internal database error")
+		}
+		return
+	}
+
+	// 2. Perform incremental learning on feedback if a category is provided and status is appropriate
+	if categoryUpper != "" && (statusVal == int(FileStatusReadyToMove) || statusVal == int(FileStatusMoved)) {
+		LearnClassification(s.db, CleanFilename(fileName), categoryUpper)
+	}
+
+	// 3. Update Status and Category in SQLite
+	now := time.Now()
+	_, err = s.db.Exec(`
+		UPDATE TrackedFiles 
+		SET Status = ?, Category = ?, LastUpdateDate = ? 
+		WHERE Hash = ? AND IsActive = 1
+	`, statusVal, categoryUpper, now, hash)
+
+	if err != nil {
+		slog.Error("Failed to update file inline", "hash", hash, "err", err)
+		writeError(w, http.StatusInternalServerError, "Failed to update file in database")
+		return
+	}
+
+	slog.Info("File inline update successful", "hash", hash, "status", statusVal, "category", categoryUpper)
+
+	// 4. Broadcast file.updated SSE event
+	if s.sse != nil {
+		payloadBytes, _ := json.Marshal(map[string]interface{}{
+			"hash":     hash,
+			"category": categoryUpper,
+			"status":   statusVal,
+		})
+		s.sse.Broadcast("file.updated", string(payloadBytes))
+	}
+
+	// 5. Respond with updated file
+	s.getFileByHash(w, r, hash)
 }
 
 

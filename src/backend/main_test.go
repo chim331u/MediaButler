@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -1355,6 +1356,145 @@ func TestIgnoreFile(t *testing.T) {
 		}
 	case <-time.After(500 * time.Millisecond):
 		t.Errorf("Timed out waiting for file.ignored SSE event")
+	}
+}
+
+func TestGetFilesWithSearch(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "mediabutler_search_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test.db")
+	db, err := InitDB(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to initialize test DB: %v", err)
+	}
+	defer db.Close()
+
+	err = EnsureSchema(db)
+	if err != nil {
+		t.Fatalf("Failed to ensure schema: %v", err)
+	}
+
+	// Insert tracked files
+	_, err = db.Exec(`
+		INSERT INTO TrackedFiles (Hash, FileName, OriginalPath, FileSize, Status, CreatedDate, LastUpdateDate)
+		VALUES 
+		('hash_avatar', 'Avatar.2009.mp4', '/watch/Avatar.2009.mp4', 1200, 0, datetime('now'), datetime('now')),
+		('hash_batman', 'Batman.Begins.mkv', '/watch/Batman.Begins.mkv', 1500, 0, datetime('now'), datetime('now'))
+	`)
+	if err != nil {
+		t.Fatalf("Failed to insert tracked files: %v", err)
+	}
+
+	cfg := Config{
+		DatabasePath: dbPath,
+	}
+
+	server := NewServer(cfg, db, nil, nil)
+	mux := http.NewServeMux()
+	server.RegisterRoutes(mux)
+
+	// Test Search "Batman"
+	req := httptest.NewRequest(http.MethodGet, "/api/files?search=Batman", nil)
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d. Body: %s", rr.Code, rr.Body.String())
+	}
+
+	var files []TrackedFile
+	if err := json.Unmarshal(rr.Body.Bytes(), &files); err != nil {
+		t.Fatalf("Failed to decode JSON: %v", err)
+	}
+
+	if len(files) != 1 {
+		t.Errorf("Expected 1 file, got %d", len(files))
+	} else if files[0].FileName != "Batman.Begins.mkv" {
+		t.Errorf("Expected 'Batman.Begins.mkv', got '%s'", files[0].FileName)
+	}
+}
+
+func TestUpdateFile(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "mediabutler_update_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test.db")
+	db, err := InitDB(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to initialize test DB: %v", err)
+	}
+	defer db.Close()
+
+	err = EnsureSchema(db)
+	if err != nil {
+		t.Fatalf("Failed to ensure schema: %v", err)
+	}
+
+	// Insert tracked file with 64-char hash
+	_, err = db.Exec(`
+		INSERT INTO TrackedFiles (Hash, FileName, OriginalPath, FileSize, Status, Category, CreatedDate, LastUpdateDate)
+		VALUES ('0000000000000000000000000000000000000000000000000000000000updtst', 'test_update.mp4', '/watch/test_update.mp4', 100, 0, NULL, datetime('now'), datetime('now'))
+	`)
+	if err != nil {
+		t.Fatalf("Failed to insert tracked file: %v", err)
+	}
+
+	cfg := Config{
+		DatabasePath: dbPath,
+	}
+
+	sse := NewSSEBroker()
+	sseChan := make(chan string, 10)
+	sse.Register(sseChan)
+	defer sse.Unregister(sseChan)
+
+	server := NewServer(cfg, db, sse, nil)
+	mux := http.NewServeMux()
+	server.RegisterRoutes(mux)
+
+	// Call POST /api/files/{hash}/update
+	reqBody := `{"category":"TV SHOWS","status":3}`
+	req := httptest.NewRequest(http.MethodPost, "/api/files/0000000000000000000000000000000000000000000000000000000000updtst/update", strings.NewReader(reqBody))
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d. Body: %s", rr.Code, rr.Body.String())
+	}
+
+	// Verify database changes
+	var status int
+	var cat sql.NullString
+	err = db.QueryRow("SELECT Status, Category FROM TrackedFiles WHERE Hash = '0000000000000000000000000000000000000000000000000000000000updtst'").Scan(&status, &cat)
+	if err != nil {
+		t.Fatalf("Failed to query file: %v", err)
+	}
+
+	if status != 3 {
+		t.Errorf("Expected status 3 (ReadyToMove), got %d", status)
+	}
+	if !cat.Valid || cat.String != "TV SHOWS" {
+		t.Errorf("Expected category 'TV SHOWS', got Valid=%t, Val='%s'", cat.Valid, cat.String)
+	}
+
+	// Verify SSE broadcast
+	select {
+	case msg := <-sseChan:
+		if !strings.Contains(msg, "file.updated") {
+			t.Errorf("Expected SSE event type 'file.updated', got message:\n%s", msg)
+		}
+		if !strings.Contains(msg, `"status":3`) || !strings.Contains(msg, `"category":"TV SHOWS"`) {
+			t.Errorf("Expected status and category in SSE payload, got: %s", msg)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Errorf("Timed out waiting for file.updated SSE event")
 	}
 }
 

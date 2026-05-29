@@ -6,6 +6,10 @@
 
 ## 📋 Elenco Attività (Nuovi in alto)
 
+- [/] **Fase 17: History Globale, Ricerca, Paginazione e Modifica Inline (Android & Web)**
+    - [x] Task 17.1: Sviluppo estensione API GET /api/files per parametro search e nuovo endpoint POST /api/files/{hash}/update in Go backend.
+    - [x] Task 17.2: Sviluppo unit test automatici per i nuovi endpoint di ricerca e aggiornamento file in Go backend.
+    - [/] Task 17.3: Sviluppo logica di aggiornamento inline ed integrazione della barra di ricerca Cobalt e dei badge dello stato nella Web UI Svelte.
 - [x] **Completato: Configurazione del nome dell'applicazione ed eseguibile compilato in MediaButler, rimozione icone adattive e generazione icone desktop PNG per tutte le densità (mdpi, hdpi, xhdpi, xxhdpi, xxxhdpi) a partire da Butler with Play Button Tray.png**
 - [x] **Completato: Integrazione del pulsante Move e modifica della categoria per i file confermati (READY_TO_MOVE/ERROR) nell'app Android nativa (Fase 16)**
 - [x] **Completato: Allineamento funzionale completo dell'app Android (Presets dinamici, Ignora file con popup, Ri-classificazione asincrona, Slider ML threshold, Directory Explorer lazy-loaded) e risoluzione definitiva del crash all'avvio su Dispatchers.IO**

@@ -14,10 +14,17 @@
   let isSubmitting = $state(false);
   let isReclassifying = $state(false);
 
-  // Pagination for History Log
+  // Pagination and Search for History Log
   let historySkip = $state(0);
   let historyTake = $state(10);
   let historyHasMore = $state(true);
+  let historySearch = $state('');
+  let historyTotal = $state(0);
+
+  // Inline Editing for History
+  let editingHash = $state(null);
+  let editingCategory = $state('');
+  let editingStatus = $state(0);
 
   // Confirmation Modal State
   let showModal = $state(false);
@@ -169,15 +176,63 @@
 
   async function fetchHistory() {
     try {
-      const res = await fetch(`/api/files?status=5&skip=${historySkip}&take=${historyTake}`);
+      const res = await fetch(`/api/files?skip=${historySkip}&take=${historyTake}&search=${encodeURIComponent(historySearch)}`);
       if (res.ok) {
         const data = await res.json();
         historyFiles = data;
         historyHasMore = data.length === historyTake;
+        
+        const totalHeader = res.headers.get('X-Total-Count');
+        if (totalHeader) {
+          historyTotal = parseInt(totalHeader, 10);
+        } else {
+          historyTotal = data.length;
+        }
       }
     } catch (err) {
       showToast('error', 'Fetch Error', 'Failed to retrieve files history.');
     }
+  }
+
+  function startInlineEdit(log) {
+    editingHash = log.hash;
+    editingCategory = log.category || '';
+    editingStatus = log.status;
+  }
+
+  function cancelInlineEdit() {
+    editingHash = null;
+  }
+
+  async function saveInlineEdit(hash) {
+    try {
+      const res = await fetch(`/api/files/${hash}/update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category: editingCategory, status: editingStatus })
+      });
+      if (res.ok) {
+        showToast('success', 'File Updated', 'File category and status updated inline successfully.');
+        editingHash = null;
+        fetchHistory();
+        fetchPendingFiles();
+      } else {
+        const errData = await res.json();
+        showToast('error', 'Update Failed', errData.error || 'Failed to update file.');
+      }
+    } catch (err) {
+      showToast('error', 'Update Error', 'An error occurred during file update.');
+    }
+  }
+
+  let searchTimeout;
+  function handleHistorySearch(event) {
+    historySearch = event.target.value;
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+      historySkip = 0;
+      fetchHistory();
+    }, 300);
   }
 
   // Confirm File Category manually (does not start move, just updates status to Confirmed/ReadyToMove)
@@ -713,7 +768,7 @@
       </button>
       <button class="tab-btn {currentTab === 'history' ? 'active' : ''}" onclick={() => currentTab = 'history'}>
         <svg class="tab-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-        History Log
+        Global Archive
       </button>
       <button class="tab-btn {currentTab === 'settings' ? 'active' : ''}" onclick={() => currentTab = 'settings'}>
         <svg class="tab-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
@@ -1020,13 +1075,30 @@
     {:else if currentTab === 'history'}
       <!-- HISTORY LOG SECTION -->
       <section class="glass-panel history-section">
-        <div class="section-header-row">
-          <div class="section-title-wrapper">
-            <h2>Organized Media History</h2>
+        <div class="section-header-row" style="flex-wrap: wrap; gap: 16px;">
+          <div class="section-title-wrapper" style="flex: 1; min-width: 250px;">
+            <h2>Global Archive</h2>
             <p class="subtitle">Complete archives of files organized into target structures</p>
           </div>
+
+          <!-- Cobalt Search Bar -->
+          <div class="search-bar-wrapper" style="position: relative; min-width: 200px; max-width: 350px; width: 100%; display: flex; align-items: center; gap: 8px;">
+            <div style="position: relative; flex: 1;">
+              <input 
+                type="text" 
+                placeholder="🔍 Search files..." 
+                value={historySearch} 
+                oninput={handleHistorySearch}
+                class="input-search"
+                style="width: 100%; padding: 8px 12px 8px 36px; border-radius: 8px; border: 1px solid #1E293B; background: #0F172A; color: #F8FAFC; outline: none; transition: all 0.2s;"
+              />
+            </div>
+            <span class="badge" style="background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.35); color: #60a5fa; font-size: 0.75rem; padding: 6px 10px; border-radius: 6px; white-space: nowrap; font-weight: bold; letter-spacing: 0.03em;">
+              Total: {historyTotal}
+            </span>
+          </div>
           
-          <div class="pagination-header-info">
+          <div class="pagination-header-info" style="align-self: center; font-size: 0.85rem; opacity: 0.85;">
             Page {Math.floor(historySkip / historyTake) + 1}
           </div>
         </div>
@@ -1043,10 +1115,12 @@
               <thead>
                 <tr>
                   <th>Original FileName</th>
+                  <th>Status</th>
                   <th>Category</th>
                   <th>File Size</th>
                   <th>Destination Target Path</th>
                   <th>Date Organized</th>
+                  <th style="text-align: center;">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -1055,14 +1129,78 @@
                     <td class="cell-filename" title={log.fileName}>
                       <strong>{log.fileName}</strong>
                     </td>
-                    <td>
-                      <span class="badge badge-moved">{log.category || 'N/A'}</span>
-                    </td>
+
+                    {#if log.hash === editingHash}
+                      <!-- Status Edit -->
+                      <td>
+                        <select bind:value={editingStatus} class="select-inline">
+                          <option value={0}>NEW (0)</option>
+                          <option value={1}>PROCESSING (1)</option>
+                          <option value={2}>CLASSIFIED (2)</option>
+                          <option value={3}>READY TO MOVE (3)</option>
+                          <option value={4}>MOVING (4)</option>
+                          <option value={5}>MOVED (5)</option>
+                          <option value={6}>ERROR (6)</option>
+                          <option value={7}>RETRY (7)</option>
+                          <option value={8}>IGNORED (8)</option>
+                        </select>
+                      </td>
+
+                      <!-- Category Edit -->
+                      <td>
+                        <input type="text" bind:value={editingCategory} class="input-inline" />
+                      </td>
+                    {:else}
+                      <!-- Status Read-only -->
+                      <td>
+                        {#if log.status === 0}
+                          <span class="badge badge-new">New</span>
+                        {:else if log.status === 1}
+                          <span class="badge badge-processing">Processing</span>
+                        {:else if log.status === 2}
+                          <span class="badge badge-classified">Classified</span>
+                        {:else if log.status === 3}
+                          <span class="badge badge-ready">Ready</span>
+                        {:else if log.status === 4}
+                          <span class="badge badge-ready">Moving</span>
+                        {:else if log.status === 5}
+                          <span class="badge badge-moved">Moved</span>
+                        {:else if log.status === 6}
+                          <span class="badge badge-error">Error</span>
+                        {:else if log.status === 7}
+                          <span class="badge badge-processing">Retry</span>
+                        {:else if log.status === 8}
+                          <span class="badge badge-ignored">Ignored</span>
+                        {/if}
+                      </td>
+
+                      <!-- Category Read-only -->
+                      <td>
+                        <span class="badge badge-moved">{log.category || 'N/A'}</span>
+                      </td>
+                    {/if}
+
                     <td class="cell-size">{formatBytes(log.fileSize)}</td>
                     <td class="cell-path" title={log.movedToPath || log.targetPath}>
                       <span class="path-style">{log.movedToPath || log.targetPath || 'N/A'}</span>
                     </td>
                     <td class="cell-date">{formatRelativeTime(log.movedAt || log.lastUpdateDate)}</td>
+
+                    <!-- Actions Column -->
+                    <td style="text-align: center;">
+                      {#if log.hash === editingHash}
+                        <button class="btn btn-primary btn-sm" onclick={() => saveInlineEdit(log.hash)} style="padding: 4px 8px; margin-right: 4px; background: #10B981; border: none; min-width: 28px;">
+                          ✓
+                        </button>
+                        <button class="btn btn-secondary btn-sm" onclick={cancelInlineEdit} style="padding: 4px 8px; background: #EF4444; border: none; min-width: 28px;">
+                          ✗
+                        </button>
+                      {:else}
+                        <button class="btn btn-secondary btn-sm" onclick={() => startInlineEdit(log)} style="padding: 4px 8px;">
+                          ✏️
+                        </button>
+                      {/if}
+                    </td>
                   </tr>
                 {/each}
               </tbody>
@@ -1912,10 +2050,10 @@
 
   .cell-filename {
     font-weight: 500;
-    max-width: 250px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    max-width: 300px;
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: break-word;
   }
 
   .cell-size {
@@ -1925,10 +2063,10 @@
   }
 
   .cell-path {
-    max-width: 320px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    max-width: 380px;
+    white-space: normal;
+    word-break: break-all;
+    overflow-wrap: break-word;
   }
   .path-style {
     font-family: var(--font-mono);
@@ -2764,5 +2902,34 @@
     margin-top: 4px;
     word-break: break-all;
     opacity: 0.9;
+  }
+
+  .input-inline {
+    width: 100%;
+    min-width: 120px;
+    padding: 4px 8px;
+    background: #0F172A;
+    border: 1px solid #1E293B;
+    border-radius: 4px;
+    color: #F8FAFC;
+    outline: none;
+    font-size: 0.85rem;
+  }
+  .input-inline:focus {
+    border-color: #3b82f6;
+  }
+  .select-inline {
+    width: 100%;
+    min-width: 120px;
+    padding: 4px 8px;
+    background: #0F172A;
+    border: 1px solid #1E293B;
+    border-radius: 4px;
+    color: #F8FAFC;
+    outline: none;
+    font-size: 0.85rem;
+  }
+  .select-inline:focus {
+    border-color: #3b82f6;
   }
 </style>

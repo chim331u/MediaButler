@@ -111,6 +111,7 @@ import com.example.mediabutler.theme.StateProcessing
 import com.example.mediabutler.theme.StateReady
 import com.example.mediabutler.theme.TextPrimary
 import com.example.mediabutler.theme.TextSecondary
+import com.example.mediabutler.theme.TextMuted
 import kotlinx.serialization.Serializable
 
 @Composable
@@ -188,7 +189,7 @@ fun MainScreen(
                             onOrganizeClick = { viewModel.openConfirmModal(it) },
                             onMoveClick = { viewModel.moveFile(it.hash) }
                         )
-                        "history" -> HistoryView(historyFiles = historyFiles)
+                        "history" -> HistoryView(viewModel = viewModel)
                         "settings" -> SettingsView(
                             viewModel = viewModel,
                             config = config
@@ -753,25 +754,69 @@ fun FileQueueCard(
 }
 
 @Composable
-fun HistoryView(historyFiles: List<TrackedFile>) {
+fun HistoryView(viewModel: MainScreenViewModel) {
+    val historyFiles by viewModel.historyFiles.collectAsStateWithLifecycle()
+    val searchQuery by viewModel.historySearchQuery.collectAsStateWithLifecycle()
+    val page by viewModel.historyPage.collectAsStateWithLifecycle()
+    val editingFileHash by viewModel.editingFileHash.collectAsStateWithLifecycle()
+    val editingCategory by viewModel.editingCategory.collectAsStateWithLifecycle()
+    val editingStatus by viewModel.editingStatus.collectAsStateWithLifecycle()
+    val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 16.dp)
     ) {
         Text(
-            text = "Organized Media History",
+            text = "Global Archive",
             color = TextPrimary,
             fontSize = 16.sp,
             fontWeight = FontWeight.Bold
         )
         Text(
-            text = "History logs of successfully organized files on NAS",
+            text = "Search, edit and monitor all database files",
             color = TextSecondary,
             fontSize = 12.sp
         )
 
         Spacer(modifier = Modifier.height(12.dp))
+
+        // Search Bar (Cobalt Blue Premium Style with search icon and close/clear button)
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { viewModel.updateHistorySearchQuery(it) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+            placeholder = { Text("Search by filename...", color = TextMuted) },
+            leadingIcon = {
+                Text("🔍", fontSize = 16.sp, modifier = Modifier.padding(start = 4.dp))
+            },
+            trailingIcon = {
+                if (searchQuery.isNotEmpty()) {
+                    IconButton(onClick = { viewModel.updateHistorySearchQuery("") }) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Clear search",
+                            tint = TextSecondary
+                        )
+                    }
+                }
+            },
+            singleLine = true,
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = TextPrimary,
+                unfocusedTextColor = TextPrimary,
+                focusedContainerColor = DarkSurface,
+                unfocusedContainerColor = DarkSurface,
+                focusedBorderColor = CobaltBlue,
+                unfocusedBorderColor = Color(0xFF1E293B)
+            ),
+            shape = RoundedCornerShape(8.dp)
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
 
         if (historyFiles.isEmpty()) {
             Box(
@@ -781,17 +826,17 @@ fun HistoryView(historyFiles: List<TrackedFile>) {
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("🕰️", fontSize = 48.sp)
+                    Text(if (isLoading) "⏳" else "🕰️", fontSize = 48.sp)
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        "No History Records",
+                        if (isLoading) "Loading records..." else "No Database Records",
                         color = TextPrimary,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        "Files organized by MediaButler will show up here.",
+                        if (isLoading) "Fetching from server..." else "Try searching for a different file name.",
                         color = TextSecondary,
                         fontSize = 12.sp
                     )
@@ -803,60 +848,340 @@ fun HistoryView(historyFiles: List<TrackedFile>) {
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(historyFiles) { log ->
+                    val isEditing = editingFileHash == log.hash
+                    val statusColor = when (log.fileStatus) {
+                        FileStatus.NEW -> StateNew
+                        FileStatus.PROCESSING -> StateProcessing
+                        FileStatus.CLASSIFIED -> StateClassified
+                        FileStatus.READY_TO_MOVE -> StateReady
+                        FileStatus.MOVING -> StateReady
+                        FileStatus.MOVED -> StateMoved
+                        FileStatus.ERROR -> StateError
+                        FileStatus.RETRY -> StateProcessing
+                        FileStatus.IGNORED -> StateIgnored
+                    }
+
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(8.dp))
                             .background(DarkSurface)
-                            .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(8.dp))
+                            .border(
+                                1.dp,
+                                if (isEditing) CobaltBlue else Color(0xFF1E293B),
+                                RoundedCornerShape(8.dp)
+                            )
                             .padding(12.dp)
                     ) {
-                        Column {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
+                        if (isEditing) {
+                            // Inline Edit Mode
+                            Column {
+                                Text(
+                                    text = "Edit Inline: ${log.fileName}",
+                                    color = TextPrimary,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                // Category text input field
+                                OutlinedTextField(
+                                    value = editingCategory,
+                                    onValueChange = { viewModel.updateEditingCategory(it) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    label = { Text("Category", color = TextSecondary) },
+                                    singleLine = true,
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedTextColor = TextPrimary,
+                                        unfocusedTextColor = TextPrimary,
+                                        focusedContainerColor = DarkSurface,
+                                        unfocusedContainerColor = DarkSurface,
+                                        focusedBorderColor = CobaltBlue,
+                                        unfocusedBorderColor = Color(0xFF1E293B)
+                                    ),
+                                    shape = RoundedCornerShape(6.dp)
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                // Status Dropdown / Selector
+                                Text("Status", color = TextSecondary, fontSize = 11.sp)
+                                Spacer(modifier = Modifier.height(4.dp))
+
+                                var showDropdown by remember { mutableStateOf(false) }
                                 Box(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(StateMoved.copy(alpha = 0.12f))
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Color(0xFF1E293B))
+                                        .clickable { showDropdown = true }
+                                        .padding(horizontal = 12.dp, vertical = 8.dp)
                                 ) {
-                                    Text(
-                                        text = log.category ?: "MEDIA",
-                                        color = StateMoved,
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(editingStatus.name, color = TextPrimary, fontSize = 13.sp)
+                                        Text("▼", color = TextSecondary, fontSize = 10.sp)
+                                    }
+
+                                    if (showDropdown) {
+                                        Dialog(onDismissRequest = { showDropdown = false }) {
+                                            Card(
+                                                colors = CardDefaults.cardColors(containerColor = DarkSurface),
+                                                border = BorderStroke(1.dp, Color(0xFF1E293B)),
+                                                shape = RoundedCornerShape(12.dp),
+                                                modifier = Modifier.padding(16.dp)
+                                            ) {
+                                                Column(modifier = Modifier.padding(16.dp)) {
+                                                    Text(
+                                                        text = "Select Status",
+                                                        color = TextPrimary,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 14.sp
+                                                    )
+                                                    Spacer(modifier = Modifier.height(12.dp))
+                                                    LazyColumn(
+                                                        modifier = Modifier.height(250.dp),
+                                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                                    ) {
+                                                        items(FileStatus.values()) { statusOption ->
+                                                            Row(
+                                                                modifier = Modifier
+                                                                    .fillMaxWidth()
+                                                                    .clip(RoundedCornerShape(6.dp))
+                                                                    .background(
+                                                                        if (editingStatus == statusOption) Color(0xFF1E293B)
+                                                                        else Color.Transparent
+                                                                    )
+                                                                    .clickable {
+                                                                        viewModel.updateEditingStatus(statusOption)
+                                                                        showDropdown = false
+                                                                    }
+                                                                    .padding(10.dp),
+                                                                verticalAlignment = Alignment.CenterVertically
+                                                            ) {
+                                                                Box(
+                                                                    modifier = Modifier
+                                                                        .size(8.dp)
+                                                                        .clip(CircleShape)
+                                                                        .background(
+                                                                            when (statusOption) {
+                                                                                FileStatus.NEW -> StateNew
+                                                                                FileStatus.PROCESSING -> StateProcessing
+                                                                                FileStatus.CLASSIFIED -> StateClassified
+                                                                                FileStatus.READY_TO_MOVE -> StateReady
+                                                                                FileStatus.MOVING -> StateReady
+                                                                                FileStatus.MOVED -> StateMoved
+                                                                                FileStatus.ERROR -> StateError
+                                                                                FileStatus.RETRY -> StateProcessing
+                                                                                FileStatus.IGNORED -> StateIgnored
+                                                                            }
+                                                                        )
+                                                                )
+                                                                Spacer(modifier = Modifier.width(8.dp))
+                                                                Text(
+                                                                    statusOption.name,
+                                                                    color = TextPrimary,
+                                                                    fontSize = 13.sp
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
 
-                                Text(
-                                    text = formatBytes(log.fileSize),
-                                    color = TextSecondary,
-                                    fontSize = 11.sp
-                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                // Action Buttons (Save/Cancel)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    IconButton(
+                                        onClick = { viewModel.cancelInlineEdit() },
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(0xFF1E293B))
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = "Cancel Edit",
+                                            tint = StateError,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    IconButton(
+                                        onClick = { viewModel.saveInlineEdit() },
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clip(CircleShape)
+                                            .background(CobaltBlue)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = "Save Edit",
+                                            tint = TextPrimary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
                             }
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = log.fileName,
-                                color = TextPrimary,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "To: ${log.movedToPath ?: log.targetPath ?: "N/A"}",
-                                color = TextSecondary,
-                                fontSize = 11.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                        } else {
+                            // Standard Row Mode
+                            Column {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // Row showing Category Badge AND Status Badge
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        // Category Badge
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(statusColor.copy(alpha = 0.12f))
+                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        ) {
+                                            Text(
+                                                text = log.category ?: "MEDIA",
+                                                color = statusColor,
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+
+                                        // Status Badge
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(statusColor.copy(alpha = 0.08f))
+                                                .border(1.dp, statusColor.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
+                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        ) {
+                                            Text(
+                                                text = log.fileStatus.name,
+                                                color = statusColor,
+                                                fontSize = 8.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+
+                                    // Inline Edit trigger button
+                                    IconButton(
+                                        onClick = { viewModel.startInlineEdit(log) },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Edit,
+                                            contentDescription = "Edit file inline",
+                                            tint = TextSecondary,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(6.dp))
+
+                                Text(
+                                    text = log.fileName,
+                                    color = TextPrimary,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+
+                                Spacer(modifier = Modifier.height(4.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = if (log.movedToPath != null) "To: ${log.movedToPath}"
+                                        else if (log.targetPath != null) "Suggested To: ${log.targetPath}"
+                                        else "Original: ${log.originalPath}",
+                                        color = TextSecondary,
+                                        fontSize = 11.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = formatBytes(log.fileSize),
+                                        color = TextMuted,
+                                        fontSize = 10.sp
+                                    )
+                                }
+                            }
                         }
                     }
                 }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Paginator Controls (Prev / Next Buttons)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Button(
+                onClick = { viewModel.prevHistoryPage() },
+                enabled = page > 0 && !isLoading,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF1E293B),
+                    disabledContainerColor = Color(0xFF0F172A),
+                    contentColor = TextPrimary,
+                    disabledContentColor = TextSecondary
+                ),
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+            ) {
+                Text("◀ Prev", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+
+            Text(
+                text = "Page ${page + 1}",
+                color = TextSecondary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            Button(
+                onClick = { viewModel.nextHistoryPage() },
+                enabled = historyFiles.size >= 20 && !isLoading,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF1E293B),
+                    disabledContainerColor = Color(0xFF0F172A),
+                    contentColor = TextPrimary,
+                    disabledContentColor = TextSecondary
+                ),
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+            ) {
+                Text("Next ▶", fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -1458,8 +1783,8 @@ fun BottomNavBar(currentTab: String, onTabSelect: (String) -> Unit) {
         NavigationBarItem(
             selected = currentTab == "history",
             onClick = { onTabSelect("history") },
-            icon = { Icon(imageVector = Icons.Default.Info, contentDescription = "History Log") },
-            label = { Text("History", fontSize = 10.sp) },
+            icon = { Icon(imageVector = Icons.Default.Info, contentDescription = "Global Archive") },
+            label = { Text("Archivio", fontSize = 10.sp) },
             colors = NavigationBarItemDefaults.colors(
                 selectedIconColor = CobaltBlue,
                 unselectedIconColor = TextSecondary,

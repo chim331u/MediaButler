@@ -50,9 +50,10 @@ class NetworkClient {
         executeRequest<List<TrackedFile>>(request) ?: emptyList()
     }
 
-    suspend fun fetchHistoryFiles(baseUrl: String, skip: Int, take: Int): List<TrackedFile> = withContext(Dispatchers.IO) {
+    suspend fun fetchHistoryFiles(baseUrl: String, skip: Int, take: Int, search: String? = null): List<TrackedFile> = withContext(Dispatchers.IO) {
+        val searchParam = if (!search.isNullOrEmpty()) "&search=${java.net.URLEncoder.encode(search, "UTF-8")}" else ""
         val request = Request.Builder()
-            .url("$baseUrl/api/files?status=5&skip=$skip&take=$take")
+            .url("$baseUrl/api/files?skip=$skip&take=$take$searchParam")
             .get()
             .build()
 
@@ -210,6 +211,23 @@ class NetworkClient {
         try {
             okHttpClient.newCall(request).execute().use { response ->
                 response.isSuccessful || response.code == 202
+            }
+        } catch (e: IOException) {
+            false
+        }
+    }
+
+    suspend fun updateFile(baseUrl: String, hash: String, category: String, status: Int): Boolean = withContext(Dispatchers.IO) {
+        val reqObj = UpdateFileRequest(category = category, status = status)
+        val bodyJson = json.encodeToString(UpdateFileRequest.serializer(), reqObj)
+        val body = bodyJson.toRequestBody(jsonMediaType)
+        val request = Request.Builder()
+            .url("$baseUrl/api/files/$hash/update")
+            .post(body)
+            .build()
+        try {
+            okHttpClient.newCall(request).execute().use { response ->
+                response.isSuccessful || response.code == 200
             }
         } catch (e: IOException) {
             false

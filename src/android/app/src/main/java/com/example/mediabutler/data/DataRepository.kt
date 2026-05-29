@@ -9,10 +9,11 @@ interface DataRepository {
     fun getServerUrl(): String
     suspend fun getConfig(): ConfigResponse?
     suspend fun getPendingFiles(): List<TrackedFile>
-    suspend fun getHistoryFiles(skip: Int, take: Int): List<TrackedFile>
+    suspend fun getHistoryFiles(skip: Int, take: Int, search: String? = null): List<TrackedFile>
     suspend fun confirmCategory(hash: String, category: String): Boolean
     suspend fun moveFile(hash: String): Boolean
     suspend fun ignoreFile(hash: String): Boolean
+    suspend fun updateFile(hash: String, category: String, status: Int): Boolean
     suspend fun getCategoryPresets(): List<String>
     suspend fun reclassifyUnconfirmed(): Boolean
     suspend fun updateMlThreshold(threshold: Double): Boolean
@@ -40,8 +41,8 @@ class DefaultDataRepository(context: Context) : DataRepository {
         return client.fetchPendingFiles(prefs.getServerUrl())
     }
 
-    override suspend fun getHistoryFiles(skip: Int, take: Int): List<TrackedFile> {
-        return client.fetchHistoryFiles(prefs.getServerUrl(), skip, take)
+    override suspend fun getHistoryFiles(skip: Int, take: Int, search: String?): List<TrackedFile> {
+        return client.fetchHistoryFiles(prefs.getServerUrl(), skip, take, search)
     }
 
     override suspend fun confirmCategory(hash: String, category: String): Boolean {
@@ -54,6 +55,10 @@ class DefaultDataRepository(context: Context) : DataRepository {
 
     override suspend fun ignoreFile(hash: String): Boolean {
         return client.ignoreFile(prefs.getServerUrl(), hash)
+    }
+
+    override suspend fun updateFile(hash: String, category: String, status: Int): Boolean {
+        return client.updateFile(prefs.getServerUrl(), hash, category, status)
     }
 
     override suspend fun getCategoryPresets(): List<String> {

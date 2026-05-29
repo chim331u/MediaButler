@@ -30,6 +30,21 @@ class MainScreenViewModel(private val repository: DataRepository) : ViewModel() 
     private val _historyFiles = MutableStateFlow<List<TrackedFile>>(emptyList())
     val historyFiles: StateFlow<List<TrackedFile>> = _historyFiles.asStateFlow()
 
+    private val _historySearchQuery = MutableStateFlow("")
+    val historySearchQuery: StateFlow<String> = _historySearchQuery.asStateFlow()
+
+    private val _historyPage = MutableStateFlow(0)
+    val historyPage: StateFlow<Int> = _historyPage.asStateFlow()
+
+    private val _editingFileHash = MutableStateFlow<String?>(null)
+    val editingFileHash: StateFlow<String?> = _editingFileHash.asStateFlow()
+
+    private val _editingCategory = MutableStateFlow("")
+    val editingCategory: StateFlow<String> = _editingCategory.asStateFlow()
+
+    private val _editingStatus = MutableStateFlow<FileStatus>(FileStatus.NEW)
+    val editingStatus: StateFlow<FileStatus> = _editingStatus.asStateFlow()
+
     private val _config = MutableStateFlow<ConfigResponse?>(null)
     val config: StateFlow<ConfigResponse?> = _config.asStateFlow()
 
@@ -135,14 +150,83 @@ class MainScreenViewModel(private val repository: DataRepository) : ViewModel() 
         }
     }
 
-    fun loadHistory(skip: Int = 0, take: Int = 20) {
+    private var searchJob: kotlinx.coroutines.Job? = null
+
+    fun updateHistorySearchQuery(query: String) {
+        _historySearchQuery.value = query
+        _historyPage.value = 0
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(300) // 300ms debounce
+            loadHistory()
+        }
+    }
+
+    fun nextHistoryPage() {
+        _historyPage.value += 1
+        loadHistory()
+    }
+
+    fun prevHistoryPage() {
+        if (_historyPage.value > 0) {
+            _historyPage.value -= 1
+            loadHistory()
+        }
+    }
+
+    fun loadHistory() {
+        val page = _historyPage.value
+        val skip = page * 20
+        val take = 20
+        val query = _historySearchQuery.value
         viewModelScope.launch {
+            _isLoading.value = true
             try {
-                val history = repository.getHistoryFiles(skip, take)
+                val history = repository.getHistoryFiles(skip, take, query.ifEmpty { null })
                 _historyFiles.value = history
             } catch (e: Exception) {
-                _notifications.emit("History Error" to "Failed to load moved history.")
+                _notifications.emit("History Error" to "Failed to load history files.")
+            } finally {
+                _isLoading.value = false
             }
+        }
+    }
+
+    fun startInlineEdit(file: TrackedFile) {
+        _editingFileHash.value = file.hash
+        _editingCategory.value = file.category ?: file.suggestedCategory ?: ""
+        _editingStatus.value = file.fileStatus
+    }
+
+    fun cancelInlineEdit() {
+        _editingFileHash.value = null
+        _editingCategory.value = ""
+    }
+
+    fun updateEditingCategory(cat: String) {
+        _editingCategory.value = cat
+    }
+
+    fun updateEditingStatus(status: FileStatus) {
+        _editingStatus.value = status
+    }
+
+    fun saveInlineEdit() {
+        val hash = _editingFileHash.value ?: return
+        val category = _editingCategory.value
+        val status = _editingStatus.value
+        viewModelScope.launch {
+            _isSubmitting.value = true
+            val ok = repository.updateFile(hash, category, status.value)
+            if (ok) {
+                _notifications.emit("File Updated" to "File updated successfully inline.")
+                _editingFileHash.value = null
+                loadHistory()
+                refreshDashboard()
+            } else {
+                _notifications.emit("Update Failed" to "Could not update file inline.")
+            }
+            _isSubmitting.value = false
         }
     }
 

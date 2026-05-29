@@ -102,3 +102,9 @@ type FSItem struct {
 	SizeBytes int64  `json:"sizeBytes"`
 }
 
+// UpdateFileRequest represents the body for updating a file's category and status inline
+type UpdateFileRequest struct {
+	Category string `json:"category"`
+	Status   int    `json:"status"`
+}
+
