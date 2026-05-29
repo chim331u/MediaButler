@@ -159,8 +159,8 @@ Per eseguire l'applicazione su un emulatore o su un dispositivo Android fisico c
    ```bash
    ./gradlew assembleDebug
    ```
-   *L'eseguibile di debug risultante verrà salvato in:*
-   `src/android/app/build/outputs/apk/debug/app-debug.apk`
+    *L'eseguibile di debug risultante verrà salvato in:*
+    `src/android/app/build/outputs/apk/debug/MediaButler-debug.apk`
 
 ---
 
@@ -174,18 +174,18 @@ Per generare un APK compatto di release da installare manualmente sul proprio di
    ./gradlew assembleRelease
    ```
    *Questo comando produce un APK non firmato in:*
-   `src/android/app/build/outputs/apk/release/app-release-unsigned.apk`
+   `src/android/app/build/outputs/apk/release/MediaButler-release-unsigned.apk`
 
 2. **Allinea l'APK per ottimizzare l'uso della RAM** (utilizzando `zipalign` incluso nei build-tools dell'Android SDK):
    ```bash
-   zipalign -v -p 4 app-release-unsigned.apk app-release-aligned.apk
+   zipalign -v -p 4 MediaButler-release-unsigned.apk MediaButler-release-aligned.apk
    ```
 
 3. **Firma l'APK** (utilizzando `apksigner` con il tuo certificato di firma JKS di produzione):
    ```bash
-   apksigner sign --ks mio-key-store.jks --out app-release.apk app-release-aligned.apk
+   apksigner sign --ks "/Users/luca/AndroidKey.jks" --out MediaButler-release.apk MediaButler-release-aligned.apk
    ```
-   *L'eseguibile `app-release.apk` finale è pronto per essere installato su qualsiasi dispositivo Android.*
+   *L'eseguibile `MediaButler-release.apk` finale è pronto per essere installato su qualsiasi dispositivo Android.*
 
 ---
 
@@ -199,13 +199,13 @@ Google richiede il formato **Android App Bundle (AAB)** per i nuovi caricamenti 
    ./gradlew bundleRelease
    ```
    *Il pacchetto AAB non firmato viene generato in:*
-   `src/android/app/build/outputs/bundle/release/app-release.aab`
+   `src/android/app/build/outputs/bundle/release/MediaButler-release.aab`
 
 2. **Firma l'App Bundle**:
-   Proprio come l'APK, firma l'AAB prima del caricamento:
+   A differenza degli APK, gli App Bundle (`.aab`) **non** supportano lo strumento `apksigner` dell'Android SDK. Devono essere firmati obbligatoriamente tramite **`jarsigner`** (lo strumento di firma standard del JDK Java):
    ```bash
-   apksigner sign --ks mio-key-store.jks app-release.aab
+   jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA256 -keystore "/Users/luca/AndroidKey.jks" MediaButler-release.aab key1
    ```
 
 3. **Caricamento**:
-   Accedi alla console sviluppatore [Google Play Console](https://play.google.com/console/), crea una nuova release all'interno della dashboard del tuo progetto ed effettua l'upload del file `app-release.aab` per la revisione interna, di beta-test o produzione.
+   Accedi alla console sviluppatore [Google Play Console](https://play.google.com/console/), crea una nuova release all'interno della dashboard del tuo progetto ed effettua l'upload del file `MediaButler-release.aab` firmato per la revisione interna, di beta-test o produzione.

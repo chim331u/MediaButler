@@ -8,11 +8,11 @@ android {
     namespace = "com.example.mediabutler"
     compileSdk = 36
     defaultConfig {
-        applicationId = "com.example.mediabutler"
+        applicationId = "com.chim331u.mediabutler.mobile"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
     }
 
     buildTypes {
@@ -89,4 +89,8 @@ dependencies {
   implementation(libs.okhttp)
   implementation(libs.okhttp.sse)
   implementation(libs.kotlinx.serialization.json)
+}
+
+base {
+    archivesName.set("MediaButler")
 }
