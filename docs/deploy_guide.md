@@ -216,43 +216,55 @@ Google richiede il formato **Android App Bundle (AAB)** per i nuovi caricamenti 
 
 Per abilitare le notifiche automatiche multicanale (Telegram o Discord) all'arrivo di nuovi file stabili in MediaButler, utilizzeremo il microservizio centralizzato **NotifyHub** configurato sullo stesso NAS QNAP.
 
-### Passo 1: Creazione della Rete Docker bridge Condivisa sul NAS
-Per far comunicare in modo sicuro ed efficiente i due container in totale isolamento di rete (senza esporre porte all'esterno o dipendere dall'IP fisico del NAS), creiamo una rete Docker personalizzata bridge:
-```bash
-docker network create mediabutler-net
-```
-*Questa rete permetterà a MediaButler di risolvere internamente l'hostname di NotifyHub (`http://notifyhub-service:30180`).*
+A causa delle peculiarità di sicurezza e NAT del firmware QTS dei NAS QNAP (che spesso mandano in blocco o in timeout la creazione di nuove reti bridge virtuali), sono disponibili due modalità principali per la configurazione del deployment:
 
-### Passo 2: Avvio di NotifyHub sul NAS
-1. Assicurati che NotifyHub sia configurato per agganciarsi alla stessa rete `mediabutler-net` all'interno del suo file `docker-compose.yml`:
+---
+
+### Opzione A: Modalità Host (`network_mode: "host"` - Raccomandata per QNAP)
+Questa è la soluzione più robusta ed efficiente per il NAS. Rimuove l'isolamento virtuale di rete del container e consente a MediaButler di condividere direttamente lo stack di rete dell'host QNAP.
+
+1. **Configurazione `docker-compose.qnap.yml`**:
+   Configura il servizio `mediabutler` impostando la direttiva `network_mode: "host"` ed imposta la porta del processo a `30149` (evitando la porta `8080` che è usata dal pannello di controllo QTS):
    ```yaml
    services:
-     notifyhub:
-       image: notifyhub:latest
-       container_name: notifyhub-service
-       networks:
-         - mediabutler-net
-       # ... altre configurazioni ...
-
-   networks:
-     mediabutler-net:
-       name: mediabutler-net
-       external: true
+     mediabutler:
+       image: mediabutler:qnap-arm32
+       restart: unless-stopped
+       network_mode: "host"
+       environment:
+         - PORT=30149
+         - DATABASE_PATH=/app/data/mediabutler.db
+         # ... altre configurazioni ...
    ```
-2. Avvia NotifyHub sul NAS all'interno del suo spazio di lavoro isolato:
+   *(Nota: in questa modalità non è necessario inserire la mappatura `ports` né dichiarare `networks` nel Compose).*
+
+2. **Configurazione su MediaButler Web UI**:
+   Avviato lo stack, accedi alla Web UI di MediaButler (sulla porta `30149`), vai nella scheda **Settings** -> **NotifyHub Integration** e configura il **NotifyHub Service URL** puntando direttamente all'interfaccia di loopback locale del NAS:
+   ```http
+   http://localhost:30111
+   ```
+   *(Sostituisci `30111` con la porta reale su cui hai configurato ed esposto NotifyHub sul NAS).*
+
+---
+
+### Opzione B: Rete Bridge Condivisa (`networks` con `external`)
+Se il tuo NAS QNAP supporta la creazione di Virtual Switch dedicati senza errori di NAT, puoi inserire entrambi i container nella stessa rete bridge Docker per farli comunicare via IP o nome host del servizio.
+
+1. **Creazione della rete Docker condivisa**:
    ```bash
-   docker-compose up -d
+   docker network create mediabutler-net
    ```
+2. **Collegamento nei file Compose**:
+   Associa entrambi i container (`mediabutler` e `notifyhub`) alla rete `mediabutler-net` come rete esterna (`external: true`).
+3. **Configurazione URL**:
+   * **Via Nome Host**: Imposta come URL `http://notifyhub-service:30180` (usando il DNS di Docker).
+   * **Via IP Privato**: Se riscontri isolamento di instradamento, recupera l'IP del container di NotifyHub (es. `10.0.3.5`) via `docker inspect` e configura l'URL nei Settings come:
+     ```http
+     http://10.0.3.5:30111
+     ```
+     *(Assicurati di usare l'IP privato del container ed la sua porta interna).*
 
-### Passo 3: Configurazione su MediaButler Web UI
-1. Accedi all'interfaccia web di MediaButler, quindi spostati nella scheda **Settings**.
-2. Trova il pannello **NotifyHub Integration** (posizionato sotto *Logging & Diagnostics* nella colonna destra).
-3. Configura le impostazioni:
-   * **Notification Channel**: Seleziona `Telegram` o `Discord` (o `Disabled` per spegnere le notifiche).
-   * **NotifyHub Service URL**: Inserisci l'indirizzo interno del servizio `http://notifyhub-service:30180`.
-   * **NotifyHub API Key (X-API-Key)**: Inserisci la chiave di sicurezza precondivisa configurata in NotifyHub.
-4. Clicca su **💾 Save Notifications Settings** per applicare la configurazione a caldo.
-*Il server salverà le preferenze in modo persistente e sicuro nella tabella `UserPreferences` di SQLite ed inizierà subito a notificare l'individuazione di nuovi file stabili.*
+---
 
 > [!IMPORTANT]
 > **Testing Locale su macOS (Mac del Sviluppatore)**:
