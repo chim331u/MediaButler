@@ -1234,12 +1234,78 @@
 
         {#if config}
           <div class="settings-grid">
+            <!-- 1. CLASSIFIER ENGINE CONFIG -->
             <div class="settings-card glass-panel">
+              <h4>🧠 Classifier Engine Config</h4>
+              
+              <div class="settings-field">
+                <span class="field-label">Naive Bayes Classification Threshold</span>
+                <div class="slider-display" style="display: flex; flex-direction: column; gap: 8px; align-items: stretch;">
+                  <input 
+                    type="range" 
+                    min="50" 
+                    max="98" 
+                    step="1"
+                    value={config.mlThreshold * 100}
+                    onchange={updateMLThreshold}
+                    style="width: 100%; margin: 8px 0; accent-color: #3b82f6; cursor: pointer;"
+                  />
+                  <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                    <span style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.4);">50%</span>
+                    <strong class="slider-text" style="color: #3b82f6; font-size: 0.9rem;">{(config.mlThreshold * 100).toFixed(0)}% Confidence</strong>
+                    <span style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.4);">98%</span>
+                  </div>
+                </div>
+                <p class="field-note" style="margin-top: 8px; line-height: 1.5; font-style: italic;">
+                  I file con una confidenza stimata superiore a questa soglia vengono considerati affidabili ed approvati automaticamente dal sistema. I file con confidenza inferiore richiederanno invece la tua conferma manuale nell'interfaccia per prevenire catalogazioni errate.
+                </p>
+              </div>
+
+              <div class="settings-field" style="margin-top: 12px; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, 0.05);">
+                <span class="field-label">Classifier Maintenance</span>
+                <button class="btn btn-secondary" onclick={triggerRetrain} style="align-self: flex-start;">
+                  🧠 Retrain Classifier Engine
+                </button>
+                <p class="field-note" style="margin-top: 4px;">Rebuilds Naive Bayes frequencies completely from all Moved (status 5) history records in the database.</p>
+              </div>
+            </div>
+
+            <!-- 2. LOGGING & DIAGNOSTICS -->
+            <div class="settings-card glass-panel">
+              <h4>📋 Logging & Diagnostics</h4>
+              
+              <div class="settings-field">
+                <span class="field-label">Active System Log Level</span>
+                <select 
+                  class="category-select" 
+                  value={config.logLevel} 
+                  onchange={updateLogLevel}
+                  style="width: 100%; max-width: 220px; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 6px; cursor: pointer; outline: none;"
+                >
+                  <option value="DEBUG">DEBUG (Verbose tracing)</option>
+                  <option value="INFO">INFO (Standard info)</option>
+                  <option value="WARN">WARN (Warnings only)</option>
+                  <option value="ERROR">ERROR (Errors only)</option>
+                </select>
+                <p class="field-note">Changing this value updates the structured slog system output on the fly without service restarts.</p>
+              </div>
+
+              <div class="settings-field" style="margin-top: 12px; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, 0.05);">
+                <span class="field-label">Real-time Event Connection</span>
+                <span class="badge {sseConnected ? 'badge-moved' : 'badge-error'}" style="align-self: flex-start; padding: 6px 12px; border-radius: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;">
+                  {sseConnected ? '🟢 Connected' : '🔴 Disconnected'}
+                </span>
+                <p class="field-note" style="margin-top: 4px;">Status of the native Server-Sent Events broker connection hosting reactive UI updates.</p>
+              </div>
+            </div>
+
+            <!-- 3. FILE DIRECTORIES PATH -->
+            <div class="settings-card glass-panel full-width">
               <div class="settings-card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); padding-bottom: 8px;">
                 <h4 style="margin: 0;">📁 File Directories Path</h4>
                 <label class="premium-checkbox-label" style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer; color: rgba(255, 255, 255, 0.7); user-select: none;">
                   <input type="checkbox" bind:checked={showHiddenFiles} style="cursor: pointer; accent-color: #3b82f6;" />
-                  <span>Mostra file nascosti</span>
+                  <span>Show hidden files</span>
                 </label>
               </div>
               
@@ -1274,71 +1340,6 @@
               <div class="settings-field" style="margin-top: 16px; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 16px;">
                 <span class="field-label">Active SQLite Database Path</span>
                 <code class="path-tag">{config.databasePath}</code>
-              </div>
-            </div>
-
-            <div class="settings-card glass-panel">
-              <h4>🧠 Classifier Engine Config</h4>
-              
-              <div class="settings-field">
-                <span class="field-label">Naive Bayes Classification Threshold</span>
-                <div class="slider-display" style="display: flex; flex-direction: column; gap: 8px; align-items: stretch;">
-                  <input 
-                    type="range" 
-                    min="50" 
-                    max="98" 
-                    step="1"
-                    value={config.mlThreshold * 100}
-                    onchange={updateMLThreshold}
-                    style="width: 100%; margin: 8px 0; accent-color: #3b82f6; cursor: pointer;"
-                  />
-                  <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                    <span style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.4);">50%</span>
-                    <strong class="slider-text" style="color: #3b82f6; font-size: 0.9rem;">{(config.mlThreshold * 100).toFixed(0)}% Confidence</strong>
-                    <span style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.4);">98%</span>
-                  </div>
-                </div>
-                <p class="field-note" style="margin-top: 8px; line-height: 1.5; font-style: italic;">
-                  I file con una confidenza stimata superiore a questa soglia vengono considerati affidabili ed approvati automaticamente dal sistema. I file con confidenza inferiore richiederanno invece la tua conferma manuale nell'interfaccia per prevenire catalogazioni errate.
-                </p>
-              </div>
-
-
-
-              <div class="settings-field" style="margin-top: 12px; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, 0.05);">
-                <span class="field-label">Classifier Maintenance</span>
-                <button class="btn btn-secondary" onclick={triggerRetrain} style="align-self: flex-start;">
-                  🧠 Retrain Classifier Engine
-                </button>
-                <p class="field-note" style="margin-top: 4px;">Rebuilds Naive Bayes frequencies completely from all Moved (status 5) history records in the database.</p>
-              </div>
-            </div>
-
-            <div class="settings-card glass-panel">
-              <h4>📋 Logging & Diagnostics</h4>
-              
-              <div class="settings-field">
-                <span class="field-label">Active System Log Level</span>
-                <select 
-                  class="category-select" 
-                  value={config.logLevel} 
-                  onchange={updateLogLevel}
-                  style="width: 100%; max-width: 220px; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 6px; cursor: pointer; outline: none;"
-                >
-                  <option value="DEBUG">DEBUG (Verbose tracing)</option>
-                  <option value="INFO">INFO (Standard info)</option>
-                  <option value="WARN">WARN (Warnings only)</option>
-                  <option value="ERROR">ERROR (Errors only)</option>
-                </select>
-                <p class="field-note">Changing this value updates the structured slog system output on the fly without service restarts.</p>
-              </div>
-
-              <div class="settings-field" style="margin-top: 12px; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, 0.05);">
-                <span class="field-label">Real-time Event Connection</span>
-                <span class="badge {sseConnected ? 'badge-moved' : 'badge-error'}" style="align-self: flex-start; padding: 6px 12px; border-radius: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;">
-                  {sseConnected ? '🟢 Connected' : '🔴 Disconnected'}
-                </span>
-                <p class="field-note" style="margin-top: 4px;">Status of the native Server-Sent Events broker connection hosting reactive UI updates.</p>
               </div>
             </div>
           </div>
@@ -2113,9 +2114,19 @@
 
   .settings-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    grid-template-columns: 1fr 1fr;
     gap: 24px;
     margin-top: 8px;
+  }
+
+  .settings-card.full-width {
+    grid-column: 1 / -1;
+  }
+
+  @media (max-width: 768px) {
+    .settings-grid {
+      grid-template-columns: 1fr;
+    }
   }
 
   .settings-card {

@@ -9,9 +9,10 @@ This document defines the strict operational rules, architectural principles, an
 ### 🇮🇹 User Communication Language
 * **Rule**: The AI agent MUST always communicate and respond to the USER in **Italian** (if possible), maintaining a professional, concise, and humble tone.
 
-### 🛑 Commit and Push Consent (Mandatory)
-* **Rule**: You are strictly prohibited from performing `git commit` or `git push` automatically.
+### 🛑 Commit and Push Consent & Secrets Protection (Mandatory)
+* **Rule**: You are strictly prohibited from performing `git commit` or `git push` automatically. You MUST NEVER commit, stage, or push API keys, private keys, passwords, authentication tokens, credentials, or any sensitive/confidential data.
 * **Action**: You MUST implement and test changes locally, verify that they compile/run, and present the diff/summary to the user. You MUST explicitly ask for user consent *before* staging, committing, or pushing code.
+* **Security & Secrets**: Before executing any git operation, perform a thorough check of all modifications to ensure no credentials or raw secrets are embedded. If you are even slightly unsure whether a configuration, file, or token contains sensitive information, you MUST immediately halt and ask the user for clarification.
 
 ### 🤖 Subagent Delegation Policy
 To prevent context bloat and ensure clean modular development, delegate specialized tasks to the appropriate background subagents:
