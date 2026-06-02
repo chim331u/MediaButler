@@ -652,16 +652,22 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"databasePath": s.config.DatabasePath,
-			"watchFolders": s.config.WatchFolders,
-			"destFolder":   s.config.DestFolder,
-			"mlThreshold":  s.config.MLThreshold,
-			"logLevel":     programLevel.Level().String(),
+			"databasePath":     s.config.DatabasePath,
+			"watchFolders":     s.config.WatchFolders,
+			"destFolder":       s.config.DestFolder,
+			"mlThreshold":      s.config.MLThreshold,
+			"logLevel":         programLevel.Level().String(),
+			"notifyhubUrl":     s.config.NotifyHub.URL,
+			"notifyhubApiKey":  s.config.NotifyHub.APIKey,
+			"notifyhubChannel": s.config.NotifyHub.Channel,
 		})
 	case http.MethodPost:
 		var req struct {
-			LogLevel    *string  `json:"logLevel"`
-			MLThreshold *float64 `json:"mlThreshold"`
+			LogLevel         *string  `json:"logLevel"`
+			MLThreshold      *float64 `json:"mlThreshold"`
+			NotifyHubUrl     *string  `json:"notifyhubUrl"`
+			NotifyHubApiKey  *string  `json:"notifyhubApiKey"`
+			NotifyHubChannel *string  `json:"notifyhubChannel"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeError(w, http.StatusBadRequest, "Invalid request body")
@@ -699,12 +705,59 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 			slog.Info("ML threshold dynamically updated", "newThreshold", val)
 		}
 
+		// NotifyHub updates
+		nhUpdated := false
+		nhCfg := s.config.NotifyHub
+
+		if req.NotifyHubUrl != nil {
+			nhCfg.URL = strings.TrimSpace(*req.NotifyHubUrl)
+			nhUpdated = true
+		}
+		if req.NotifyHubApiKey != nil {
+			nhCfg.APIKey = strings.TrimSpace(*req.NotifyHubApiKey)
+			nhUpdated = true
+		}
+		if req.NotifyHubChannel != nil {
+			val := strings.ToLower(strings.TrimSpace(*req.NotifyHubChannel))
+			if val != "telegram" && val != "discord" && val != "none" && val != "" {
+				writeError(w, http.StatusBadRequest, "notifyhubChannel must be telegram, discord, or none")
+				return
+			}
+			if val == "" {
+				val = "none"
+			}
+			nhCfg.Channel = val
+			nhUpdated = true
+		}
+
+		if nhUpdated {
+			if s.db != nil {
+				if err := s.saveNotifyHubConfigToDB(nhCfg); err != nil {
+					slog.Error("Failed to save NotifyHub configuration to DB", "err", err)
+					writeError(w, http.StatusInternalServerError, "Failed to persist configuration")
+					return
+				}
+			} else {
+				slog.Warn("Database connection is nil, skipped config persistence to DB (saving in-memory only)")
+			}
+			s.config.NotifyHub = nhCfg
+			if s.watcher != nil {
+				s.watcher.mu.Lock()
+				s.watcher.config.NotifyHub = nhCfg
+				s.watcher.mu.Unlock()
+			}
+			slog.Info("NotifyHub configuration dynamically updated", "channel", nhCfg.Channel, "url", nhCfg.URL)
+		}
+
 		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"databasePath": s.config.DatabasePath,
-			"watchFolders": s.config.WatchFolders,
-			"destFolder":   s.config.DestFolder,
-			"mlThreshold":  s.config.MLThreshold,
-			"logLevel":     programLevel.Level().String(),
+			"databasePath":     s.config.DatabasePath,
+			"watchFolders":     s.config.WatchFolders,
+			"destFolder":       s.config.DestFolder,
+			"mlThreshold":      s.config.MLThreshold,
+			"logLevel":         programLevel.Level().String(),
+			"notifyhubUrl":     s.config.NotifyHub.URL,
+			"notifyhubApiKey":  s.config.NotifyHub.APIKey,
+			"notifyhubChannel": s.config.NotifyHub.Channel,
 		})
 	default:
 		w.Header().Set("Allow", "GET, POST")
@@ -1066,4 +1119,48 @@ func (s *Server) handleFSList(w http.ResponseWriter, r *http.Request) {
 	})
 
 	writeJSON(w, http.StatusOK, items)
+}
+
+func (s *Server) saveNotifyHubConfigToDB(cfg NotifyHubConfig) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	upsertPref := func(key, value string) error {
+		var exists int
+		err := tx.QueryRow("SELECT 1 FROM UserPreferences WHERE Key = ? AND Category = 'notifyhub'", key).Scan(&exists)
+		if err != nil && err != sql.ErrNoRows {
+			return err
+		}
+
+		now := time.Now()
+		if err == sql.ErrNoRows {
+			// Insert
+			id := fmt.Sprintf("nh-%s", key)
+			_, err = tx.Exec(`
+				INSERT INTO UserPreferences (Id, UserId, Key, Value, Category, CreatedDate, LastUpdateDate, IsActive)
+				VALUES (?, 'default', ?, ?, 'notifyhub', ?, ?, 1)
+			`, id, key, value, now, now)
+		} else {
+			// Update
+			_, err = tx.Exec(`
+				UPDATE UserPreferences SET Value = ?, LastUpdateDate = ? WHERE Key = ? AND Category = 'notifyhub'
+			`, value, now, key)
+		}
+		return err
+	}
+
+	if err := upsertPref("notifyhub_url", cfg.URL); err != nil {
+		return err
+	}
+	if err := upsertPref("notifyhub_apikey", cfg.APIKey); err != nil {
+		return err
+	}
+	if err := upsertPref("notifyhub_channel", cfg.Channel); err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }

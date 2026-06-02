@@ -209,3 +209,58 @@ Google richiede il formato **Android App Bundle (AAB)** per i nuovi caricamenti 
 
 3. **Caricamento**:
    Accedi alla console sviluppatore [Google Play Console](https://play.google.com/console/), crea una nuova release all'interno della dashboard del tuo progetto ed effettua l'upload del file `MediaButler-release.aab` firmato per la revisione interna, di beta-test o produzione.
+
+---
+
+## 🔔 6. Integrazione e Deploy di NotifyHub (Notifiche Multicanale)
+
+Per abilitare le notifiche automatiche multicanale (Telegram o Discord) all'arrivo di nuovi file stabili in MediaButler, utilizzeremo il microservizio centralizzato **NotifyHub** configurato sullo stesso NAS QNAP.
+
+### Passo 1: Creazione della Rete Docker bridge Condivisa sul NAS
+Per far comunicare in modo sicuro ed efficiente i due container in totale isolamento di rete (senza esporre porte all'esterno o dipendere dall'IP fisico del NAS), creiamo una rete Docker personalizzata bridge:
+```bash
+docker network create mediabutler-net
+```
+*Questa rete permetterà a MediaButler di risolvere internamente l'hostname di NotifyHub (`http://notifyhub-service:30180`).*
+
+### Passo 2: Avvio di NotifyHub sul NAS
+1. Assicurati che NotifyHub sia configurato per agganciarsi alla stessa rete `mediabutler-net` all'interno del suo file `docker-compose.yml`:
+   ```yaml
+   services:
+     notifyhub:
+       image: notifyhub:latest
+       container_name: notifyhub-service
+       networks:
+         - mediabutler-net
+       # ... altre configurazioni ...
+
+   networks:
+     mediabutler-net:
+       name: mediabutler-net
+       external: true
+   ```
+2. Avvia NotifyHub sul NAS all'interno del suo spazio di lavoro isolato:
+   ```bash
+   docker-compose up -d
+   ```
+
+### Passo 3: Configurazione su MediaButler Web UI
+1. Accedi all'interfaccia web di MediaButler, quindi spostati nella scheda **Settings**.
+2. Trova il pannello **NotifyHub Integration** (posizionato sotto *Logging & Diagnostics* nella colonna destra).
+3. Configura le impostazioni:
+   * **Notification Channel**: Seleziona `Telegram` o `Discord` (o `Disabled` per spegnere le notifiche).
+   * **NotifyHub Service URL**: Inserisci l'indirizzo interno del servizio `http://notifyhub-service:30180`.
+   * **NotifyHub API Key (X-API-Key)**: Inserisci la chiave di sicurezza precondivisa configurata in NotifyHub.
+4. Clicca su **💾 Save Notifications Settings** per applicare la configurazione a caldo.
+*Il server salverà le preferenze in modo persistente e sicuro nella tabella `UserPreferences` di SQLite ed inizierà subito a notificare l'individuazione di nuovi file stabili.*
+
+> [!IMPORTANT]
+> **Testing Locale su macOS (Mac del Sviluppatore)**:
+> Se esegui MediaButler all'interno di un container Docker locale sul tuo Mac ed il microservizio NotifyHub è attivo nativamente sul tuo sistema host Mac (es. avviato su `localhost:30180`), configurare l'URL su `http://localhost:30180` causerà un errore di connessione (`connection refused`).
+> Questo avviene perché `localhost` all'interno del container fa riferimento al container stesso.
+> Per risolvere, devi configurare il **NotifyHub Service URL** su:
+> ```http
+> http://host.docker.internal:30180
+> ```
+> *`host.docker.internal` è la risoluzione DNS speciale integrata in Docker Desktop per macOS che consente al container di effettuare un loopback diretto sull'interfaccia di rete dell'host fisico.*
+

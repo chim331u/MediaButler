@@ -21,4 +21,10 @@ services:
       # Map the local watch and dest folders for easy local testing on Mac
       - ./temp/watch:/app/watch
       - ./temp/dest:/app/dest
+    networks:
+      - mediabutler-net
     restart: unless-stopped
+
+networks:
+  mediabutler-net:
+    name: mediabutler-net

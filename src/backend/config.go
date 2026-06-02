@@ -1,11 +1,18 @@
 package main
 
 import (
+	"database/sql"
 	"log/slog"
 	"os"
 	"strconv"
 	"strings"
 )
+
+type NotifyHubConfig struct {
+	URL     string `json:"url"`
+	APIKey  string `json:"apiKey"`
+	Channel string `json:"channel"`
+}
 
 type Config struct {
 	Port          string
@@ -14,6 +21,7 @@ type Config struct {
 	DestFolder    string
 	LogLevel      slog.Level
 	MLThreshold   float64
+	NotifyHub     NotifyHubConfig
 }
 
 func LoadConfig() Config {
@@ -49,6 +57,10 @@ func LoadConfig() Config {
 		mlThreshold = 0.85
 	}
 
+	notifyHubURL := getEnv("NOTIFYHUB_URL", "http://localhost:30180")
+	notifyHubAPIKey := getEnv("NOTIFYHUB_APIKEY", "")
+	notifyHubChannel := getEnv("NOTIFYHUB_CHANNEL", "none")
+
 	return Config{
 		Port:          port,
 		DatabasePath:  dbPath,
@@ -56,6 +68,11 @@ func LoadConfig() Config {
 		DestFolder:    destFolder,
 		LogLevel:      logLevel,
 		MLThreshold:   mlThreshold,
+		NotifyHub: NotifyHubConfig{
+			URL:     notifyHubURL,
+			APIKey:  notifyHubAPIKey,
+			Channel: notifyHubChannel,
+		},
 	}
 }
 
@@ -64,4 +81,30 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+func LoadNotifyHubConfigFromDB(db *sql.DB, defaultCfg NotifyHubConfig) NotifyHubConfig {
+	cfg := defaultCfg
+	rows, err := db.Query("SELECT Key, Value FROM UserPreferences WHERE Category = 'notifyhub' AND IsActive = 1")
+	if err != nil {
+		slog.Warn("Failed to query NotifyHub configs from DB, using defaults", "err", err)
+		return cfg
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var key, value string
+		if err := rows.Scan(&key, &value); err != nil {
+			continue
+		}
+		switch key {
+		case "notifyhub_url":
+			cfg.URL = value
+		case "notifyhub_apikey":
+			cfg.APIKey = value
+		case "notifyhub_channel":
+			cfg.Channel = value
+		}
+	}
+	return cfg
 }

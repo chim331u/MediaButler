@@ -53,6 +53,10 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Load active NotifyHub settings from DB (if present)
+	cfg.NotifyHub = LoadNotifyHubConfigFromDB(db, cfg.NotifyHub)
+	slog.Info("NotifyHub settings loaded on startup", "channel", cfg.NotifyHub.Channel, "url", cfg.NotifyHub.URL)
+
 	// 5. Initialize Server, SSE Broker & Register Routes
 	sseBroker := NewSSEBroker()
 	

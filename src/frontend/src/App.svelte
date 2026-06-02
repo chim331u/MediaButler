@@ -361,6 +361,37 @@
     }
   }
 
+  let isSavingNotifyHub = $state(false);
+  let showApiKey = $state(false);
+
+  async function saveNotifyHubSettings(event) {
+    if (event) event.preventDefault();
+    isSavingNotifyHub = true;
+    try {
+      const res = await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          notifyhubUrl: config.notifyhubUrl,
+          notifyhubApiKey: config.notifyhubApiKey,
+          notifyhubChannel: config.notifyhubChannel
+        })
+      });
+      if (res.ok) {
+        const updatedConfig = await res.json();
+        config = updatedConfig;
+        showToast('success', 'Impostazioni Notifiche Salvate', 'La configurazione di NotifyHub è stata salvata ed applicata a caldo.');
+      } else {
+        const errText = await res.text();
+        showToast('error', 'Errore di Salvataggio', `Impossibile salvare: ${errText}`);
+      }
+    } catch (err) {
+      showToast('error', 'Errore di Connessione', 'Errore di rete durante il salvataggio delle impostazioni.');
+    } finally {
+      isSavingNotifyHub = false;
+    }
+  }
+
   // Force classification of a file (e.g. for New files)
   async function forceClassifyFile(hash) {
     try {
@@ -1270,36 +1301,106 @@
               </div>
             </div>
 
-            <!-- 2. LOGGING & DIAGNOSTICS -->
-            <div class="settings-card glass-panel">
-              <h4>📋 Logging & Diagnostics</h4>
-              
-              <div class="settings-field">
-                <span class="field-label">Active System Log Level</span>
-                <select 
-                  class="category-select" 
-                  value={config.logLevel} 
-                  onchange={updateLogLevel}
-                  style="width: 100%; max-width: 220px; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 6px; cursor: pointer; outline: none;"
-                >
-                  <option value="DEBUG">DEBUG (Verbose tracing)</option>
-                  <option value="INFO">INFO (Standard info)</option>
-                  <option value="WARN">WARN (Warnings only)</option>
-                  <option value="ERROR">ERROR (Errors only)</option>
-                </select>
-                <p class="field-note">Changing this value updates the structured slog system output on the fly without service restarts.</p>
+            <!-- RIGHT COLUMN: DIAGNOSTICS & NOTIFICATIONS -->
+            <div class="settings-col" style="display: flex; flex-direction: column; gap: 24px; width: 100%;">
+              <!-- 2. LOGGING & DIAGNOSTICS -->
+              <div class="settings-card glass-panel" style="margin: 0; width: 100%;">
+                <h4>📋 Logging & Diagnostics</h4>
+                
+                <div class="settings-field">
+                  <span class="field-label">Active System Log Level</span>
+                  <select 
+                    class="category-select" 
+                    value={config.logLevel} 
+                    onchange={updateLogLevel}
+                    style="width: 100%; max-width: 220px; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 6px; cursor: pointer; outline: none;"
+                  >
+                    <option value="DEBUG">DEBUG (Verbose tracing)</option>
+                    <option value="INFO">INFO (Standard info)</option>
+                    <option value="WARN">WARN (Warnings only)</option>
+                    <option value="ERROR">ERROR (Errors only)</option>
+                  </select>
+                  <p class="field-note">Changing this value updates the structured slog system output on the fly without service restarts.</p>
+                </div>
+
+                <div class="settings-field" style="margin-top: 12px; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, 0.05);">
+                  <span class="field-label">Real-time Event Connection</span>
+                  <span class="badge {sseConnected ? 'badge-moved' : 'badge-error'}" style="align-self: flex-start; padding: 6px 12px; border-radius: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;">
+                    {sseConnected ? '🟢 Connected' : '🔴 Disconnected'}
+                  </span>
+                  <p class="field-note" style="margin-top: 4px;">Status of the native Server-Sent Events broker connection hosting reactive UI updates.</p>
+                </div>
               </div>
 
-              <div class="settings-field" style="margin-top: 12px; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, 0.05);">
-                <span class="field-label">Real-time Event Connection</span>
-                <span class="badge {sseConnected ? 'badge-moved' : 'badge-error'}" style="align-self: flex-start; padding: 6px 12px; border-radius: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;">
-                  {sseConnected ? '🟢 Connected' : '🔴 Disconnected'}
-                </span>
-                <p class="field-note" style="margin-top: 4px;">Status of the native Server-Sent Events broker connection hosting reactive UI updates.</p>
+              <!-- 3. NOTIFYHUB INTEGRATION -->
+              <div class="settings-card glass-panel" style="margin: 0; width: 100%;">
+                <div class="settings-card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); padding-bottom: 8px;">
+                  <h4 style="margin: 0;">🔔 NotifyHub Integration</h4>
+                </div>
+                
+                <form onsubmit={saveNotifyHubSettings} style="display: flex; flex-direction: column; gap: 16px; width: 100%;">
+                  <div class="settings-field">
+                    <span class="field-label">Notification Channel</span>
+                    <select 
+                      class="category-select" 
+                      bind:value={config.notifyhubChannel}
+                      style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 6px; cursor: pointer; outline: none;"
+                    >
+                      <option value="none">Disabled (No notifications)</option>
+                      <option value="telegram">Telegram (HTML formats)</option>
+                      <option value="discord">Discord (Markdown formats)</option>
+                    </select>
+                    <p class="field-note">Select the external chat service where notifications will be sent.</p>
+                  </div>
+
+                  {#if config.notifyhubChannel !== 'none'}
+                    <div class="settings-field">
+                      <span class="field-label">NotifyHub Service URL</span>
+                      <input 
+                        type="url" 
+                        bind:value={config.notifyhubUrl}
+                        placeholder="http://notifyhub-service:30180"
+                        required
+                        style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 6px; outline: none;"
+                      />
+                      <p class="field-note">The REST API endpoint URL of NotifyHub (use container name <code>http://notifyhub-service:30180</code> on NAS).</p>
+                    </div>
+
+                    <div class="settings-field">
+                      <span class="field-label">NotifyHub API Key (X-API-Key)</span>
+                      <div style="display: flex; gap: 8px; width: 100%;">
+                        <input 
+                          type={showApiKey ? 'text' : 'password'} 
+                          bind:value={config.notifyhubApiKey}
+                          placeholder="Inserisci la chiave di autenticazione"
+                          style="flex: 1; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 6px; outline: none;"
+                        />
+                        <button 
+                          type="button" 
+                          class="btn btn-secondary" 
+                          onclick={() => showApiKey = !showApiKey}
+                          style="padding: 0 12px; margin: 0; min-width: 50px;"
+                        >
+                          {showApiKey ? '👁️' : '👁️‍C'}
+                        </button>
+                      </div>
+                      <p class="field-note">API authentication key used to authorize notifications on NotifyHub gateway.</p>
+                    </div>
+                  {/if}
+
+                  <button 
+                    type="submit" 
+                    class="btn btn-primary" 
+                    disabled={isSavingNotifyHub}
+                    style="align-self: flex-start; margin-top: 4px;"
+                  >
+                    {isSavingNotifyHub ? 'Saving...' : '💾 Save Notifications Settings'}
+                  </button>
+                </form>
               </div>
             </div>
 
-            <!-- 3. FILE DIRECTORIES PATH -->
+            <!-- 4. FILE DIRECTORIES PATH -->
             <div class="settings-card glass-panel full-width">
               <div class="settings-card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); padding-bottom: 8px;">
                 <h4 style="margin: 0;">📁 File Directories Path</h4>

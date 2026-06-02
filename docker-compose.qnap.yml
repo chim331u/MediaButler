@@ -8,11 +8,12 @@ services:
     container_name: mediabutler-qnap
     image: mediabutler:qnap-arm32
     restart: unless-stopped
-    network_mode: "bridge"
     user: "0:0"
     ports:
       - "30139:8080" # API Access
       - "30149:8080" # Web UI Access
+    networks:
+      - mediabutler-net
     environment:
       - PORT=8080
       - DATABASE_PATH=/app/data/mediabutler.db
@@ -38,3 +39,8 @@ services:
           memory: 128M # Strict upper RAM bound
         reservations:
           memory: 32M # Guaranteed memory reservation
+
+networks:
+  mediabutler-net:
+    name: mediabutler-net
+    external: true

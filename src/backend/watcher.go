@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -9,8 +10,10 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -257,6 +260,9 @@ func (w *Watcher) processStableFile(filePath string, fileSize int64) error {
 		w.sse.Broadcast("file.discovered", string(payloadBytes))
 	}
 
+	// Trigger asynchronous notification via NotifyHub if configured
+	go w.sendNotifyHubNotification(fileName, suggestedCat, confidence)
+
 	return nil
 }
 
@@ -305,5 +311,76 @@ func (w *Watcher) ManualScan(ctx context.Context) {
 	slog.Info("Manual watch folder scan completed.")
 	if w.sse != nil {
 		w.sse.Broadcast("rescan.completed", `{}`)
+	}
+}
+
+// sendNotifyHubNotification fetches credentials from database and sends HTTP POST to NotifyHub
+func (w *Watcher) sendNotifyHubNotification(fileName string, category string, confidence float64) {
+	// Query local database for active NotifyHub preferences (safe and fast in WAL mode)
+	var channel, apiKey, url string
+	
+	err := w.db.QueryRow("SELECT Value FROM UserPreferences WHERE Key = 'notifyhub_channel' AND Category = 'notifyhub' AND IsActive = 1").Scan(&channel)
+	if err != nil || channel == "none" || channel == "" {
+		slog.Debug("NotifyHub notifications are disabled or not configured", "channel", channel)
+		return // Notifications disabled
+	}
+
+	_ = w.db.QueryRow("SELECT Value FROM UserPreferences WHERE Key = 'notifyhub_apikey' AND Category = 'notifyhub' AND IsActive = 1").Scan(&apiKey)
+	_ = w.db.QueryRow("SELECT Value FROM UserPreferences WHERE Key = 'notifyhub_url' AND Category = 'notifyhub' AND IsActive = 1").Scan(&url)
+
+	if url == "" {
+		url = "http://localhost:30180" // Fallback url
+	}
+
+	slog.Info("Preparing NotifyHub notification", "channel", channel, "url", url)
+
+	// Compose message text (HTML for Telegram, Markdown for Discord/Email)
+	var message string
+	if channel == "telegram" {
+		message = fmt.Sprintf("📂 <b>Nuovo File Rilevato</b>\nNome: <code>%s</code>\nCategoria suggerita: <b>%s</b> (Confidenza: <code>%.2f%%</code>)", 
+			fileName, category, confidence * 100)
+	} else {
+		message = fmt.Sprintf("📂 **Nuovo File Rilevato**\nNome: `%s`\nCategoria suggerita: **%s** (Confidenza: `%.2f%%`)", 
+			fileName, category, confidence * 100)
+	}
+
+	// Build request payload
+	payload := map[string]string{
+		"channel": channel,
+		"message": message,
+	}
+	jsonBytes, err := json.Marshal(payload)
+	if err != nil {
+		slog.Error("Failed to marshal NotifyHub payload", "err", err)
+		return
+	}
+
+	// Build and authenticate HTTP request
+	reqUrl := fmt.Sprintf("%s/api/notify", strings.TrimRight(url, "/"))
+	req, err := http.NewRequest("POST", reqUrl, bytes.NewBuffer(jsonBytes))
+	if err != nil {
+		slog.Error("Failed to create HTTP request for NotifyHub", "err", err)
+		return
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	if apiKey != "" {
+		req.Header.Set("X-API-Key", apiKey)
+	}
+
+	// Run standard client request with timeout to avoid hanging connections
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		slog.Error("Failed to send HTTP notification request to NotifyHub", "url", reqUrl, "err", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		slog.Error("NotifyHub returned error status", "status", resp.Status, "response", string(bodyBytes))
+	} else {
+		slog.Info("Notification successfully dispatched through NotifyHub", "fileName", fileName, "channel", channel)
 	}
 }

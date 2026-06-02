@@ -926,6 +926,11 @@ func TestFSList(t *testing.T) {
 func TestConfigEndpoint(t *testing.T) {
 	cfg := Config{
 		MLThreshold: 0.85,
+		NotifyHub: NotifyHubConfig{
+			URL:     "http://localhost:30180",
+			APIKey:  "initial-key",
+			Channel: "none",
+		},
 	}
 	server := NewServer(cfg, nil, nil, nil)
 	mux := http.NewServeMux()
@@ -947,9 +952,18 @@ func TestConfigEndpoint(t *testing.T) {
 	if configResp["mlThreshold"].(float64) != 0.85 {
 		t.Errorf("Expected mlThreshold to be 0.85, got %v", configResp["mlThreshold"])
 	}
+	if configResp["notifyhubUrl"].(string) != "http://localhost:30180" {
+		t.Errorf("Expected notifyhubUrl to be http://localhost:30180, got %v", configResp["notifyhubUrl"])
+	}
+	if configResp["notifyhubApiKey"].(string) != "initial-key" {
+		t.Errorf("Expected notifyhubApiKey to be initial-key, got %v", configResp["notifyhubApiKey"])
+	}
+	if configResp["notifyhubChannel"].(string) != "none" {
+		t.Errorf("Expected notifyhubChannel to be none, got %v", configResp["notifyhubChannel"])
+	}
 
-	// 2. POST /api/config with valid MLThreshold
-	reqBody := `{"mlThreshold": 0.95}`
+	// 2. POST /api/config with valid MLThreshold and NotifyHub updates
+	reqBody := `{"mlThreshold": 0.95, "notifyhubUrl": "http://notifyhub-service:30180", "notifyhubApiKey": "secret-key", "notifyhubChannel": "telegram"}`
 	req, _ = http.NewRequest("POST", "/api/config", strings.NewReader(reqBody))
 	rr = httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
@@ -965,8 +979,27 @@ func TestConfigEndpoint(t *testing.T) {
 	if configResp["mlThreshold"].(float64) != 0.95 {
 		t.Errorf("Expected updated mlThreshold in response to be 0.95, got %v", configResp["mlThreshold"])
 	}
+	if configResp["notifyhubUrl"].(string) != "http://notifyhub-service:30180" {
+		t.Errorf("Expected updated notifyhubUrl to be http://notifyhub-service:30180, got %v", configResp["notifyhubUrl"])
+	}
+	if configResp["notifyhubApiKey"].(string) != "secret-key" {
+		t.Errorf("Expected updated notifyhubApiKey to be secret-key, got %v", configResp["notifyhubApiKey"])
+	}
+	if configResp["notifyhubChannel"].(string) != "telegram" {
+		t.Errorf("Expected updated notifyhubChannel to be telegram, got %v", configResp["notifyhubChannel"])
+	}
+
 	if server.config.MLThreshold != 0.95 {
 		t.Errorf("Expected server config.MLThreshold to be updated to 0.95, got %v", server.config.MLThreshold)
+	}
+	if server.config.NotifyHub.URL != "http://notifyhub-service:30180" {
+		t.Errorf("Expected server config.NotifyHub.URL to be updated, got %v", server.config.NotifyHub.URL)
+	}
+	if server.config.NotifyHub.APIKey != "secret-key" {
+		t.Errorf("Expected server config.NotifyHub.APIKey to be updated, got %v", server.config.NotifyHub.APIKey)
+	}
+	if server.config.NotifyHub.Channel != "telegram" {
+		t.Errorf("Expected server config.NotifyHub.Channel to be updated, got %v", server.config.NotifyHub.Channel)
 	}
 
 	// 3. POST /api/config with invalid MLThreshold (< 0)

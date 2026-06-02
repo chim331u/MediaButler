@@ -6,7 +6,13 @@
 
 ## 📋 Elenco Attività (Nuovi in alto)
 
-- [/] **Fase 17: History Globale, Ricerca, Paginazione e Modifica Inline (Android & Web)**
+- [x] **Completato: Fase 18: Integrazione del gateway di notifiche "NotifyHub" (Canali Telegram/Discord e Gestione API Key)**
+    - [x] Task 18.1: Modifica di `config.go` e integrazione database SQLite (`UserPreferences`) per la persistenza dei parametri di NotifyHub.
+    - [x] Task 18.2: Estensione dell'endpoint `GET/POST /api/config` in `router.go` per abilitare la gestione dinamica delle credenziali NotifyHub.
+    - [x] Task 18.3: Implementazione in `watcher.go` dell'invio asincrono in background (`sendNotifyHubNotification`) su rilevamento di nuovi file.
+    - [x] Task 18.4: Creazione del pannello Svelte "🔔 NotifyHub Integration" nella scheda Settings di `App.svelte`.
+    - [x] Task 18.5: Aggiornamento dei file `docker-compose` e testing di integrazione.
+- [x] **Completato: Fase 17: History Globale, Ricerca, Paginazione e Modifica Inline (Android & Web)**
     - [x] Task 17.1: Sviluppo estensione API GET /api/files per parametro search e nuovo endpoint POST /api/files/{hash}/update in Go backend.
     - [x] Task 17.2: Sviluppo unit test automatici per i nuovi endpoint di ricerca e aggiornamento file in Go backend.
     - [/] Task 17.3: Sviluppo logica di aggiornamento inline ed integrazione della barra di ricerca Cobalt e dei badge dello stato nella Web UI Svelte.
