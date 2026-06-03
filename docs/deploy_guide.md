@@ -57,32 +57,60 @@ Per testare il comportamento multi-container (inclusa la persistenza del databas
 
 Questa è l'opzione raccomandata per garantire l'isolamento dei servizi su QTS utilizzando Container Station (Docker + Docker Compose).
 
-### Passo 1: Compilazione ed Esportazione (Mac del Sviluppatore)
-Esegui lo script per cross-compilare l'eseguibile Go CGO-free per ARM32v7 e pacchettizzarlo in un'immagine Docker ultra-leggera (~7.4 MB):
+### Opzione A: Deploy Automatico (Raccomandata)
+Questa modalità esegue l'intera procedura (compilazione locale, connessione SSH multiplexed, trasferimento asset e avvio del container sul NAS) in un unico comando dal Mac.
+
+Esegui lo script specificando il comando `deploy`:
+```bash
+bash scripts/deploy-qnap.sh deploy
+```
+
+> [!TIP]
+> **Autenticazione Singola**: Grazie a **SSH Multiplexing**, la password dell'utente `admin` del NAS ti verrà chiesta **una sola volta** all'avvio. Le successive operazioni di copia e configurazione remota verranno eseguite in background senza ulteriori interruzioni.
+>
+> Puoi personalizzare i parametri di connessione tramite argomenti o variabili d'ambiente:
+> ```bash
+> bash scripts/deploy-qnap.sh --ip 192.168.1.100 --user admin --port 22 --path /share/Storage/Docker/mediabutler/delivery deploy
+> ```
+
+Lo script automatizza le seguenti fasi:
+1. Cross-compila l'immagine Docker per ARM32v7 e la esporta in `build/mediabutler-qnap-arm32.tar`.
+2. Stabilisce una connessione SSH master multiplexed sul NAS.
+3. Crea la directory di consegna (default `/share/Storage/Docker/mediabutler/delivery`) sul NAS e vi copia i file.
+4. Esegue in remoto la configurazione dei volumi, l'importazione dell'immagine e l'avvio dello stack `docker compose`.
+
+---
+
+### Opzione B: Rilascio Manuale (Passo-Passo)
+
+Nel caso in cui tu preferisca controllare manualmente ogni singolo passaggio:
+
+#### Passo 1: Compilazione ed Esportazione (Mac del Sviluppatore)
+Esegui lo script per cross-compilare l'eseguibile Go per ARM32v7 e pacchettizzarlo in un'immagine Docker:
 ```bash
 bash scripts/deploy-qnap.sh build
 ```
 *Questo genererà il pacchetto tarball `build/mediabutler-qnap-arm32.tar`.*
 
-### Passo 2: Copia degli Asset sul NAS
-Trasferisci tramite SCP o File Station i seguenti tre file nella cartella `/share/Public` (o una cartella di lavoro a scelta) sul NAS QNAP:
+#### Passo 2: Copia degli Asset sul NAS
+Trasferisci tramite SCP i seguenti tre file nella cartella `/share/Storage/Docker/mediabutler/delivery` sul NAS QNAP:
 * Il tarball dell'immagine: `build/mediabutler-qnap-arm32.tar`
 * Il file Compose di produzione: `docker-compose.qnap.yml`
 * Lo script di deployment: `scripts/deploy-qnap.sh`
 
 Esempio via SCP:
 ```bash
-scp build/mediabutler-qnap-arm32.tar docker-compose.qnap.yml scripts/deploy-qnap.sh admin@<IP_DEL_NAS>:/share/Public/
+scp build/mediabutler-qnap-arm32.tar docker-compose.qnap.yml scripts/deploy-qnap.sh admin@<IP_DEL_NAS>:/share/Storage/Docker/mediabutler/delivery/
 ```
 
-### Passo 3: Esecuzione e Avvio (SSH sul NAS QNAP)
+#### Passo 3: Esecuzione e Avvio (SSH sul NAS QNAP)
 1. Collegati in SSH sul NAS:
    ```bash
    ssh admin@<IP_DEL_NAS>
    ```
 2. Spostati nella cartella contenente i file copiati:
    ```bash
-   cd /share/Public
+   cd /share/Storage/Docker/mediabutler/delivery
    ```
 3. Esegui la fase di installazione dello script:
    ```bash
@@ -92,7 +120,8 @@ scp build/mediabutler-qnap-arm32.tar docker-compose.qnap.yml scripts/deploy-qnap
    * Rileva dinamicamente il volume di archiviazione attivo del QNAP (es. `/share/CACHEDEV1_DATA`).
    * Importa l'immagine Docker dal tarball (`docker load -i mediabutler-qnap-arm32.tar`).
    * Configura le directory per i dati, il database SQLite con PRAGMA WAL e le cartelle di Watch/Destinazione.
-   * Avvia lo stack containerizzato tramite `docker-compose -f docker-compose.qnap.yml up -d`.
+   * Avvia lo stack containerizzato tramite `docker compose -f docker-compose.qnap.yml up -d`.
+
 
 ---
 

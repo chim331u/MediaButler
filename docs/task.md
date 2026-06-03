@@ -6,6 +6,10 @@
 
 ## 📋 Elenco Attività (Nuovi in alto)
 
+- [x] **Completato: Automazione del deploy remoto su NAS QNAP (Fase 19)**
+    - [x] Implementazione dell'autenticazione singola tramite SSH Multiplexing e socket di controllo temporaneo.
+    - [x] Estensione di `scripts/deploy-qnap.sh` con il comando `deploy` e configurabilità di rete per il trasferimento e l'attivazione in `/share/Storage/Docker/mediabutler/delivery`.
+    - [x] Aggiornamento della guida di rilascio in `docs/deploy_guide.md`.
 - [x] **Completato: Fase 18: Integrazione del gateway di notifiche "NotifyHub" (Canali Telegram/Discord e Gestione API Key)**
     - [x] Task 18.1: Modifica di `config.go` e integrazione database SQLite (`UserPreferences`) per la persistenza dei parametri di NotifyHub.
     - [x] Task 18.2: Estensione dell'endpoint `GET/POST /api/config` in `router.go` per abilitare la gestione dinamica delle credenziali NotifyHub.

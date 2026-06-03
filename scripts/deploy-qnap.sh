@@ -4,11 +4,12 @@
 # MediaButler QNAP NAS Deploy Automation Script
 # ==============================================================================
 # Automates the local multi-platform Docker compilation, tar packaging,
-# dynamic QNAP storage volume detection, and container service loading.
+# dynamic QNAP storage volume detection, SSH multiplexed copy, and container loading.
 #
 # Usage:
-#   Local (Mac): ./scripts/deploy-qnap.sh build
-#   On QNAP NAS: ./qnap-service-run.sh (copied or run directly as 'run-nas')
+#   Local (Mac) Build Only:  ./scripts/deploy-qnap.sh build
+#   QNAP NAS Remote Deploy:  ./scripts/deploy-qnap.sh deploy
+#   QNAP NAS Local Load:     ./deploy-qnap.sh run-nas
 # ==============================================================================
 
 set -euo pipefail
@@ -19,6 +20,12 @@ GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
+
+# Default SSH Configuration
+NAS_IP="192.168.1.5"
+NAS_USER="admin"
+NAS_PORT="22"
+NAS_PATH="/share/Storage/Docker/mediabutler/delivery"
 
 log_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -40,9 +47,19 @@ show_help() {
     echo "MediaButler QNAP Deployment Automation Utility"
     echo ""
     echo "Usage:"
-    echo "  $0 build          - Local: Multi-platform Docker ARM32v7 build & package to tar"
-    echo "  $0 run-nas        - QNAP: Detect active storage volume, load tarball, and launch Compose"
-    echo "  $0 help           - Show this help screen"
+    echo "  $0 [options] <command>"
+    echo ""
+    echo "Commands:"
+    echo "  build             - Local: Multi-platform Docker ARM32v7 build & package to tar"
+    echo "  deploy            - Local to Remote: Compile local image, copy over SSH, and run deploy on QNAP"
+    echo "  run-nas           - QNAP: Detect active storage volume, load tarball, and launch Compose"
+    echo "  help              - Show this help screen"
+    echo ""
+    echo "Options (for deploy/build):"
+    echo "  --ip <ip>         - IP address of the QNAP NAS (default: ${NAS_IP})"
+    echo "  --user <user>     - SSH username of the QNAP NAS (default: ${NAS_USER})"
+    echo "  --port <port>     - SSH port of the QNAP NAS (default: ${NAS_PORT})"
+    echo "  --path <path>     - Target path on QNAP NAS for delivery files (default: ${NAS_PATH})"
     echo ""
 }
 
@@ -100,18 +117,6 @@ local_build() {
     if command -v du &> /dev/null; then
         log_info "Tarball package size: $(du -sh "${TAR_OUT}" | cut -f1)"
     fi
-
-    echo -e "\n=============================================================================="
-    log_success "PREPARATION COMPLETED SUCCESSFULLY!"
-    echo -e "Follow these steps to deploy on your QNAP NAS:"
-    echo -e ""
-    echo -e "1. Copy the tarball and docker-compose.qnap.yml to your NAS:"
-    echo -e "   ${YELLOW}scp build/mediabutler-qnap-arm32.tar docker-compose.qnap.yml admin@<NAS_IP>:/share/Public/${NC}"
-    echo -e ""
-    echo -e "2. Copy this script to the NAS and run it to perform dynamic volume mapping and loading:"
-    echo -e "   ${YELLOW}scp scripts/deploy-qnap.sh admin@<NAS_IP>:/share/Public/${NC}"
-    echo -e "   ${YELLOW}ssh admin@<NAS_IP> 'bash /share/Public/deploy-qnap.sh run-nas'${NC}"
-    echo -e "==============================================================================\n"
 }
 
 # 2. QNAP NAS Execution Phase
@@ -145,6 +150,8 @@ qnap_nas_run() {
     mkdir -p "${QNAP_DATA_DIR}"
     mkdir -p "/share/Download/Incoming"
     mkdir -p "/share/Video/Serie"
+    # Ensure our custom NAS_PATH is created too
+    mkdir -p "${NAS_PATH}"
     log_success "Operational folders ready."
 
     # C. Check docker availability on NAS
@@ -204,25 +211,117 @@ qnap_nas_run() {
     echo -e "==============================================================================\n"
 }
 
-# Main routing logic
-if [ $# -lt 1 ]; then
+# 3. Remote Deployment Phase
+remote_deploy() {
+    log_info "Starting Automated Remote Deployment to QNAP NAS..."
+    
+    # Run local compilation & tar packaging
+    local_build
+
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+    TAR_OUT="${REPO_ROOT}/build/mediabutler-qnap-arm32.tar"
+    COMPOSE_FILE="${REPO_ROOT}/docker-compose.qnap.yml"
+    DEPLOY_SCRIPT="${REPO_ROOT}/scripts/deploy-qnap.sh"
+
+    if [ ! -f "${TAR_OUT}" ]; then
+        log_error "Local build tarball does not exist: ${TAR_OUT}"
+        exit 1
+    fi
+
+    # MUX Socket for SSH multiplexing
+    MUX_SOCKET="/tmp/ssh_mux_mediabutler_${NAS_IP}_${NAS_PORT}"
+
+    # Setup exit trap to close MUX session
+    cleanup() {
+        if [ -S "${MUX_SOCKET}" ]; then
+            echo ""
+            log_info "Closing SSH Multiplexed Master Connection..."
+            ssh -p "${NAS_PORT}" -S "${MUX_SOCKET}" -O exit "${NAS_USER}@${NAS_IP}" 2>/dev/null || true
+        fi
+    }
+    trap cleanup EXIT
+
+    log_info "Establishing Master SSH Connection to NAS (${NAS_IP}:${NAS_PORT})..."
+    log_warn "👉 Please enter the password for QNAP user '${NAS_USER}' (required ONCE):"
+    ssh -p "${NAS_PORT}" -M -S "${MUX_SOCKET}" -fN "${NAS_USER}@${NAS_IP}"
+
+    log_info "Creating delivery folder remotely on QNAP: ${NAS_PATH}..."
+    ssh -S "${MUX_SOCKET}" -p "${NAS_PORT}" "${NAS_USER}@${NAS_IP}" "mkdir -p ${NAS_PATH}"
+
+    log_info "Copying image package and configurations via SCP..."
+    scp -o ControlPath="${MUX_SOCKET}" -P "${NAS_PORT}" "${TAR_OUT}" "${COMPOSE_FILE}" "${DEPLOY_SCRIPT}" "${NAS_USER}@${NAS_IP}:${NAS_PATH}/"
+    log_success "Files successfully transferred to QNAP NAS."
+
+    log_info "Triggering remote script execution via SSH..."
+    ssh -S "${MUX_SOCKET}" -p "${NAS_PORT}" "${NAS_USER}@${NAS_IP}" << EOF
+      # Add QNAP and Container Station paths to PATH
+      for qpath in /share/*/.qpkg/container-station/bin /share/*/.qpkg/container-station/sbin /usr/local/bin /usr/local/sbin; do
+        if [ -d "\$qpath" ]; then
+          export PATH="\$qpath:\$PATH"
+        fi
+      done
+
+      cd "${NAS_PATH}"
+      # Redefine log helpers for the remote shell execution context
+      log_info() { echo -e "\033[0;34m[INFO]\033[0m \$1"; }
+      log_success() { echo -e "\033[0;32m[SUCCESS]\033[0m \$1"; }
+      log_warn() { echo -e "\033[1;33m[WARN]\033[0m \$1"; }
+      log_error() { echo -e "\033[0;31m[ERROR]\033[0m \$1"; }
+      export NAS_PATH="${NAS_PATH}"
+
+      # Run deployment script phase on QNAP
+      bash deploy-qnap.sh run-nas
+EOF
+
+    log_success "Automated Deployment Pipeline Completed Successfully!"
+}
+
+# Main argument routing
+COMMAND=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --ip)
+            NAS_IP="$2"
+            shift 2
+            ;;
+        --user)
+            NAS_USER="$2"
+            shift 2
+            ;;
+        --port)
+            NAS_PORT="$2"
+            shift 2
+            ;;
+        --path)
+            NAS_PATH="$2"
+            shift 2
+            ;;
+        build|run-nas|deploy|help)
+            COMMAND="$1"
+            shift
+            ;;
+        *)
+            log_error "Unknown argument: $1"
+            show_help
+            exit 1
+            ;;
+    esac
+done
+
+if [ -z "${COMMAND}" ] || [ "${COMMAND}" = "help" ]; then
     show_help
-    exit 1
+    exit 0
 fi
 
-case "$1" in
+case "${COMMAND}" in
     build)
         local_build
         ;;
     run-nas)
         qnap_nas_run
         ;;
-    help)
-        show_help
-        ;;
-    *)
-        log_error "Unknown argument: $1"
-        show_help
-        exit 1
+    deploy)
+        remote_deploy
         ;;
 esac
